@@ -5,11 +5,9 @@ import numpy as np
 from datetime import datetime, timedelta, timezone
 import os
 from dateutil.relativedelta import relativedelta
-from tqdm import tqdm
 import progressbar
 from openpyxl import load_workbook, Workbook
 from openpyxl.utils.dataframe import dataframe_to_rows
-import os
 
 def read_notis_file(filepath):
     wb = load_workbook(filepath, read_only=True)
@@ -120,10 +118,10 @@ def modify_file(df):
     # --------------------------------------------------------------------------------------------------------------------------------
     # df['User Name'] = df['ctclid'].apply(lambda x: )
     conditions = [
-        (df['ctclid'] == 400013041065130) | (df.ctclid == 400013041076130) | (df.ctclid == 400013041123012) | (df.ctclid == 400013041168130) | (df.ctclid == 400013041196030) | (df.ctclid == 400013041196130),
+        (df['ctclid'] == 400013041065130) | (df.ctclid == 400013041076130) | (df.ctclid == 400013041123012) | (df.ctclid == 400013041168130) | (df.ctclid == 400013041196030) | (df.ctclid == 400013041196130) | (df.ctclid == 400013041076030),
         (df.ctclid == 400013041217130),
-        (df.ctclid == 400013041087000) | (df.ctclid == 400013041202130) | (df.ctclid == 400013055025000) | (df.ctclid == 400013041172030),
-        (df.ctclid == 400013041161030) | (df.ctclid == 400013041161130) | (df.ctclid == 400013041208030) | (df.ctclid == 400013041208130) | (df.ctclid == 400013041148030),
+        (df.ctclid == 400013041087000) | (df.ctclid == 400013041202130) | (df.ctclid == 400013055025000) | (df.ctclid == 400013041172030) | (df.ctclid == 111111111111122) | (df.ctclid == 400013041202030),
+        (df.ctclid == 400013041161030) | (df.ctclid == 400013041161130) | (df.ctclid == 400013041208030) | (df.ctclid == 400013041208130) | (df.ctclid == 400013041148030) | (df.ctclid == 400013041198012),
         (df.ctclid == 400013055027030)
     ]
     user_choices = ['Shubham Gagrani','Ria Shah','Rajeev Thakthani', 'Mohit Vajpayee', 'Harshit Arora']
@@ -138,8 +136,8 @@ def modify_file(df):
     return df
 
 def main():
-    # today = datetime.now().date().strftime("%d%b%Y").upper()
-    today = datetime(year=2024, month=12, day=10).date().strftime("%d%b%Y").upper()
+    today = datetime.now().date().strftime("%d%b%Y").upper()
+    # today = datetime(year=2024, month=12, day=10).date().strftime("%d%b%Y").upper()
     # filepath = rf'D:\notis_analysis\NOTIS_DATA_{today}.xlsx'
     pattern = rf'NOTIS_(DATA|API)_{today}.xlsx'
     matched_file = [f for f in os.listdir(data_dir) if re.match(pattern, f)]
@@ -157,7 +155,7 @@ def main():
 
 if __name__ == '__main__':
     root_dir = os.path.dirname(os.path.abspath(__file__))
-    data_dir = os.path.join(root_dir, 'data')
+    data_dir = os.path.join(root_dir, 'input_data')
     modified_dir = os.path.join(root_dir, 'modified_data')
     dir_list = [data_dir, modified_dir]
     status = [os.makedirs(_dir, exist_ok=True) for _dir in dir_list if not os.path.exists(_dir)]
