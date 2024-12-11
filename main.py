@@ -151,7 +151,7 @@ def main():
     #         del writer.book['NOTIS_DATA']
     #     modified_df.to_excel(writer, index=False)
     write_notis_data(modified_df, matched_file[0])
-    print('file modified')
+    print('file saved in modified_data folder')
 
 if __name__ == '__main__':
     root_dir = os.path.dirname(os.path.abspath(__file__))
