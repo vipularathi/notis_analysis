@@ -121,7 +121,7 @@ def modify_file(df):
         (df['ctclid'] == 400013041065130) | (df.ctclid == 400013041076130) | (df.ctclid == 400013041123012) | (df.ctclid == 400013041168130) | (df.ctclid == 400013041196030) | (df.ctclid == 400013041196130) | (df.ctclid == 400013041076030),
         (df.ctclid == 400013041217130),
         (df.ctclid == 400013041087000) | (df.ctclid == 400013041202130) | (df.ctclid == 400013055025000) | (df.ctclid == 400013041172030) | (df.ctclid == 111111111111122) | (df.ctclid == 400013041202030),
-        (df.ctclid == 400013041161030) | (df.ctclid == 400013041161130) | (df.ctclid == 400013041208030) | (df.ctclid == 400013041208130) | (df.ctclid == 400013041148030) | (df.ctclid == 400013041198012),
+        (df.ctclid == 400013041161030) | (df.ctclid == 400013041161130) | (df.ctclid == 400013041208030) | (df.ctclid == 400013041208130) | (df.ctclid == 400013041148030) | (df.ctclid == 400013041198012) | (df.ctclid == 400013041148130),
         (df.ctclid == 400013055027030)
     ]
     user_choices = ['Shubham Gagrani','Ria Shah','Rajeev Thakthani', 'Mohit Vajpayee', 'Harshit Arora']
