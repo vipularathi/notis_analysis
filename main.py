@@ -74,7 +74,7 @@ def get_date_from_non_jiffy(dt_val):
     new_date = datetime.fromtimestamp(date_time, timezone.utc)
     formatted_date = new_date.astimezone(timezone(timedelta(hours=5, minutes=30))).strftime("%Y-%m-%d %I:%M:%S")
     return formatted_date
-def modify_file(df):
+def modify_file(df, nnf_file_path):
     # --------------------------------------------------------------------------------------------------------------------------------
     pbar = progressbar.ProgressBar(max_value=100, widgets=[progressbar.Percentage(), ' ', progressbar.Bar(marker='=', left='[', right=']'), progressbar.ETA()])
     print('Starting file modification...')
@@ -116,35 +116,47 @@ def modify_file(df):
     # pbar.update(90, 'Buy Sell Flag modified')
     pbar.update(90)
     # --------------------------------------------------------------------------------------------------------------------------------
-    # df['User Name'] = df['ctclid'].apply(lambda x: )
-    conditions = [
-        (df['ctclid'] == 400013041065130) | (df.ctclid == 400013041076130) | (df.ctclid == 400013041123012) | (df.ctclid == 400013041168130) | (df.ctclid == 400013041196030) | (df.ctclid == 400013041196130) | (df.ctclid == 400013041076030),
-        (df.ctclid == 400013041217130),
-        (df.ctclid == 400013041087000) | (df.ctclid == 400013041202130) | (df.ctclid == 400013055025000) | (df.ctclid == 400013041172030) | (df.ctclid == 111111111111122) | (df.ctclid == 400013041202030),
-        (df.ctclid == 400013041161030) | (df.ctclid == 400013041161130) | (df.ctclid == 400013041208030) | (df.ctclid == 400013041208130) | (df.ctclid == 400013041148030) | (df.ctclid == 400013041198012) | (df.ctclid == 400013041148130),
-        (df.ctclid == 400013055027030)
-    ]
-    user_choices = ['Shubham Gagrani','Ria Shah','Rajeev Thakthani', 'Mohit Vajpayee', 'Harshit Arora']
-    desk_choices = ['Desk1', 'Desk3', 'Desk3', 'Desk2', 'Desk3']
-    default = ('')
-    # df[['UserName', 'Desk']] = pd.DataFrame(np.select(conditions, choices, default=default), index = df.index)
-    df['UserName'] = np.select(conditions, user_choices, default=default)
-    df['Desk'] = np.select(conditions, desk_choices, default=default)
+    # # df['User Name'] = df['ctclid'].apply(lambda x: )
+    # conditions = [
+    #     (df['ctclid'] == 400013041065130) | (df.ctclid == 400013041076130) | (df.ctclid == 400013041123012) | (df.ctclid == 400013041168130) | (df.ctclid == 400013041196030) | (df.ctclid == 400013041196130) | (df.ctclid == 400013041076030),
+    #     (df.ctclid == 400013041217130),
+    #     (df.ctclid == 400013041087000) | (df.ctclid == 400013041202130) | (df.ctclid == 400013055025000) | (df.ctclid == 400013041172030) | (df.ctclid == 111111111111122) | (df.ctclid == 400013041202030),
+    #     (df.ctclid == 400013041161030) | (df.ctclid == 400013041161130) | (df.ctclid == 400013041208030) | (df.ctclid == 400013041208130) | (df.ctclid == 400013041148030) | (df.ctclid == 400013041198012) | (df.ctclid == 400013041148130),
+    #     (df.ctclid == 400013055027030)
+    # ]
+    # user_choices = ['Shubham Gagrani','Ria Shah','Rajeev Thakthani', 'Mohit Vajpayee', 'Harshit Arora']
+    # desk_choices = ['Desk1', 'Desk3', 'Desk3', 'Desk2', 'Desk3']
+    # default = ('')
+    # # df[['UserName', 'Desk']] = pd.DataFrame(np.select(conditions, choices, default=default), index = df.index)
+    # df['UserName'] = np.select(conditions, user_choices, default=default)
+    # df['Desk'] = np.select(conditions, desk_choices, default=default)
+
+    df1 = pd.read_excel(nnf_file_path, index_col=False)
+    df1 = df1.loc[:, ~df1.columns.str.startswith('Un')]
+    df1.columns = df1.columns.str.replace(' ', '', regex=True)
+    df1.dropna(how='all', inplace=True)
+    # list_col = [col for col in df1.columns if not col.startswith('NNF')]
+    # grouped_df = df1.groupby(['NNFID'])[list_col].sum()
+    # for index, row in grouped_df.iterrows():
+    #     print('indx-',int(index),'\n', 'row-\n', row, '\n')
+    merged_df = pd.merge(df, df1, left_on='ctclid', right_on='NNFID', how='left')
+    merged_df.drop(columns=['NNFID'], axis=1, inplace=True)
     pbar.update(100)
     # --------------------------------------------------------------------------------------------------------------------------------
     pbar.finish()
-    return df
+    return merged_df
 
 def main():
     today = datetime.now().date().strftime("%d%b%Y").upper()
-    # today = datetime(year=2024, month=12, day=10).date().strftime("%d%b%Y").upper()
-    # filepath = rf'D:\notis_analysis\NOTIS_DATA_{today}.xlsx'
+    # today = datetime(year=2024, month=12, day=12).date().strftime("%d%b%Y").upper()
+    filepath = rf'D:\notis_analysis\NOTIS_DATA_{today}.xlsx'
     pattern = rf'NOTIS_(DATA|API)_{today}.xlsx'
     matched_file = [f for f in os.listdir(data_dir) if re.match(pattern, f)]
     filepath = os.path.join(data_dir, matched_file[0])
+    nnf_file_path = os.path.join(root_dir, "Final_NNF_ID.xlsx")
     # df = pd.read_excel(filepath, index_col=False)
     df = read_notis_file(filepath)
-    modified_df = modify_file(df)
+    modified_df = modify_file(df, nnf_file_path)
     # # modified_df.to_excel(rf'modified_NOTIS_DATA_{today}.xlsx', index=False)
     # with pd.ExcelWriter(rf'D:\notis_analysis\NOTIS_DATA_{today}.xlsx', engine='openpyxl') as writer:
     #     if 'NOTIS_DATA' in writer.book.sheetnames:
