@@ -148,7 +148,7 @@ def modify_file(df, nnf_file_path):
 
 def main():
     today = datetime.now().date().strftime("%d%b%Y").upper()
-    # today = datetime(year=2024, month=12, day=12).date().strftime("%d%b%Y").upper()
+    # today = datetime(year=2024, month=12, day=17).date().strftime("%d%b%Y").upper()
     filepath = rf'D:\notis_analysis\NOTIS_DATA_{today}.xlsx'
     pattern = rf'NOTIS_(DATA|API)_{today}.xlsx'
     matched_file = [f for f in os.listdir(data_dir) if re.match(pattern, f)]
