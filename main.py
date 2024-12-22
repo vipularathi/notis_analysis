@@ -1,5 +1,4 @@
 import re
-
 import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta, timezone
@@ -8,6 +7,77 @@ from dateutil.relativedelta import relativedelta
 import progressbar
 from openpyxl import load_workbook, Workbook
 from openpyxl.utils.dataframe import dataframe_to_rows
+import pyodbc
+from sqlalchemy import create_engine
+import psycopg2
+
+def read_data_db():
+    # Sql connection parameters
+    sql_server = 'rms.ar.db'
+    sql_database = 'ENetMIS'
+    sql_username = 'notice_user'
+    sql_password = 'Notice@2024'
+
+    # PostgreSQL connection parameters
+    pg_db_name = 'data_arathi'
+    pg_user = 'postgres'
+    pg_password = 'root'
+    pg_host = '172.16.47.81'
+    pg_port = '5432'
+
+    sql_query = "SELECT * FROM [ENetMIS].[dbo].[NSE_FO_AA100_view]"
+
+    try:
+        # sql to df
+        sql_connection_string = (
+            f"DRIVER={{ODBC Driver 17 for SQL Server}};"
+            f"SERVER={sql_server};"
+            f"DATABASE={sql_database};"
+            f"UID={sql_username};"
+            f"PWD={sql_password}"
+        )
+        sql_conn = pyodbc.connect(sql_connection_string)
+        df = pd.read_sql_query(sql_query, sql_conn)
+        sql_conn.close()
+        print(f"Data fetched from SQL Server:\n{df.head()}")
+
+        # # df to postgresql
+        # pg_conn = psycopg2.connect(
+        #     dbname=pg_db_name,
+        #     user=pg_user,
+        #     password=pg_password,
+        #     host=pg_host,
+        #     port=pg_port
+        # )
+        # pg_cursor = pg_conn.cursor()
+        #
+        # table_name = 'rms_table'
+        #
+        # # drop old table and make new table as new data is available
+        # pg_cursor.execute(f"DROP TABLE IF EXISTS {table_name}")
+        # create_table_query = f"""
+        # CREATE TABLE {table_name} (
+        #     {', '.join(f"{col} TEXT" for col in df.columns)}
+        # )
+        # """
+        # pg_cursor.execute(create_table_query)
+        # pg_conn.commit()
+        #
+        # # insert data into PostgreSQL
+        # engine = create_engine(
+        #     f"postgresql://{pg_user}:{pg_password}@{pg_host}:{pg_port}/{pg_db_name}"
+        # )
+        # df.to_sql(table_name, engine, index=False, if_exists='replace')
+        # print(f"Data successfully inserted into PostgreSQL table '{table_name}'.")
+
+        return df
+
+    except (pyodbc.Error, psycopg2.Error) as e:
+        print("Error occurred:", e)
+
+    # finally:
+    #     if 'pg_conn' in locals() and pg_conn:
+    #         pg_conn.close()
 
 def read_notis_file(filepath):
     wb = load_workbook(filepath, read_only=True)
@@ -70,7 +140,8 @@ def get_date_from_non_jiffy(dt_val):
     """
     # Assuming dt_val is seconds since Jan 1, 1980
     base_date = datetime(1980, 1, 1, tzinfo=timezone.utc)
-    date_time =  int(base_date.timestamp() + dt_val)
+    # date_time = int(base_date.timestamp() + dt_val)
+    date_time = base_date.timestamp() + dt_val
     new_date = datetime.fromtimestamp(date_time, timezone.utc)
     formatted_date = new_date.astimezone(timezone(timedelta(hours=5, minutes=30))).strftime("%Y-%m-%d %I:%M:%S")
     return formatted_date
@@ -98,17 +169,17 @@ def modify_file(df, nnf_file_path):
     pbar.update(20)
     # --------------------------------------------------------------------------------------------------------------------------------
     # df['ordTm'] = df['ordTm'].apply(lambda x: datetime.fromtimestamp(x)+relativedelta(years=10)-relativedelta(days=1))
-    df['ordTm'] = df['ordTm'].apply(lambda x: get_date_from_non_jiffy(x))
+    df['ordTm'] = df['ordTm'].apply(lambda x: get_date_from_non_jiffy(int(x)))
     # pbar.update(40, 'Order time modified')
     pbar.update(40)
     # --------------------------------------------------------------------------------------------------------------------------------
     # df['expDt'] = df['expDt'].apply(lambda x: datetime.fromtimestamp(x)+relativedelta(years=10)-relativedelta(days=1))
-    df['expDt'] = df['expDt'].apply(lambda x: get_date_from_non_jiffy(x))
+    df['expDt'] = df['expDt'].apply(lambda x: get_date_from_non_jiffy(int(x)))
     # pbar.update(60, 'Expiry date modified')
     pbar.update(60)
     # --------------------------------------------------------------------------------------------------------------------------------
     # df['trdTm'] = df['trdTm'].apply(lambda x: datetime.fromtimestamp(x/100000)+timedelta(days = 25*365.25+6*29.5))
-    df['trdTm'] = df['trdTm'].apply(lambda x: get_date_from_jiffy(x))
+    df['trdTm'] = df['trdTm'].apply(lambda x: get_date_from_jiffy(int(x)))
     # pbar.update(80, 'Trade time modified')
     pbar.update(80)
     # --------------------------------------------------------------------------------------------------------------------------------
@@ -139,6 +210,8 @@ def modify_file(df, nnf_file_path):
     # grouped_df = df1.groupby(['NNFID'])[list_col].sum()
     # for index, row in grouped_df.iterrows():
     #     print('indx-',int(index),'\n', 'row-\n', row, '\n')
+    df['ctclid'] = df['ctclid'].astype('float64')
+    df1['NNFID'] = df1['NNFID'].astype('float64')
     merged_df = pd.merge(df, df1, left_on='ctclid', right_on='NNFID', how='left')
     merged_df.drop(columns=['NNFID'], axis=1, inplace=True)
     pbar.update(100)
@@ -149,20 +222,23 @@ def modify_file(df, nnf_file_path):
 def main():
     today = datetime.now().date().strftime("%d%b%Y").upper()
     # today = datetime(year=2024, month=12, day=17).date().strftime("%d%b%Y").upper()
-    filepath = rf'D:\notis_analysis\NOTIS_DATA_{today}.xlsx'
-    pattern = rf'NOTIS_(DATA|API)_{today}.xlsx'
-    matched_file = [f for f in os.listdir(data_dir) if re.match(pattern, f)]
-    filepath = os.path.join(data_dir, matched_file[0])
+    # filepath = rf'D:\notis_analysis\NOTIS_DATA_{today}.xlsx'
+    # pattern = rf'NOTIS_(DATA|API)_{today}.xlsx'
+    # matched_file = [f for f in os.listdir(data_dir) if re.match(pattern, f)]
+    # filepath = os.path.join(data_dir, matched_file[0])
     nnf_file_path = os.path.join(root_dir, "Final_NNF_ID.xlsx")
+    filename = rf'NOTIS_DATA_{today}.xlsx'
     # df = pd.read_excel(filepath, index_col=False)
-    df = read_notis_file(filepath)
+    # df = read_notis_file(filepath)
+    df = read_data_db()
     modified_df = modify_file(df, nnf_file_path)
     # # modified_df.to_excel(rf'modified_NOTIS_DATA_{today}.xlsx', index=False)
     # with pd.ExcelWriter(rf'D:\notis_analysis\NOTIS_DATA_{today}.xlsx', engine='openpyxl') as writer:
     #     if 'NOTIS_DATA' in writer.book.sheetnames:
     #         del writer.book['NOTIS_DATA']
     #     modified_df.to_excel(writer, index=False)
-    write_notis_data(modified_df, matched_file[0])
+    # write_notis_data(modified_df, matched_file[0])
+    write_notis_data(modified_df, filename)
     print('file saved in modified_data folder')
 
 if __name__ == '__main__':
@@ -172,5 +248,3 @@ if __name__ == '__main__':
     dir_list = [data_dir, modified_dir]
     status = [os.makedirs(_dir, exist_ok=True) for _dir in dir_list if not os.path.exists(_dir)]
     main()
-
-# df['user_name'] = np.where(df['ctclid'] == 400013041065130, 'Shubham Gagrani', (np.where(df.ctclid == 400013041161030, 'Mohit Vajpayee', 'Harshit Arora')))

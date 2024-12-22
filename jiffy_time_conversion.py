@@ -63,6 +63,7 @@ class Utility:
 
 
 if __name__ == "__main__":
+    # Mtd1
     # Jiffy format
     date_time = Utility.get_date_from_jiffy(92926374141189)
     new_date = datetime.fromtimestamp(date_time, timezone.utc)
@@ -70,32 +71,33 @@ if __name__ == "__main__":
     print(f"date from jiffy format:=========>{formatted_date}")
 
     # 1980 format
-    date_time1 = Utility.get_date_from_non_jiffy(1417943941)
+    date_time1 = Utility.get_date_from_non_jiffy(1419153352)
     new_date1 = datetime.fromtimestamp(date_time1, timezone.utc)
     formatted_date1 = new_date1.astimezone(timezone(timedelta(hours=5, minutes=30))).strftime("%d/%m/%Y %I:%M:%S %p")
     print(f"date from 1980 format:=========>{formatted_date1}")
 
     # 1970 format
-    date_time2 = Utility.get_date_from_non_jiffy1(1417943941)
+    date_time2 = Utility.get_date_from_non_jiffy1(1419153352)
     new_date2 = datetime.fromtimestamp(date_time2, timezone.utc)
     formatted_date2 = new_date2.astimezone(timezone(timedelta(hours=5, minutes=30))).strftime("%d/%m/%Y %I:%M:%S %p")
     print(f"date from 1970 format:=========>{formatted_date2}")
 
+    # Mtd2
     # Jiffy format
     print('New')
     date_time = Utility.get_date_from_jiffya(92926374141189)
     new_date = datetime.fromtimestamp(date_time, timezone.utc)
     formatted_date = new_date.astimezone(timezone(timedelta(hours=5, minutes=30))).strftime("%d/%m/%Y %I:%M:%S %p")
-    print(f"date from jiffy format:=========>{formatted_date}")
+    print(f"Adate from jiffy format:=========>{formatted_date}")
 
     # 1980 format
-    date_time1 = Utility.get_date_from_non_jiffya(1417943941)
+    date_time1 = Utility.get_date_from_non_jiffya(1419153352)
     new_date1 = datetime.fromtimestamp(date_time1, timezone.utc)
     formatted_date1 = new_date1.astimezone(timezone(timedelta(hours=5, minutes=30))).strftime("%d/%m/%Y %I:%M:%S %p")
-    print(f"date from 1980 format:=========>{formatted_date1}")
+    print(f"Adate from 1980 format:=========>{formatted_date1}")
 
     # 1970 format
-    date_time2 = Utility.get_date_from_non_jiffy1a(1417943941)
+    date_time2 = Utility.get_date_from_non_jiffy1a(1419153352)
     new_date2 = datetime.fromtimestamp(date_time2, timezone.utc)
     formatted_date2 = new_date2.astimezone(timezone(timedelta(hours=5, minutes=30))).strftime("%d/%m/%Y %I:%M:%S %p")
-    print(f"date from 1970 format:=========>{formatted_date2}")
+    print(f"Adate from 1970 format:=========>{formatted_date2}")
