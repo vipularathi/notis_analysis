@@ -1,5 +1,4 @@
 import re
-
 import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta, timezone
@@ -8,6 +7,37 @@ from dateutil.relativedelta import relativedelta
 import progressbar
 from openpyxl import load_workbook, Workbook
 from openpyxl.utils.dataframe import dataframe_to_rows
+import pyodbc
+from sqlalchemy import create_engine, text, insert
+import psycopg2
+import time
+import warnings
+from db_config import engine_str, n_tbl_notis_trade_book, s_tbl_notis_trade_book
+
+warnings.filterwarnings('ignore', message="pandas only supports SQLAlchemy connectable.*")
+def read_data_db():
+    # Sql connection parameters
+    sql_server = 'rms.ar.db'
+    sql_database = 'ENetMIS'
+    sql_username = 'notice_user'
+    sql_password = 'Notice@2024'
+    sql_query = "SELECT * FROM [ENetMIS].[dbo].[NSE_FO_AA100_view]"
+
+    try:
+        sql_connection_string = (
+            f"DRIVER={{ODBC Driver 17 for SQL Server}};"
+            f"SERVER={sql_server};"
+            f"DATABASE={sql_database};"
+            f"UID={sql_username};"
+            f"PWD={sql_password}"
+        )
+        with pyodbc.connect(sql_connection_string) as sql_conn:
+            df = pd.read_sql_query(sql_query, sql_conn)
+        print(f"Data fetched from SQL Server:\n{df.head()}")
+        return df
+
+    except (pyodbc.Error, psycopg2.Error) as e:
+        print("Error occurred:", e)
 
 def read_notis_file(filepath):
     wb = load_workbook(filepath, read_only=True)
@@ -29,11 +59,40 @@ def read_notis_file(filepath):
     print('Notis file read')
     return df
 
-def write_notis_data(df, file_name):
-    print('Writing Notis file...')
+def write_notis_postgredb(df):
+    start_time = time.time()
+    engine = create_engine(engine_str)
+
+    with engine.connect() as conn:
+        res = conn.execute(text(f'select count(*) from {n_tbl_notis_trade_book}'))
+        row_count = res.scalar()
+        if row_count > 0:
+            conn.execute(text(f'delete from {n_tbl_notis_trade_book}'))
+            print(f'Existing data from table {n_tbl_notis_trade_book} deleted')
+    print('Writing Notis data to database...')
+    total_rows = len(df)
+    pbar = progressbar.ProgressBar(max_value=total_rows, widgets=[
+        progressbar.Percentage(), ' ',
+        progressbar.Bar(marker='=', left='[', right=']'),
+        progressbar.ETA()
+    ])
+
+    chunk_size = 1000
+    for i in range(0, total_rows, chunk_size):
+        chunk = df.iloc[i:i + chunk_size]
+        chunk.to_sql(n_tbl_notis_trade_book, engine, index=False, if_exists='append', method='multi')
+        pbar.update(min(i + chunk_size, total_rows))
+
+    pbar.finish()
+    print('Data successfully inserted into database')
+    end_time = time.time()
+    print(f'Total time taken: {end_time - start_time} seconds')
+
+def write_notis_data(df, filepath):
+    print('Writing Notis file to excel...')
     wb = Workbook()
     ws = wb.active
-    ws.title = file_name
+    ws.title = 'NOTIS DATA'
     rows = list(dataframe_to_rows(df, index=False, header=True))
     total_rows = len(rows)
     pbar = progressbar.ProgressBar(max_value=total_rows, widgets=[progressbar.Percentage(), ' ',
@@ -46,7 +105,7 @@ def write_notis_data(df, file_name):
     # df.to_excel(os.path.join(modified_dir, file_name))
     print('Saving the file...')
     # wb.save(filepath)
-    wb.save(os.path.join(modified_dir, file_name))
+    wb.save(filepath)
     print('New Notis excel file created')
 
 def get_date_from_jiffy(dt_val):
@@ -70,15 +129,29 @@ def get_date_from_non_jiffy(dt_val):
     """
     # Assuming dt_val is seconds since Jan 1, 1980
     base_date = datetime(1980, 1, 1, tzinfo=timezone.utc)
-    date_time =  int(base_date.timestamp() + dt_val)
+    # date_time = int(base_date.timestamp() + dt_val)
+    date_time = base_date.timestamp() + dt_val
     new_date = datetime.fromtimestamp(date_time, timezone.utc)
     formatted_date = new_date.astimezone(timezone(timedelta(hours=5, minutes=30))).strftime("%Y-%m-%d %I:%M:%S")
     return formatted_date
 def modify_file(df, nnf_file_path):
+    # 1 - 12, 16 - 19, 21, 23, 27 - 28    str - int64
+    # 15, 20, 25, 30 - 37 = None
+    # 38    astype('str')
+    list_str_int64 = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 16, 17, 18, 19, 21, 23, 27, 28]
+    list_str_none = [15, 20, 25, 30, 31, 32, 33, 34, 35, 36, 37]
+    list_none_str = [38]
+    for i in list_str_int64:
+        # df_db.loc[:, f'Column{i}'] = df_db.loc[:, f'Column{i}'].astype('int64')
+        column_name = f'Column{i}'
+        df[f'Column{i}'] = df[f'Column{i}'].astype('int64')
+    for i in list_str_none:
+        df[f'Column{i}'] = None
+    for i in list_none_str:
+        df[f'Column{i}'] = df[f'Column{i}'].astype('str')
     # --------------------------------------------------------------------------------------------------------------------------------
     pbar = progressbar.ProgressBar(max_value=100, widgets=[progressbar.Percentage(), ' ', progressbar.Bar(marker='=', left='[', right=']'), progressbar.ETA()])
     print('Starting file modification...')
-    # pbar.update(0, 'Starting file modification...')
     pbar.update(0)
     df.rename(columns={
         'Column1': 'seqNo', 'Column2': 'mkt', 'Column3': 'trdNo',
@@ -94,51 +167,26 @@ def modify_file(df, nnf_file_path):
         'Column31': 'echoback', 'Column32': 'Fill1', 'Column33': 'Fill2',
         'Column34': 'Fill3', 'Column35': 'Fill4', 'Column36': 'Fill5', 'Column37': 'Fill6'
     }, inplace=True)
-    # pbar.update(20, 'Column renamed')
     pbar.update(20)
-    # --------------------------------------------------------------------------------------------------------------------------------
-    # df['ordTm'] = df['ordTm'].apply(lambda x: datetime.fromtimestamp(x)+relativedelta(years=10)-relativedelta(days=1))
-    df['ordTm'] = df['ordTm'].apply(lambda x: get_date_from_non_jiffy(x))
-    # pbar.update(40, 'Order time modified')
+
+    df['ordTm'] = df['ordTm'].apply(lambda x: get_date_from_non_jiffy(int(x)))
     pbar.update(40)
-    # --------------------------------------------------------------------------------------------------------------------------------
-    # df['expDt'] = df['expDt'].apply(lambda x: datetime.fromtimestamp(x)+relativedelta(years=10)-relativedelta(days=1))
-    df['expDt'] = df['expDt'].apply(lambda x: get_date_from_non_jiffy(x))
-    # pbar.update(60, 'Expiry date modified')
+
+    df['expDt'] = df['expDt'].apply(lambda x: get_date_from_non_jiffy(int(x)))
     pbar.update(60)
-    # --------------------------------------------------------------------------------------------------------------------------------
-    # df['trdTm'] = df['trdTm'].apply(lambda x: datetime.fromtimestamp(x/100000)+timedelta(days = 25*365.25+6*29.5))
-    df['trdTm'] = df['trdTm'].apply(lambda x: get_date_from_jiffy(x))
-    # pbar.update(80, 'Trade time modified')
+
+    df['trdTm'] = df['trdTm'].apply(lambda x: get_date_from_jiffy(int(x)))
     pbar.update(80)
     # --------------------------------------------------------------------------------------------------------------------------------
     df['bsFlg'] = np.where(df['bsFlg'] == 1, 'B', 'S')
-    # pbar.update(90, 'Buy Sell Flag modified')
     pbar.update(90)
-    # --------------------------------------------------------------------------------------------------------------------------------
-    # # df['User Name'] = df['ctclid'].apply(lambda x: )
-    # conditions = [
-    #     (df['ctclid'] == 400013041065130) | (df.ctclid == 400013041076130) | (df.ctclid == 400013041123012) | (df.ctclid == 400013041168130) | (df.ctclid == 400013041196030) | (df.ctclid == 400013041196130) | (df.ctclid == 400013041076030),
-    #     (df.ctclid == 400013041217130),
-    #     (df.ctclid == 400013041087000) | (df.ctclid == 400013041202130) | (df.ctclid == 400013055025000) | (df.ctclid == 400013041172030) | (df.ctclid == 111111111111122) | (df.ctclid == 400013041202030),
-    #     (df.ctclid == 400013041161030) | (df.ctclid == 400013041161130) | (df.ctclid == 400013041208030) | (df.ctclid == 400013041208130) | (df.ctclid == 400013041148030) | (df.ctclid == 400013041198012) | (df.ctclid == 400013041148130),
-    #     (df.ctclid == 400013055027030)
-    # ]
-    # user_choices = ['Shubham Gagrani','Ria Shah','Rajeev Thakthani', 'Mohit Vajpayee', 'Harshit Arora']
-    # desk_choices = ['Desk1', 'Desk3', 'Desk3', 'Desk2', 'Desk3']
-    # default = ('')
-    # # df[['UserName', 'Desk']] = pd.DataFrame(np.select(conditions, choices, default=default), index = df.index)
-    # df['UserName'] = np.select(conditions, user_choices, default=default)
-    # df['Desk'] = np.select(conditions, desk_choices, default=default)
 
     df1 = pd.read_excel(nnf_file_path, index_col=False)
     df1 = df1.loc[:, ~df1.columns.str.startswith('Un')]
     df1.columns = df1.columns.str.replace(' ', '', regex=True)
     df1.dropna(how='all', inplace=True)
-    # list_col = [col for col in df1.columns if not col.startswith('NNF')]
-    # grouped_df = df1.groupby(['NNFID'])[list_col].sum()
-    # for index, row in grouped_df.iterrows():
-    #     print('indx-',int(index),'\n', 'row-\n', row, '\n')
+    df['ctclid'] = df['ctclid'].astype('float64')
+    df1['NNFID'] = df1['NNFID'].astype('float64')
     merged_df = pd.merge(df, df1, left_on='ctclid', right_on='NNFID', how='left')
     merged_df.drop(columns=['NNFID'], axis=1, inplace=True)
     pbar.update(100)
@@ -148,21 +196,13 @@ def modify_file(df, nnf_file_path):
 
 def main():
     today = datetime.now().date().strftime("%d%b%Y").upper()
-    # today = datetime(year=2024, month=12, day=17).date().strftime("%d%b%Y").upper()
-    filepath = rf'D:\notis_analysis\NOTIS_DATA_{today}.xlsx'
-    pattern = rf'NOTIS_(DATA|API)_{today}.xlsx'
-    matched_file = [f for f in os.listdir(data_dir) if re.match(pattern, f)]
-    filepath = os.path.join(data_dir, matched_file[0])
+    # today = datetime(year=2024, month=12, day=24).date().strftime("%d%b%Y").upper()
+    df_db = read_data_db()
+    modify_filepath = os.path.join(modified_dir, f'NOTIS_DATA_{today}.xlsx')
     nnf_file_path = os.path.join(root_dir, "Final_NNF_ID.xlsx")
-    # df = pd.read_excel(filepath, index_col=False)
-    df = read_notis_file(filepath)
-    modified_df = modify_file(df, nnf_file_path)
-    # # modified_df.to_excel(rf'modified_NOTIS_DATA_{today}.xlsx', index=False)
-    # with pd.ExcelWriter(rf'D:\notis_analysis\NOTIS_DATA_{today}.xlsx', engine='openpyxl') as writer:
-    #     if 'NOTIS_DATA' in writer.book.sheetnames:
-    #         del writer.book['NOTIS_DATA']
-    #     modified_df.to_excel(writer, index=False)
-    write_notis_data(modified_df, matched_file[0])
+    modified_df = modify_file(df_db, nnf_file_path)
+    write_notis_postgredb(modified_df)
+    write_notis_data(modified_df, modify_filepath)
     print('file saved in modified_data folder')
 
 if __name__ == '__main__':
@@ -172,5 +212,3 @@ if __name__ == '__main__':
     dir_list = [data_dir, modified_dir]
     status = [os.makedirs(_dir, exist_ok=True) for _dir in dir_list if not os.path.exists(_dir)]
     main()
-
-# df['user_name'] = np.where(df['ctclid'] == 400013041065130, 'Shubham Gagrani', (np.where(df.ctclid == 400013041161030, 'Mohit Vajpayee', 'Harshit Arora')))

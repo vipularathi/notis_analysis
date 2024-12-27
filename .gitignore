@@ -162,9 +162,11 @@ cython_debug/
 #.idea/
 
 data
+input_data
 modified_data
 *.csv
 *.xlsx
 *.pdf
 NOTIS_FO_NNF_PROTOCOL_1.8_1 (2)
 venv
+untitled.py
