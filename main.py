@@ -211,6 +211,7 @@ def modify_file(df, df_nnf):
     pbar.update(100)
     # --------------------------------------------------------------------------------------------------------------------------------
     pbar.finish()
+    merged_df[['TerminalID', 'TerminalName', 'UserID', 'SubGroup', 'MainGroup', 'NeatID']] = merged_df[['TerminalID', 'TerminalName', 'UserID', 'SubGroup', 'MainGroup', 'NeatID']].fillna('NONE')
     return merged_df
 
 def main():
