@@ -161,13 +161,9 @@ cython_debug/
 #  option (not recommended) you can uncomment the following to ignore the entire idea folder.
 #.idea/
 
-data
-input_data
-modified_data
+*/
 *.csv
 *.xlsx
 *.pdf
-NOTIS_FO_NNF_PROTOCOL_1.8_1 (2)
-venv
 untitled.py
 jiffy_time_conversion.py

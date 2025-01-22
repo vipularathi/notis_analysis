@@ -16,8 +16,8 @@ from db_config import engine_str, n_tbl_notis_trade_book, s_tbl_notis_trade_book
 
 warnings.filterwarnings('ignore', message="pandas only supports SQLAlchemy connectable.*")
 
-def read_data_db(nnf=False):
-    if not nnf:
+def read_data_db(nnf=False, for_table='ENetMIS'):
+    if not nnf and for_table == 'ENetMIS':
         # Sql connection parameters
         sql_server = "rms.ar.db"
         sql_database = "ENetMIS"
@@ -40,9 +40,15 @@ def read_data_db(nnf=False):
 
         except (pyodbc.Error, psycopg2.Error) as e:
             print("Error occurred:", e)
-    else:
+    elif nnf and for_table != 'ENetMIS':
         engine = create_engine(engine_str)
         df = pd.read_sql_table(n_tbl_notis_nnf_data, con=engine)
+        print(f"Data fetched from NNF table:\n{df.head()}")
+        return df
+
+    elif not nnf and for_table!='ENetMIS':
+        engine = create_engine(engine_str)
+        df = pd.read_sql_table(for_table, con=engine)
         print(f"Data fetched from NNF table:\n{df.head()}")
         return df
 
@@ -111,7 +117,7 @@ def write_notis_data(df, filepath):
     print('Writing Notis file to excel...')
     wb = Workbook()
     ws = wb.active
-    ws.title = 'NOTIS DATA'
+    ws.title = 'Sheet1'
     rows = list(dataframe_to_rows(df, index=False, header=True))
     total_rows = len(rows)
     pbar = progressbar.ProgressBar(max_value=total_rows, widgets=[progressbar.Percentage(), ' ',
@@ -206,44 +212,58 @@ def modify_file(df, df_nnf):
     # df1.dropna(how='all', inplace=True)
     df['ctclid'] = df['ctclid'].astype('float64')
     df_nnf['NNFID'] = df_nnf['NNFID'].astype('float64')
+    # proceed only if all ctclid from notis file is present in nnf file or not
+    missing_ctclid = set(df['ctclid'].unique()) - set(df_nnf['NNFID'].unique())
+    if missing_ctclid:
+        print(f"Missing ctclid(s) from NNF file: {missing_ctclid}")
+        raise ValueError(f'The ctclid values are not matching the NNFID values - {missing_ctclid}')
     merged_df = pd.merge(df, df_nnf, left_on='ctclid', right_on='NNFID', how='left')
     merged_df.drop(columns=['NNFID'], axis=1, inplace=True)
     pbar.update(100)
     # --------------------------------------------------------------------------------------------------------------------------------
     pbar.finish()
     merged_df[['TerminalID', 'TerminalName', 'UserID', 'SubGroup', 'MainGroup', 'NeatID']] = merged_df[['TerminalID', 'TerminalName', 'UserID', 'SubGroup', 'MainGroup', 'NeatID']].fillna('NONE')
+    merged_df = merged_df.drop_duplicates()
     return merged_df
 
 def main():
     today = datetime.now().date().strftime("%d%b%Y").upper()
     # today = datetime(year=2024, month=12, day=24).date().strftime("%d%b%Y").upper()
     df_db = read_data_db()
-    write_notis_postgredb(df_db, table_name=n_tbl_notis_raw_data, raw=True)
+    # write_notis_postgredb(df_db, table_name=n_tbl_notis_raw_data, raw=True)
     modify_filepath = os.path.join(modified_dir, f'NOTIS_DATA_{today}.xlsx')
     nnf_file_path = os.path.join(root_dir, "Final_NNF_ID.xlsx")
     if not os.path.exists(nnf_file_path):
         raise FileNotFoundError("NNF File not found. Please add the NNF file and try again.")
 
     readable_mod_time = datetime.fromtimestamp(os.path.getmtime(nnf_file_path))
-    if readable_mod_time.date() == datetime.strptime(today, '%d%b%Y').date():
+    if readable_mod_time.date() == datetime.strptime(today, '%d%b%Y').date(): # Check if the NNF file is modified today or not
         print(f'New NNF Data found, modifying the nnf data in db . . .')
         df_nnf = pd.read_excel(nnf_file_path, index_col=False)
         df_nnf = df_nnf.loc[:, ~df_nnf.columns.str.startswith('Un')]
         df_nnf.columns = df_nnf.columns.str.replace(' ', '', regex=True)
         df_nnf.dropna(how='all', inplace=True)
+        df_nnf = df_nnf.drop_duplicates()
         write_notis_postgredb(df_nnf, n_tbl_notis_nnf_data, raw=False)
     else:
-        df_nnf = read_data_db(nnf=True)
+        df_nnf = read_data_db(nnf=True, for_table = n_tbl_notis_nnf_data)
+        df_nnf = df_nnf.drop_duplicates()
     modified_df = modify_file(df_db, df_nnf)
     write_notis_postgredb(modified_df, table_name=n_tbl_notis_trade_book, raw=False)
     write_notis_data(modified_df, modify_filepath)
+    write_notis_data(modified_df, rf'C:\Users\vipulanand\Documents\Anand Rathi Financial Services Ltd (Synced)\OneDrive - Anand Rathi Financial Services Ltd\notis_files\NOTIS_DATA_{today}.xlsx')
     print('file saved in modified_data folder')
 
 
 if __name__ == '__main__':
+    stt = time.time()
     root_dir = os.path.dirname(os.path.abspath(__file__))
-    data_dir = os.path.join(root_dir, 'input_data')
+    bhav_dir = os.path.join(root_dir, 'bhavcopy')
     modified_dir = os.path.join(root_dir, 'modified_data')
-    dir_list = [data_dir, modified_dir]
+    table_dir = os.path.join(root_dir, 'table_data')
+    eod_dir = os.path.join(root_dir, 'eod_data')
+    dir_list = [bhav_dir, modified_dir, table_dir, eod_dir]
     status = [os.makedirs(_dir, exist_ok=True) for _dir in dir_list if not os.path.exists(_dir)]
     main()
+    ett = time.time()
+    print(f'total time taken for execution {ett-stt} seconds')

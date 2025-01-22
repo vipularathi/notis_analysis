@@ -133,6 +133,26 @@ s_tbl_notis_nnf_data = Table(
     Column("NeatID", BigInteger)
 )
 
+# n_tbl_notis_desk_wise_final_net_position = f"NOTIS_DESK_WISE_FINAL_NET_POSITION_{datetime(year=2025, month=1, day=8).date().strftime('%Y-%m-%d')}"
+n_tbl_notis_desk_wise_final_net_position = f"NOTIS_DESK_WISE_FINAL_NET_POSITION_{datetime.now().date().strftime('%Y-%m-%d')}"
+s_tbl_notis_desk_wise_final_net_position = Table(
+    n_tbl_notis_desk_wise_final_net_position, metadata,
+    Column("mainGroup", String(50)),
+    Column("account", String(50)),
+    Column("brokerID", String(50)),
+    Column("tokenNumber", BigInteger),
+    Column("buyAvgPrice", Float, nullable=True),
+    Column("buyAvgQty", BigInteger, nullable=True),
+    Column("sellAvgPrice", Float, nullable=True),
+    Column("sellAvgQty", BigInteger, nullable=True),
+    Column("volume", BigInteger),
+    Column("MTM", Float, nullable=True),
+    Column("symbol", String(50)),
+    Column("expiryDate", String(50)),
+    Column("strikePrice", BigInteger),
+    Column("optionType", String(2))
+)
+
 # Last and after all table declarations
 # noinspection PyUnboundLocalVariable
 meta_engine = sql.create_engine(engine_str)
