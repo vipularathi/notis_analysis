@@ -140,17 +140,23 @@ def update_qty(row):
         row.Long = 0
     return row
 
+# def find_spot(row):
+#     if row['expired']:
+#         return bhav_lookup.get((row['EodUnderlying'], row['EodExpiry']), None)
+
 def find_spot(row):
-    if row['expired']:
-        return bhav_lookup.get((row['EodUnderlying'], row['EodExpiry']), None)
-    return None
+    if row['expired'] and row['ClosingQty'] != 0:
+        sym = row['EodUnderlying']
+        exp = row['EodExpiry'].month
+        spot = bhav_lookup.query(f"BhavSymbol == @sym and BhavExpiry.dt.month == @exp")['BhavClosingprice'].values[0]
+        return spot
 
 today = datetime(year=2025, month=1, day=23).date()
 yesterday = datetime(year=2025, month=1, day=22).date()
 pd.set_option('display.max_columns', None)
 warnings.filterwarnings('ignore')
 
-n_tbl_notis_desk_wise_net_position = f"NOTIS_DESK_WISE_EOD_POSITION_{today.strftime('%Y-%m-%d')}"
+# n_tbl_notis_desk_wise_net_position = f"NOTIS_DESK_WISE_EOD_POSITION_{today.strftime('%Y-%m-%d')}"
 
 root_dir = os.path.dirname(os.path.abspath(__file__))
 nnf_file_path = os.path.join(root_dir, "Final_NNF_ID.xlsx")
@@ -162,28 +168,31 @@ bhav_path = os.path.join(root_dir, 'bhavcopy')
 test_dir = os.path.join(root_dir, 'testing')
 
 
-if not os.path.exists(os.path.join(eod_input_dir, f'EOD Position_{yesterday.strftime("%d_%b_%Y")}_2.xlsx')):
-    raise FileNotFoundError(f"Missing yedterday\'s EOD file.")
-eod_df = read_notis_file(os.path.join(eod_input_dir, f'EOD Position_{yesterday.strftime("%d_%b_%Y")}_2.xlsx'))
-# eod_table_name = f"NOTIS_DESK_WISE_EOD_POSITION_{yesterday.strftime('%Y-%m-%d')}"
-# eod_df = read_data_db(for_table=eod_table_name)
+# if not os.path.exists(os.path.join(eod_input_dir, f'EOD Position_{yesterday.strftime("%d_%b_%Y")}_2.xlsx')):
+#     raise FileNotFoundError(f"Missing yedterday\'s EOD file.")
+# eod_df = read_notis_file(os.path.join(eod_input_dir, f'EOD Position_{yesterday.strftime("%d_%b_%Y")}_2.xlsx'))
+eod_table_name = f"NOTIS_DESK_WISE_EOD_POSITION_{yesterday.strftime('%Y-%m-%d')}"
+eod_df = read_data_db(for_table=eod_table_name)
 q=0
 # eod_df = read_notis_file(os.path.join(eod_dir, rf'NOTIS_DESK_WISE_FINAL_NET_POSITION_{yesterday.strftime("%Y-%m-%d")}_testing_1.xlsx'))
-eod_df.columns = eod_df.columns.str.replace(' ', '')
-eod_df = eod_df.add_prefix('Eod')
-# eod_df = read_notis_file(rf"C:\Users\vipulanand\Downloads\Book1.xlsx")
-eod_df.EodExpiry = eod_df.EodExpiry.dt.date
-eod_df['EodClosingQty'] = eod_df['EodClosingQty'].astype('int64')
-# eod_df['EodMTM'] = eod_df['EodClosingQty'] * eod_df['EodClosingPrice']
-eod_df.EodClosingPrice = eod_df.EodClosingPrice * 100
-# eod_df = eod_df.query("ClosingQty != 0 and expired.isnull() == True")
-# col_keep = ['EodUnderlying', 'EodStrike', 'EodOptionType', 'EodExpiry','EodSubGroup', 'EodMainGroup','Long', 'Short','ClosingQty', 'ClosingPrice']
-# eod_df = eod_df[col_keep]
-# eod_df.columns = eod_df.columns.str.replace('Eod','')
-# eod_df.Expiry = eod_df.Expiry.astype('datetime64[ns]')
-# eod_df.Expiry = eod_df.Expiry.dt.date
-# eod_df.Strike = eod_df.Strike.astype('int64')
+# ----------------------------------------------------------------
+# eod_df.columns = eod_df.columns.str.replace(' ', '')
 # eod_df = eod_df.add_prefix('Eod')
+# # eod_df = read_notis_file(rf"C:\Users\vipulanand\Downloads\Book1.xlsx")
+# eod_df.EodExpiry = eod_df.EodExpiry.dt.date
+# eod_df['EodClosingQty'] = eod_df['EodClosingQty'].astype('int64')
+# # eod_df['EodMTM'] = eod_df['EodClosingQty'] * eod_df['EodClosingPrice']
+# eod_df.EodClosingPrice = eod_df.EodClosingPrice * 100
+# ----------------------------------------------------------------
+eod_df = eod_df.query("ClosingQty != 0 and expired.isnull() == True")
+col_keep = ['EodUnderlying', 'EodStrike', 'EodOptionType', 'EodExpiry','EodSubGroup', 'EodMainGroup','Long', 'Short','ClosingQty', 'ClosingPrice']
+eod_df = eod_df[col_keep]
+eod_df.columns = eod_df.columns.str.replace('Eod','')
+eod_df.Expiry = eod_df.Expiry.astype('datetime64[ns]')
+eod_df.Expiry = eod_df.Expiry.dt.date
+eod_df.Strike = eod_df.Strike.astype('int64')
+eod_df = eod_df.add_prefix('Eod')
+# ----------------------------------------------------------------
 eod_df = eod_df.drop_duplicates()
 
 
@@ -238,8 +247,13 @@ merged_bhav_df['IntradayPnL'] = merged_bhav_df.apply(find_intraday_pnl, axis=1)
 # --------------------------------------------------------------------------------
 # for expired
 merged_bhav_df.loc[merged_bhav_df['expiryDate'] == today, 'expired'] = True
+# merged_bhav_df['expired'] = merged_bhav_df['expired'].fillna(None)
+merged_bhav_df['expired'].replace(pd.NA,None, inplace=True)
+# merged_bhav_df['expired'] = merged_bhav_df['expired'].astype('boolean')
 # merged_bhav_df['Spot'] = merged_bhav_df.apply(lambda row: row['ClosingPrice'] if row['expiryDate'] == today else '', axis=1)
-bhav_lookup = bhav_df[bhav_df["BhavOptionType"] == 'XX'].set_index(["BhavSymbol", "BhavExpiry"])['BhavClosingprice'].to_dict()
+# bhav_lookup = bhav_df[bhav_df["BhavOptiontype"] == 'XX'].set_index(["BhavSymbol", "BhavExpiry"])['BhavClosingprice'].to_dict()
+bhav_lookup = bhav_df[bhav_df['BhavOptiontype'] == 'XX'].groupby(['BhavSymbol','BhavExpiry'], as_index=False)['BhavClosingprice'].sum()
+bhav_lookup.BhavExpiry = bhav_lookup.BhavExpiry.astype('datetime64[ns]')
 merged_bhav_df['Spot'] = merged_bhav_df.apply(find_spot, axis=1)
 exp_cols = merged_bhav_df.apply(find_expired_mtm, axis=1)
 merged_bhav_df = pd.concat([merged_bhav_df,exp_cols], axis=1)
@@ -294,15 +308,15 @@ merged_bhav_df = merged_bhav_df.drop(columns=[col for col in merged_bhav_df.colu
 # drop the columns
 # make changes to db schema
 b=0
-write_notis_data(merged_bhav_df, os.path.join(eod_output_dir, f'Eod_{today.strftime("%Y_%m_%d")}_test_2.xlsx'))
-# merged_bhav_df.fillna(value=None, inplace=True)
+write_notis_data(merged_bhav_df, os.path.join(eod_output_dir, f'Eod_{today.strftime("%Y_%m_%d")}_test_3.xlsx'))
+# # merged_bhav_df.fillna(value=None, inplace=True)
 # merged_bhav_df.replace('',None, inplace=True)
 # write_notis_postgredb(merged_bhav_df, table_name=n_tbl_notis_desk_wise_net_position)
-print(f'file made for {today}')
-# write_notis_data(desk_db_df, f'desk_{today.strftime("%Y-%m-%d")}.xlsx')
-# write_notis_data(eod_df, f'eod_{today.strftime("%Y-%m-%d")}.xlsx')
-# write_notis_data(bhav_df, f'bhav_{today.strftime("%Y-%m-%d")}.xlsx')
-# print(eod_df.head(),'\n',desk_db_df.head())
+# print(f'file made for {today}')
+# # write_notis_data(desk_db_df, f'desk_{today.strftime("%Y-%m-%d")}.xlsx')
+# # write_notis_data(eod_df, f'eod_{today.strftime("%Y-%m-%d")}.xlsx')
+# # write_notis_data(bhav_df, f'bhav_{today.strftime("%Y-%m-%d")}.xlsx')
+# # print(eod_df.head(),'\n',desk_db_df.head())
 c=0
 
 # send 20th eod file as desk 3 would not match cause subgroup is being added

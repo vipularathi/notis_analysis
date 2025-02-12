@@ -13,156 +13,12 @@ import psycopg2
 import time
 import warnings
 from db_config import engine_str, n_tbl_notis_trade_book, s_tbl_notis_trade_book, n_tbl_notis_raw_data, s_tbl_notis_raw_data, n_tbl_notis_nnf_data, s_tbl_notis_nnf_data
+from common import read_data_db, read_notis_file, write_notis_data, write_notis_postgredb, get_date_from_non_jiffy, get_date_from_jiffy, today, yesterday
 
 warnings.filterwarnings('ignore', message="pandas only supports SQLAlchemy connectable.*")
 
-def read_data_db(nnf=False, for_table='ENetMIS'):
-    if not nnf and for_table == 'ENetMIS':
-        # Sql connection parameters
-        sql_server = "rms.ar.db"
-        sql_database = "ENetMIS"
-        sql_username = "notice_user"
-        sql_password = "Notice@2024"
-        sql_query = "SELECT * FROM [ENetMIS].[dbo].[NSE_FO_AA100_view]"
 
-        try:
-            sql_connection_string = (
-                f"DRIVER={{ODBC Driver 17 for SQL Server}};"
-                f"SERVER={sql_server};"
-                f"DATABASE={sql_database};"
-                f"UID={sql_username};"
-                f"PWD={sql_password}"
-            )
-            with pyodbc.connect(sql_connection_string) as sql_conn:
-                df = pd.read_sql_query(sql_query, sql_conn)
-            print(f"Data fetched from SQL Server:\n{df.head()}")
-            return df
-
-        except (pyodbc.Error, psycopg2.Error) as e:
-            print("Error occurred:", e)
-    elif nnf and for_table != 'ENetMIS':
-        engine = create_engine(engine_str)
-        df = pd.read_sql_table(n_tbl_notis_nnf_data, con=engine)
-        print(f"Data fetched from NNF table:\n{df.head()}")
-        return df
-
-    elif not nnf and for_table!='ENetMIS':
-        engine = create_engine(engine_str)
-        df = pd.read_sql_table(for_table, con=engine)
-        print(f"Data fetched from NNF table:\n{df.head()}")
-        return df
-
-def read_notis_file(filepath):
-    wb = load_workbook(filepath, read_only=True)
-    sheet = wb.active
-    total_rows = sheet.max_row
-    print('Reading Notis file...')
-    pbar = progressbar.ProgressBar(max_value=total_rows, widgets=[progressbar.Percentage(), ' ',
-                                                           progressbar.Bar(marker='=', left='[', right=']'),
-                                                           progressbar.ETA()])
-
-    data = []
-    pbar.update(0)
-    for i, row in enumerate(sheet.iter_rows(values_only=True), start=1):
-        data.append(row)
-        pbar.update(i)
-    pbar.finish()
-
-    df = pd.DataFrame(data[1:], columns=data[0])
-    print('Notis file read')
-    return df
-
-def write_notis_postgredb(df, table_name, raw=False):
-    start_time = time.time()
-    engine = create_engine(engine_str)
-
-    with engine.connect() as conn:
-        res = conn.execute(text(f'select count(*) from "{table_name}"'))
-        row_count = res.scalar()
-        if row_count > 0:
-            conn.execute(text(f'delete from "{table_name}"'))
-            print(f'Existing data from table {table_name} deleted')
-    print(f'Writing {"Raw" if raw else "Modified"} data to database...')
-    total_rows = len(df)
-    pbar = progressbar.ProgressBar(max_value=total_rows, widgets=[
-        progressbar.Percentage(), ' ',
-        progressbar.Bar(marker='=', left='[', right=']'),
-        progressbar.ETA()
-    ])
-
-    if raw:
-        list_str_int64 = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 16, 17, 18, 19, 21, 23, 27, 28]
-        list_str_none = [15, 20, 25, 30, 31, 32, 33, 34, 35, 36, 37]
-        list_none_str = [38]
-        for i in list_str_int64:
-            # df_db.loc[:, f'Column{i}'] = df_db.loc[:, f'Column{i}'].astype('int64')
-            column_name = f'Column{i}'
-            df[f'Column{i}'] = df[f'Column{i}'].astype('int64')
-        for i in list_str_none:
-            df[f'Column{i}'] = None
-        for i in list_none_str:
-            df[f'Column{i}'] = df[f'Column{i}'].astype('str')
-    chunk_size = 1000
-    for i in range(0, total_rows, chunk_size):
-        chunk = df.iloc[i:i + chunk_size]
-        chunk.to_sql(table_name, engine, index=False, if_exists='append', method='multi')
-        pbar.update(min(i + chunk_size, total_rows))
-
-    pbar.finish()
-    print(f'{"Raw" if raw else "Modified"} Data successfully inserted into database')
-    end_time = time.time()
-    print(f'Total time taken: {end_time - start_time} seconds')
-
-def write_notis_data(df, filepath):
-    print('Writing Notis file to excel...')
-    wb = Workbook()
-    ws = wb.active
-    ws.title = 'Sheet1'
-    rows = list(dataframe_to_rows(df, index=False, header=True))
-    total_rows = len(rows)
-    pbar = progressbar.ProgressBar(max_value=total_rows, widgets=[progressbar.Percentage(), ' ',
-                                                           progressbar.Bar(marker='=', left='[', right=']'),
-                                                           progressbar.ETA()])
-    for i, row in enumerate(rows, start=1):
-        ws.append(row)
-        pbar.update(i)
-    pbar.finish()
-    # df.to_excel(os.path.join(modified_dir, file_name))
-    print('Saving the file...')
-    # wb.save(filepath)
-    wb.save(filepath)
-    print('New Notis excel file created')
-
-def get_date_from_jiffy(dt_val):
-    """
-    Converts the Jiffy format date to a readable format.
-    :param dt_val: long
-    :return: long (epoch time in seconds)
-    """
-    # Jiffy is 1/65536 of a second since Jan 1, 1980
-    base_date = datetime(1980, 1, 1, tzinfo=timezone.utc)
-    date_time = int((base_date.timestamp() + (dt_val / 65536)))
-    new_date = datetime.fromtimestamp(date_time, timezone.utc)
-    formatted_date = new_date.astimezone(timezone(timedelta(hours=5, minutes=30))).strftime("%Y-%m-%d %I:%M:%S")
-    return formatted_date
-
-def get_date_from_non_jiffy(dt_val):
-    """
-    Converts the 1980 format date time to a readable format.
-    :param dt_val: long
-    :return: long (epoch time in seconds)
-    """
-    # Assuming dt_val is seconds since Jan 1, 1980
-    base_date = datetime(1980, 1, 1, tzinfo=timezone.utc)
-    # date_time = int(base_date.timestamp() + dt_val)
-    date_time = base_date.timestamp() + dt_val
-    new_date = datetime.fromtimestamp(date_time, timezone.utc)
-    formatted_date = new_date.astimezone(timezone(timedelta(hours=5, minutes=30))).strftime("%Y-%m-%d %I:%M:%S")
-    return formatted_date
 def modify_file(df, df_nnf):
-    # 1 - 12, 16 - 19, 21, 23, 27 - 28    str - int64
-    # 15, 20, 25, 30 - 37 = None
-    # 38    astype('str')
     list_str_int64 = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 16, 17, 18, 19, 21, 23, 27, 28]
     list_str_none = [15, 20, 25, 30, 31, 32, 33, 34, 35, 36, 37]
     list_none_str = [38]
@@ -206,17 +62,15 @@ def modify_file(df, df_nnf):
     df['bsFlg'] = np.where(df['bsFlg'] == 1, 'B', 'S')
     pbar.update(90)
 
-    # df1 = pd.read_excel(nnf_file_path, index_col=False)
-    # df1 = df1.loc[:, ~df1.columns.str.startswith('Un')]
-    # df1.columns = df1.columns.str.replace(' ', '', regex=True)
-    # df1.dropna(how='all', inplace=True)
     df['ctclid'] = df['ctclid'].astype('float64')
     df_nnf['NNFID'] = df_nnf['NNFID'].astype('float64')
     # proceed only if all ctclid from notis file is present in nnf file or not
     missing_ctclid = set(df['ctclid'].unique()) - set(df_nnf['NNFID'].unique())
     if missing_ctclid:
-        print(f"Missing ctclid(s) from NNF file: {missing_ctclid}")
+        print(f"\nMissing ctclid(s) from NNF file: {missing_ctclid}")
         raise ValueError(f'The ctclid values are not matching the NNFID values - {missing_ctclid}')
+    else:
+        print('\nAll ctclid values are present in NNF file.\n')
     merged_df = pd.merge(df, df_nnf, left_on='ctclid', right_on='NNFID', how='left')
     merged_df.drop(columns=['NNFID'], axis=1, inplace=True)
     pbar.update(100)
@@ -226,18 +80,26 @@ def modify_file(df, df_nnf):
     merged_df = merged_df.drop_duplicates()
     return merged_df
 
+def download_tables():
+    table_list = ['NOTIS_DESK_WISE_NET_POSITION', 'NOTIS_NNF_WISE_NET_POSITION', 'NOTIS_USERID_WISE_NET_POSITION']
+    # today = datetime(year=2025, month=1, day=10).date().strftime('%Y_%m_%d').upper()
+    today = datetime.now().date().strftime('%Y_%m_%d').upper()
+    for table in table_list:
+        df = read_data_db(for_table=table)
+        df.to_excel(os.path.join(table_dir, f'{table}_{today}.xlsx'), index=False)
+        print(f"{table} data fetched and written at path: {os.path.join(table_dir, f'{table}_{today}.xlsx')}")
 def main():
-    today = datetime.now().date().strftime("%d%b%Y").upper()
+    # today = datetime.now().date().strftime("%d%b%Y").upper()
     # today = datetime(year=2024, month=12, day=24).date().strftime("%d%b%Y").upper()
     df_db = read_data_db()
-    # write_notis_postgredb(df_db, table_name=n_tbl_notis_raw_data, raw=True)
-    modify_filepath = os.path.join(modified_dir, f'NOTIS_DATA_{today}.xlsx')
+    write_notis_postgredb(df_db, table_name=n_tbl_notis_raw_data, raw=True)
+    modify_filepath = os.path.join(modified_dir, f'NOTIS_DATA_{today.strftime("%d%b%Y").upper()}.xlsx')
     nnf_file_path = os.path.join(root_dir, "Final_NNF_ID.xlsx")
     if not os.path.exists(nnf_file_path):
         raise FileNotFoundError("NNF File not found. Please add the NNF file and try again.")
 
     readable_mod_time = datetime.fromtimestamp(os.path.getmtime(nnf_file_path))
-    if readable_mod_time.date() == datetime.strptime(today, '%d%b%Y').date(): # Check if the NNF file is modified today or not
+    if readable_mod_time.date() == today: # Check if the NNF file is modified today or not
         print(f'New NNF Data found, modifying the nnf data in db . . .')
         df_nnf = pd.read_excel(nnf_file_path, index_col=False)
         df_nnf = df_nnf.loc[:, ~df_nnf.columns.str.startswith('Un')]
@@ -251,7 +113,7 @@ def main():
     modified_df = modify_file(df_db, df_nnf)
     write_notis_postgredb(modified_df, table_name=n_tbl_notis_trade_book, raw=False)
     write_notis_data(modified_df, modify_filepath)
-    write_notis_data(modified_df, rf'C:\Users\vipulanand\Documents\Anand Rathi Financial Services Ltd (Synced)\OneDrive - Anand Rathi Financial Services Ltd\notis_files\NOTIS_DATA_{today}.xlsx')
+    write_notis_data(modified_df, rf'C:\Users\vipulanand\Documents\Anand Rathi Financial Services Ltd (Synced)\OneDrive - Anand Rathi Financial Services Ltd\notis_files\NOTIS_DATA_{today.strftime("%d%b%Y").upper()}.xlsx')
     print('file saved in modified_data folder')
 
 
@@ -266,4 +128,11 @@ if __name__ == '__main__':
     status = [os.makedirs(_dir, exist_ok=True) for _dir in dir_list if not os.path.exists(_dir)]
     main()
     ett = time.time()
-    print(f'total time taken for execution {ett-stt} seconds')
+    print(f'total time taken for modifying, adding data in db and writing in local directory - {ett - stt} seconds')
+    pbar = progressbar.ProgressBar(max_value=600, widgets=[progressbar.Percentage(), ' ', progressbar.Bar(marker='=', left='[', right=']'), progressbar.ETA()])
+    pbar.update(1)
+    for i in range(600):
+        time.sleep(1)
+        pbar.update(i + 1)
+    pbar.finish()
+    download_tables()

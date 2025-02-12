@@ -1,3 +1,4 @@
+import numpy as np
 import pandas as pd
 import os
 from main import read_notis_file
@@ -6,250 +7,215 @@ from datetime import datetime, timedelta, timezone
 from openpyxl import Workbook, load_workbook
 from openpyxl.utils.dataframe import dataframe_to_rows
 import progressbar
-
-pd.set_option('display.max_columns', None)
-root_dir = os.path.dirname(os.path.abspath(__file__))
-# nnf_file_path = os.path.join(root_dir, 'Final_NNF_old.xlsx')
-nnf_file_path = os.path.join(root_dir, "Final_NNF_ID.xlsx")
-new_nnf_file_path = os.path.join(root_dir, 'NNF_ID.xlsx')
-eod_dir = os.path.join(root_dir, 'eod_data')
-mod_dir = os.path.join(root_dir, 'modified_data')
-# mod_time = os.path.getmtime(nnf_file_path)
-# # readable_mod_time = time.ctime(mod_time)
-# readable_mod_time = datetime.fromtimestamp(mod_time)
-#
-# df = pd.read_excel(nnf_file_path, index_col=False)
-# df_new = pd.read_excel(new_nnf_file_path, index_col=False)
-# # df1 = read_notis_file(r"D:\notis_analysis\modified_data\NOTIS_DATA_12DEC2024.xlsx")
-# df = df.loc[:, ~df.columns.str.startswith('Un')]
-# df_new = df_new.loc[:, ~df_new.columns.str.startswith('Un')]
-# df.columns = df.columns.str.replace(' ', '', regex = True)
-# df_new.columns = df_new.columns.str.replace(' ', '', regex = True)
-# df.dropna(how='all', inplace=True)
-# df_new.dropna(how='all', inplace=True)
-# # df[['NNFID', 'NeatID']] = df[['NNFID', 'NeatID']].astype(int)
-# # df.NeatID = df.NNFID.astype(int)
-# list_col = [col for col in df.columns if not col.startswith('NNF')]
-# grouped_df = df.groupby(['NNFID'])[list_col].sum()
-# # for index, row in grouped_df.iterrows():
-# #     print('indx-',int(index),'\n', 'row-\n', row, '\n')
-#
-# merged_df = pd. merge(df1, df, left_on='ctclid', right_on='NNFID', how='left')
-# print(merged_df)
-
-from db_config import engine_str, n_tbl_notis_desk_wise_final_net_position
 from sqlalchemy import create_engine
-from main import get_date_from_non_jiffy
-import calendar
+from common import get_date_from_non_jiffy, read_data_db, read_notis_file, write_notis_data, today, yesterday, write_notis_postgredb, read_file
+import warnings
 
-def read_notis_file(filepath):
-    wb = load_workbook(filepath, read_only=True)
-    sheet = wb.active
-    total_rows = sheet.max_row
-    print('Reading Notis file...')
-    pbar = progressbar.ProgressBar(max_value=total_rows, widgets=[progressbar.Percentage(), ' ',
-                                                           progressbar.Bar(marker='=', left='[', right=']'),
-                                                           progressbar.ETA()])
+today = datetime(year=2025, month=1, day=24).date()
+yesterday = datetime(year=2025, month=1, day=23).date()
+pd.set_option('display.max_columns', None)
+warnings.filterwarnings('ignore')
+# holidays_25 = ['2025-02-26', '2025-03-14', '2025-03-31', '2025-04-10', '2025-04-14', '2025-04-18', '2025-05-01', '2025-08-15', '2025-08-27', '2025-10-02', '2025-10-21', '2025-10-22', '2025-11-05', '2025-12-25']
+# # holidays_25.append('2024-03-20') #add unusual holidays
+# # today = datetime.now().date()
+# today = datetime(year=2025, month=1, day=21).date()
+# b_days = pd.bdate_range(start=today-timedelta(days=7), end=today, freq='C', weekmask='1111100', holidays=holidays_25).date.tolist()
+# # b_days = b_days.append(pd.DatetimeIndex([pd.Timestamp(year=2024, month=1, day=20)])) #add unusual trading days
+#
+# # yesterday = today-timedelta(days=1)
+# # yesterday = datetime(year=2025, month=1, day=13).date()
+# today, yesterday = sorted(b_days)[-1], sorted(b_days)[-2]
 
-    data = []
-    pbar.update(0)
-    for i, row in enumerate(sheet.iter_rows(values_only=True), start=1):
-        data.append(row)
-        pbar.update(i)
-    pbar.finish()
-    df = pd.DataFrame(data[1:], columns=data[0])
-    print('Notis file read')
-    return df
+root_dir = os.path.dirname(os.path.abspath(__file__))
+nnf_file_path = os.path.join(root_dir, "Final_NNF_ID.xlsx")
+eod_test_dir = os.path.join(root_dir, 'eod_testing')
+eod_input_dir = os.path.join(root_dir, 'eod_original')
+eod_output_dir = os.path.join(root_dir, 'eod_data')
+table_dir = os.path.join(root_dir, 'table_data')
+bhav_path = os.path.join(root_dir, 'bhavcopy')
+test_dir = os.path.join(root_dir, 'testing')
+eod_net_pos_input_dir = os.path.join(root_dir, 'test_net_position_original')
+eod_net_pos_output_dir = os.path.join(root_dir, 'test_net_position_code')
 
-def read_db(table_name):
-    engine = create_engine(engine_str)
-    df = pd.read_sql_table(table_name, con=engine)
-    return df
 
-def write_notis_data(df, filepath):
-    print('Writing Notis file to excel...')
-    wb = Workbook()
-    ws = wb.active
-    ws.title = 'Net position'
-    rows = list(dataframe_to_rows(df, index=False, header=True))
-    total_rows = len(rows)
-    pbar = progressbar.ProgressBar(max_value=total_rows, widgets=[progressbar.Percentage(), ' ',
-                                                           progressbar.Bar(marker='=', left='[', right=']'),
-                                                           progressbar.ETA()])
-    for i, row in enumerate(rows, start=1):
-        ws.append(row)
-        pbar.update(i)
-    pbar.finish()
-    # df.to_excel(os.path.join(modified_dir, file_name))
-    print('Saving the file...')
-    # wb.save(filepath)
-    wb.save(filepath)
-    print('New Notis excel file created')
-
-def get_date_from_non_jiffy(dt_val):
-    """
-    Converts the 1980 format date time to a readable format.
-    :param dt_val: long
-    :return: long (epoch time in seconds)
-    """
-    # Assuming dt_val is seconds since Jan 1, 1980
-    base_date = datetime(1980, 1, 1, tzinfo=timezone.utc)
-    # date_time = int(base_date.timestamp() + dt_val)
-    date_time = base_date.timestamp() + dt_val
-    new_date = datetime.fromtimestamp(date_time, timezone.utc)
-    formatted_date = new_date.astimezone(timezone(timedelta(hours=5, minutes=30))).strftime("%Y-%m-%d %I:%M:%S")
-    return formatted_date
-
-def calc_date(for_date, holidays):
-    now = datetime.now()
-    year = for_date.year
-    month = for_date .month
-    cal = calendar.Calendar()
-    explist = []
-    for day in cal.itermonthdays(year, month):
-        if day != 0:  # to skip days outside the current month
-            date = datetime(year, month, day)
-            if date.weekday() == 3:  # check if weekday is thursday or not
-                # explist.append(date.strftime('%Y-%m-%d'))
-                explist.append(date.date())
-
-    # for last friday
-    # last_day = calendar.monthrange(year, month)[1]
-    # last_friday = datetime(year, month, last_day)
-    # while last_friday.weekday() != 4:  # Check if it's Friday (weekday 4)
-    #     last_friday -= timedelta(days=1)
-    # explist.append(last_friday.strftime('%Y-%m-%d'))
-    for i in range(len(explist)): # modifying expiry as per holidays
-        if explist[i] in holidays:
-            explist[i] = explist[i] - timedelta(days=1)
-    explist = sorted([exp for exp in explist if exp <= for_date])
-    return explist[-1]
-
-def check_holiday(explist, holidays): #to check and replace the date if it falls on a holiday
-    # exp_list = []
-    # for i in range(len(explist)):
-    #     while explist[i] in holidays:
-    #         date_obj = datetime.strptime(explist[i], '%Y-%m-%d')
-    #         new_date_obj = date_obj - timedelta(days=1)
-    #         explist[i] = new_date_obj.strftime('%Y-%m-%d')
-    for i in range(len(explist)):
-        if explist[i] in holidays:
-            explist[i] = explist[i] - timedelta(days=1)
-    return explist
-
-holidays_25 = ['2025-02-26', '2025-03-14', '2025-03-31', '2025-04-10', '2025-04-14', '2025-04-18', '2025-05-01', '2025-08-15', '2025-08-27', '2025-10-02', '2025-10-21', '2025-10-22', '2025-11-05', '2025-12-25']
-today = datetime(year=2025, month=1, day=13).date()
-b_days = pd.bdate_range(start=today-timedelta(days=7), end=today, freq='C', weekmask='1111100', holidays=holidays_25).date.tolist()
-yesterday = today-timedelta(days=1)
-# yesterday = datetime(year=2025, month=1, day=13).date()
-today, yesterday = sorted(b_days)[-1], sorted(b_days)[-2]
-
-latest_expiry = calc_date(today, pd.to_datetime(holidays_25).date.tolist())
-# final_date_list = check_date(date_list, pd.to_datetime(holidays_25).date.tolist())
-expiry_flag = False
-if latest_expiry == today:
-    expiry_flag = True
-
-# now create column to store expiry flag and then calc expiry PnL whereever the expiry flag is true
-
-# tablenam = f'NOTIS_DESK_WISE_NET_POSITION'
-tablenam = f'NOTIS_DESK_WISE_NET_POSITION_{today.strftime("%Y-%m-%d")}'
-final_net_position_path = os.path.join(eod_dir, f'NOTIS_DESK_WISE_FINAL_NET_POSITION_{today.strftime("%Y-%m-%d")}_untitled.xlsx')
-
-# # eod_df = read_notis_file(os.path.join(root_dir, 'EOD Position 08-Jan-25.xlsx'))
-# eod_df = read_notis_file(os.path.join(root_dir, 'EOD Position 08-Jan-2025.xlsx'))
+# # eod_df = read_notis_file(os.path.join(eod_input_dir, f'EOD Position_{yesterday.strftime("%d_%b_%Y")}_1.xlsx'))
+# eod_df = read_notis_file(os.path.join(eod_net_pos_input_dir, f'net_position_eod_{yesterday.strftime("%d_%m_%Y")}.xlsx')) # net_position_eod_23_01_2025.xlsx
+# # # eod_df = read_notis_file(os.path.join(eod_dir, rf'NOTIS_DESK_WISE_FINAL_NET_POSITION_{yesterday.strftime("%Y-%m-%d")}_testing_1.xlsx'))
 # eod_df.columns = eod_df.columns.str.replace(' ', '')
+# eod_df.drop(columns=[col for col in eod_df.columns if col is None], inplace=True)
 # eod_df = eod_df.add_prefix('Eod')
-# # eod_df = read_notis_file(rf"C:\Users\vipulanand\Downloads\Book1.xlsx")
+# # # eod_df = read_notis_file(rf"C:\Users\vipulanand\Downloads\Book1.xlsx")
 # eod_df.EodExpiry = eod_df.EodExpiry.dt.date
-# eod_df['EodClosingqty'] = eod_df['EodClosingqty'].astype('int64')
-# eod_df['EodMTM'] = eod_df['EodClosingqty'] * eod_df['EodClosingPrice']
+# # eod_df['EodClosingQty'] = eod_df['EodClosingQty'].astype('int64')
+# # eod_df['EodMTM'] = eod_df['EodClosingQty'] * eod_df['EodClosingPrice']
+# # eod_df = eod_df.iloc[:,1:]
+# grouped_eod = eod_df.groupby(by=['EodSymbol','EodExpiry','EodStrike','EodType']).agg({'EodEODQty':'sum'}).reset_index()
+# grouped_eod = grouped_eod.drop_duplicates()
+#
+#
+#
+# tablenam = f'NOTIS_DESK_WISE_NET_POSITION_{today.strftime("%Y-%m-%d")}'
+# desk_db_df = read_data_db(for_table=tablenam)
+# # # desk_db_df1 = read_notis_file(os.path.join(table_dir, f'NOTIS_DESK_WISE_NET_POSITION_{today.strftime("%Y_%m_%d")}.xlsx'))
+# desk_db_df.expiryDate = desk_db_df.expiryDate.astype('datetime64[ns]')
+# desk_db_df.expiryDate = desk_db_df.expiryDate.dt.date
+# desk_db_df.loc[desk_db_df['optionType'] == 'XX', 'strikePrice'] = 0
+# desk_db_df.strikePrice = desk_db_df.strikePrice.apply(lambda x: x/100 if x>0 else x)
+# desk_db_df.strikePrice = desk_db_df.strikePrice.astype('int64')
+# # grouped_desk_db_df = desk_db_df.groupby(by=['mainGroup','symbol', 'expiryDate', 'strikePrice', 'optionType']).agg({'buyAvgQty':'sum','sellAvgQty':'sum','volume':'sum'}).reset_index()
+# # grouped_desk_db_df = grouped_desk_db_df.drop_duplicates()
+# grouped_desk_db_df = desk_db_df.groupby(by=['symbol', 'expiryDate', 'strikePrice', 'optionType']).agg({'buyAvgQty':'sum','sellAvgQty':'sum'}).reset_index()
+# grouped_desk_db_df['IntradayNetQty'] = grouped_desk_db_df['buyAvgQty'] - grouped_desk_db_df['sellAvgQty']
+# grouped_desk_db_df.rename(columns={'buyAvgQty':'buyQty','sellAvgQty':'sellQty'})
+# # bhav_df = read_notis_file(os.path.join(bhav_path, rf'regularBhavcopy_{today.strftime("%d%m%Y")}.xlsx')) # regularBhavcopy_14012025.xlsx
+# # bhav_df.columns = bhav_df.columns.str.replace(' ', '')
+# # bhav_df.columns = bhav_df.columns.str.capitalize()
+# # bhav_df = bhav_df.add_prefix('Bhav')
+# # bhav_df.BhavExpiry = bhav_df.BhavExpiry.apply(lambda x: pd.to_datetime(get_date_from_non_jiffy(x))).dt.strftime('%Y-%m-%d')
+# # bhav_df.BhavExpiry = bhav_df.BhavExpiry.apply(lambda x: pd.to_datetime(x).date())
+# # bhav_df.loc[bhav_df['BhavOptiontype'] == 'XX', 'BhavStrikeprice'] = 0
+# # bhav_df = bhav_df.applymap(lambda x: x.strip() if isinstance(x, str) else x)
+# # bhav_df.BhavStrikeprice = bhav_df.BhavStrikeprice.apply(lambda x: x/100 if x>0 else x)
+# # bhav_df.BhavStrikeprice = bhav_df.BhavStrikeprice.astype('int64')
+# # # desk_db_df.expiryDate = desk_db_df.expiryDate.astype('datetime64[ns]')
+# # # eod_df.EodExpiry = eod_df.EodExpiry.dt.date
+# # # desk_db_df.expiryDate = desk_db_df.expiryDate.dt.date
+# # # desk_db_df.strikePrice = desk_db_df.strikePrice.apply(lambda x: x/100 if x>0 else x)
+# # # desk_db_df.strikePrice = desk_db_df.strikePrice.astype('int64')
+# # # desk_db_df.loc[desk_db_df['optionType'] == 'XX', 'strikePrice'] = 0
+# # # eod_df['EodClosingQty'] = eod_df['EodClosingQty'].astype('int64')
+# # # eod_df['EodMTM'] = eod_df['EodClosingQty'] * eod_df['EodClosingPrice']
+# # col_keep = ['BhavSymbol', 'BhavExpiry', 'BhavStrikeprice', 'BhavOptiontype','BhavClosingprice']
+# # bhav_df = bhav_df[col_keep]
+# # # col_drop = ['BhavTotalValue','BhavOpenInterest','BhavChangeInOpenInterest']
+# # # bhav_df = bhav_df.drop(columns=[col for col in bhav_df.columns if col in col_drop])
+# # bhav_df = bhav_df.drop_duplicates()
+#
+# # merged_df = grouped_desk_db_df.merge(eod_df, left_on=["mainGroup", "symbol", "expiryDate", "strikePrice", "optionType"], right_on=['EodMainGroup', 'EodUnderlying', 'EodExpiry', 'EodStrike', 'EodOptionType'], how='outer')
+# # merged_df = eod_df.merge(grouped_desk_db_df, right_on=["mainGroup", "symbol", "expiryDate", "strikePrice", "optionType"], left_on=['EodMainGroup', 'EodUnderlying', 'EodExpiry', 'EodStrike', 'EodOptionType'], how='outer')
+# merged_df = grouped_eod.merge(grouped_desk_db_df, right_on=["symbol", "expiryDate", "strikePrice", "optionType"], left_on=['EodSymbol', 'EodExpiry', 'EodStrike', 'EodType'], how='outer')
+# merged_df.fillna(0, inplace=True)
+# merged_df = merged_df.drop_duplicates()
+#
+# coltd1 = ['EodSymbol', 'EodStrike', 'EodType', 'EodExpiry']
+# coltd2 = ['symbol', 'strikePrice', 'optionType', 'expiryDate']
+# for i in range(len(coltd1)):
+#     merged_df.loc[merged_df[coltd1[i]] == 0, coltd1[i]] = merged_df[coltd2[i]]
+#     merged_df.loc[merged_df[coltd2[i]] == 0, coltd2[i]] = merged_df[coltd1[i]]
+# merged_df['EodNetQty'] = merged_df['EodEODQty'] + merged_df['IntradayNetQty']
+#
+# a=0
+# # merged_bhav_df = merged_df.merge(bhav_df, left_on=["symbol", "expiryDate", "strikePrice", "optionType"], right_on=['BhavSymbol', 'BhavExpiry', 'BhavStrikeprice', 'BhavOptiontype'], how='left')
+# # # for index, row in merged_bhav_df.iterrows():
+# # #     if abs(row['volume']) > 0:
+# # #         if (row['MTM'] > 0 and abs(row['MTM'])>abs(row['EodMTM'])) or (row['EodMTM'] > 0 and abs(row['EodMTM'])>abs(row['MTM'])):
+# # #             sign = 1
+# # #         else:
+# # #             sign = -1
+# # #         # merged_bhav_df.loc[index, 'NetAvgPrice'] = (abs(row['MTM']) + abs(
+# # #         #     (row['BhavClosingprice'] * row['EodClosingQty']))) / (abs(row['volume']) + abs(row['EodClosingQty']))
+# # #         merged_bhav_df.loc[index, 'NetAvgPrice'] = abs(row['NetQty']) / abs(row['BhavClosingprice'])
+# # merged_bhav_df = merged_bhav_df.drop_duplicates()
+# #
+# # def find_expired_mtm(row):
+# #     if row['expired'] == True: # ClosingQty=NetQty
+# #             # if (row['MTM'] > 0 and abs(row['MTM'])>abs(row['EodMTM'])) or (row['EodMTM'] > 0 and abs(row['EodMTM'])>abs(row['MTM'])):
+# #             #     sign = 1
+# #             #     return row['MTM']+row['EodMTM']+(row['NetQty']*row['BhavClosingprice'])
+# #             # else:
+# #             #     sign = -1
+# #             #     return -1*(row['MTM']+row['EodMTM']+(row['NetQty']*row['BhavClosingprice']))
+# #             if row['NetQty'] != 0:
+# #                 if row.EodOptionType == 'PE':
+# #                     row.rate = max((row.EodStrike - row.Spot),0)
+# #                 else:
+# #                     row.rate = max((row.Spot - row.EodStrike),0)
+# #                 if row.NetQty < 0:
+# #                     row['BuyQty'] = -1*row.NetQty
+# #                     row.BuyRate = row.rate
+# #                     row.SellQty = 0
+# #                     row.SellRate = 0
+# #                 else:
+# #                     row['BuyQty'] = 0
+# #                     row.BuyRate = 0
+# #                     row.SellQty = row.NetQty
+# #                     row.SellRate = row.rate
+# #                 row.BuyValue = row.BuyRate * row.BuyQty
+# #                 row.SellValue = row.SellRate * row.SellQty
+# #
+# #             return (-1*row['MTM'])+row['EodMTM']+(row['NetQty']*row['BhavClosingprice'])
+# #
+# # merged_bhav_df.loc[merged_bhav_df['expiryDate'] == today, 'expired'] = True
+# # merged_bhav_df['Spot'] = merged_bhav_df.apply(lambda row: row['BhavClosingprice'] if row['expiryDate'] == today else '', axis=1)
+# # # merged_bhav_df['spot'] = np.where(merged_bhav_df['expiryDate'] == today, merged_bhav_df['BhavClosingprice'], merged_bhav_df['spot'])
+# # # merged_bhav_df['NetAvgPrice'] = merged_bhav_df.apply(lambda row: abs(row['NetQty'])/abs(row['BhavClosingprice']) if abs(row['volume'])>0 else None, axis=1)
+# # merged_bhav_df['expiredMTM'] = merged_bhav_df.apply(find_expired_mtm, axis=1)
+# # # col_to_keep = desk_db_df.columns.tolist()+['EodLong', 'EodShort','EodClosingQty','EodClosingPrice','EodSubGroup','EodMainGroup', 'EodMTM', 'expired', 'NetQty','BhavClosingprice', 'NetAvgPrice', 'expiredMTM']
+# # # merged_bhav_df.drop(columns=[col for col in merged_bhav_df.columns if col not in col_to_keep], axis=1, inplace=True)
+# # # col_drop = ['EodMTM','mainGroup', 'account', 'brokerID', 'tokenNumber','MTM', 'symbol', 'expiryDate', 'strikePrice', 'optionType','BhavSymbol', 'BhavExpiry', 'BhavStrikeprice', 'BhavOptiontype', 'NetAvgPrice']
+# # # merged_bhav_df = merged_bhav_df.drop(columns=[col for col in merged_bhav_df.columns if col in col_drop])
+# # merged_bhav_df['Long'] = merged_bhav_df['EodLong'] + merged_bhav_df['buyAvgQty']
+# # merged_bhav_df['Short'] = merged_bhav_df['EodShort'] + merged_bhav_df['sellAvgQty']
+# # # col_keep = ['EodUnderlying', 'EodStrike', 'EodOptionType', 'EodExpiry','EodSubGroup', 'EodMainGroup', 'Long','Short','NetQty','BhavClosingprice']
+# # # merged_bhav_df.drop(columns=[col for col in merged_bhav_df.columns if col not in col_keep], axis=1, inplace=True)
+# # # merged_bhav_df.columns = merged_bhav_df.columns.str.replace('Eod','')
+# # merged_bhav_df.rename(columns={'NetQty':'ClosingQty','BhavClosingprice':'ClosingPrice'}, inplace=True )
+# # # merged_bhav_df = merged_bhav_df[['Underlying', 'Strike', 'OptionType', 'Expiry', 'Long', 'Short', 'ClosingQty', 'ClosingPrice', 'SubGroup', 'MainGroup']]
+# # merged_bhav_df = merged_bhav_df.drop_duplicates()
+# # merged_bhav_df.rename(columns={'buyAvgQty':'BuyQty','sellAvgQty':'SellQty'}, inplace=True )
+# # merged_bhav_df.drop(columns=['EodMTM','mainGroup','symbol', 'expiryDate', 'strikePrice', 'optionType','BhavSymbol', 'BhavExpiry', 'BhavStrikeprice', 'BhavOptiontype','expired', 'expiredMTM', 'Long', 'Short'], axis=1, inplace=True)
+# # # # merged_df.drop(columns=eod_df.columns.tolist(), axis=1, inplace=True)
+# # # merged_bhav_df['Long'] = merged_bhav_df['buyAvgQty'] + merged_bhav_df['EodLong']
+# # # merged_bhav_df['Short'] = merged_bhav_df['sellAvgQty'] + merged_bhav_df['EodShort']
+# # # col_keep = ['symbol', 'strikePrice', 'optionType', 'expiryDate', 'Long', 'Short', 'NetQty', 'BhavClosingprice', 'EodSubGroup', 'mainGroup']
+# # # merged_bhav_df.drop(columns=[col for col in merged_bhav_df.columns if col not in col_keep], axis=1, inplace=True)
+# # # merged_bhav_df.rename(columns={'symbol':'Underlying', 'strikePrice':'Strike', 'optionType':'OptionType', 'NetQty':'ClosingQty', 'BhavClosingprice':'ClosingPrice', 'EodSubGroup':'SubGroup', 'mainGroup':'mainGroup'})
+# # # merged_bhav_df = merged_bhav_df[col_keep]
+# # a=0
+# # def update_qty(row):
+# #     if row.Long > row.Short:
+# #         row.Long = row.ClosingQty
+# #         row.Short = 0
+# #     elif row.Long < row.Short:
+# #         row.Short = row.ClosingQty
+# #         row.Long = 0
+# #     return row
+# # # merged_bhav_df = merged_bhav_df.apply(update_qty, axis=1)
+# # write_notis_data(merged_bhav_df, os.path.join(eod_output_dir, f'Eod_{today.strftime("%Y_%m_%d")}_test_1.xlsx'))
+# # write_notis_postgredb(merged_bhav_df, table_name=n_tbl_notis_net_position, raw=False)
+# # print(f'file made for {today}')
+# # # write_notis_data(desk_db_df, f'desk_{today.strftime("%Y-%m-%d")}.xlsx')
+# # # write_notis_data(eod_df, f'eod_{today.strftime("%Y-%m-%d")}.xlsx')
+# # # write_notis_data(bhav_df, f'bhav_{today.strftime("%Y-%m-%d")}.xlsx')
+# # # print(eod_df.head(),'\n',desk_db_df.head())
+# filtered_merged = merged_df.query("EodEODQty != 0 or IntradayNetQty != 0")
+# write_notis_data(filtered_merged, os.path.join(eod_net_pos_output_dir, f'test_net_pos_{today.strftime("%d_%m_%y")}.xlsx'))
+# b=0
+#
+# # pbar = progressbar.ProgressBar(max_value=10, widgets=[progressbar.Percentage(), ' ', progressbar.Bar(marker='=', left='[', right=']'), progressbar.ETA()])
+# # pbar.update(1)
+# # for i in range(10):
+# #     time.sleep(1)
+# #     pbar.update(i + 1)
+# # pbar.finish()
 
-desk_db_df = read_notis_file(os.path.join(mod_dir, f'NOTIS_DATA_{today.strftime("%d%b%Y")}_1.xlsx'))
-# desk_db_df = read_db(table_name=tablenam)
-col_keep = ['MainGroup', 'SubGroup','UserID','cpCD','sym','expDt','strPrc','optType','bsFlg','trdQty','trdPrc']
-desk_db_df = desk_db_df[col_keep]
-desk_db_df.expDt = desk_db_df.expDt.astype('datetime64[ns]')
-desk_db_df.expDt = desk_db_df.expDt.dt.date
-q=0
-grouped_desk_df = desk_db_df.groupby(by=['MainGroup', 'SubGroup','UserID','cpCD','sym','expDt','strPrc','optType','bsFlg']).agg({'trdQty':'sum','trdPrc':'mean'})
-desk_db_df.expiryDate = desk_db_df.expiryDate.astype('datetime64[ns]')
-desk_db_df.expiryDate = desk_db_df.expiryDate.dt.date
-desk_db_df.loc[desk_db_df['optionType'] == 'XX', 'strikePrice'] = 0
-desk_db_df.strikePrice = desk_db_df.strikePrice.apply(lambda x: x/100 if x>0 else x)
-desk_db_df.strikePrice = desk_db_df.strikePrice.astype('int64')
-# desk_db_df.drop(columns=['MTM'], axis=1, inplace=True)
+# n_tbl_notis_trade_book = "NOTIS_TRADE_BOOK"
+# # n_tbl_notis_trade_book = "NOTIS_DESK_WISE_EOD_POSITION_2025-01-21"
+# df = read_notis_file(rf"D:\notis_analysis\modified_data\NOTIS_DATA_29JAN2025.xlsx")
+# # df = read_notis_file(rf"D:\notis_analysis\table_data\NOTIS_DESK_WISE_NET_POSITION_2025_01_20_2.xlsx")
+# # df = read_notis_file(rf"D:\notis_analysis\eod_data\Eod_2025_01_21_test_2.xlsx")
+# a=0
+# write_notis_postgredb(df, n_tbl_notis_trade_book)
+#
+# # grouped_a = a.groupby(by=['MainGroup','SubGroup','sym','expDt', 'strPrc', 'optType','bsFlg'], as_index=False).agg({'trdQty':'sum', 'trdPrc':'mean'})
 
-bhav_df = read_notis_file(os.path.join(root_dir, 'regularBhavcopy_09012025.xlsx'))
-bhav_df.columns = bhav_df.columns.str.replace(' ', '')
-bhav_df.columns = bhav_df.columns.str.capitalize()
-bhav_df = bhav_df.add_prefix('Bhav')
-bhav_df.BhavExpiry = bhav_df.BhavExpiry.apply(lambda x: pd.to_datetime(get_date_from_non_jiffy(x))).dt.strftime('%Y-%m-%d')
-bhav_df.BhavExpiry = bhav_df.BhavExpiry.apply(lambda x: pd.to_datetime(x).date())
-bhav_df.loc[bhav_df['BhavOptiontype'] == 'XX', 'BhavStrikeprice'] = 0
-bhav_df = bhav_df.applymap(lambda x: x.strip() if isinstance(x, str) else x)
-bhav_df.BhavStrikeprice = bhav_df.BhavStrikeprice.apply(lambda x: x/100 if x>0 else x)
-bhav_df.BhavStrikeprice = bhav_df.BhavStrikeprice.astype('int64')
-# eod_grouped_df = eod_df.groupby(['Main Group', 'Underlying', 'Expiry', 'Strike', 'Option Type'])['Closing qty'].sum().reset_index()
-# desk_grouped_df = desk_db_df.groupby(["mainGroup", "symbol", "expiryDate", "strikePrice", "optionType"])["volume"].sum().reset_index()
-# desk_grouped_df.expiryDate = desk_grouped_df.expiryDate.astype('datetime64[ns]')
-# eod_grouped_df.Expiry = eod_grouped_df.Expiry.dt.date
-# desk_grouped_df.expiryDate = desk_grouped_df.expiryDate.dt.date
-# desk_grouped_df.strikePrice = desk_grouped_df.strikePrice.apply(lambda x: x/100 if x>0 else x)
-# desk_grouped_df.strikePrice = desk_grouped_df.strikePrice.astype('int64')
 
-merged_df = desk_db_df.merge(eod_df, left_on=["mainGroup", "symbol", "expiryDate", "strikePrice", "optionType"], right_on=['EodMainGroup', 'EodUnderlying', 'EodExpiry', 'EodStrike', 'EodOptionType'], how='left')
-merged_df.fillna(0, inplace=True)
-merged_df['NetQty'] = merged_df['EodClosingqty'] + merged_df['volume']
-# merged_df['Net Avg Price'] = ((merged_df['buyAvgPrice']))
-
-merged_bhav_df = merged_df.merge(bhav_df, left_on=["symbol", "expiryDate", "strikePrice", "optionType"], right_on=['BhavSymbol', 'BhavExpiry', 'BhavStrikeprice', 'BhavOptiontype'], how='left')
-col_to_keep = desk_db_df.columns.tolist()+['EodLong', 'EodShort','EodClosingqty','EodClosingPrice','EodSubGroup','EodMainGroup','EodMTM','NetQty','BhavClosingprice']
-merged_bhav_df.drop(columns=[col for col in merged_bhav_df.columns if col not in col_to_keep], axis=1, inplace=True)
-for index, row in merged_bhav_df.iterrows():
-    # merged_bhav_df.loc[index, 'MTM'] = (row['buyAvgPrice']*row['buyAvgQty'])-(row['sellAvgPrice']*row['sellAvgQty'])
-    if abs(row['volume']) > 0:
-        # merged_bhav_df.loc[index, 'MTM'] = row['BhavClosingprice'] * row['volume']
-        # merged_bhav_df.loc[index, 'NetAvgPrice'] = (abs(row['EodMTM']) + abs(row['volume'] * row['BhavClosingprice'])) / (abs(row['volume']) + abs(row['EodClosingqty']))
-        merged_bhav_df.loc[index, 'NetAvgPrice'] = abs(row['NetQty']) / abs(row['BhavClosingprice'])
-# # merged_df['Net PnL'] = merged_df['MTM'] + merged_df['MTM eod']
-# merged_df.drop(columns=eod_df.columns.tolist(), axis=1, inplace=True)
-# merged_df.drop(columns=['volume', 'MTMeod'], axis=1, inplace=True)
-
-# bhav_df.BhavExpiry = bhav_df.BhavExpiry.apply(lambda x: pd.to_datetime(get_date_from_non_jiffy(x))).dt.strftime('%Y-%m-%d')
-# bhav_df.rename(columns={'BhavExpiry':'BhavExpiryDate'}, inplace=True)
-# # bhav_df.expiryDate = bhav_df.expiryDate.astype('datetime64[ns]')
-# bhav_df.BhavExpiry = bhav_df.BhavExpiry.apply(lambda x: pd.to_datetime(x).date())
-# bhav_df.loc[bhav_df['BhavOptiontype'] == 'XX', 'BhavStrikeprice'] = 0
-# bhav_df = bhav_df.applymap(lambda x: x.strip() if isinstance(x, str) else x)
-# bhav_df.BhavStrikeprice = bhav_df.BhavStrikeprice.apply(lambda x: x/100 if x>0 else x)
-# bhav_df.BhavStrikeprice = bhav_df.BhavStrikeprice.astype('int64')
-# for each in ['symbol','optionType']:
-#     bhav_df[each] = bhav_df[each].str.strip()
-#     merged_df[each] = merged_df[each].str.strip()
-# merged_bhav_df = merged_df.merge(bhav_df, left_on=["symbol", "expiryDate", "strikePrice", "optionType"], right_on=['BhavSymbol', 'BhavExpiry', 'BhavStrikeprice', 'BhavOptiontype'], how='left')
-# merged_bhav_df = merged_df.merge(bhav_df, on=["symbol", "expiryDate", "strikePrice", "optionType"], how='left')
-# # desk_db_df1 = desk_db_df.copy()
-# # desk_db_df1['volume'] = merged_df['Closing qty'] + merged_df['volume']
-# # desk_db_df1.rename(columns={'volume':'Net Qty'}, inplace=True)
-# merged_bhav_df1 = merged_df.copy()
-# merged_bhav_df1['bhav_close']=0
-# for index, row in merged_df.iterrows():
-#     sym = row.symbol
-#     exp = row.expiryDate
-#     stPrice = row.strikePrice
-#     optType = row.optionType
-#     bhav_close = row.closingPrice
-#     for bhav_index, bhav_row in bhav_df.iterrows():
-#         if sym == bhav_row.symbol and exp == bhav_row.expiryDate and stPrice == bhav_row.strikePrice and optType == bhav_row.optionType:
-#             merged_bhav_df1.at[index, 'bhav_close'] = bhav_close
-merged_bhav_df.loc[merged_bhav_df['expiryDate'] == today, 'expired'] = True
-merged_bhav_df = merged_bhav_df.drop_duplicates()
+# bhav_df = read_notis_file(rf"D:\notis_analysis\testing\regularBhavcopy_10022025.xlsx")
+# bhav_df1 = read_file(rf"D:\notis_analysis\testing\regularBhavcopy_10022025.xlsx")
+# bhav_df2 = read_file(rf"D:\notis_analysis\testing\regularBhavcopy_10022025.csv")
 a=0
-# write_notis_postgredb(desk_db_df1, table_name=n_tbl_notis_desk_wise_final_net_position, raw=False)
-write_notis_data(merged_bhav_df, final_net_position_path)
-# write_notis_data(desk_db_df, f'desk_{today.strftime("%Y-%m-%d")}.xlsx')
-# write_notis_data(eod_df, f'eod_{today.strftime("%Y-%m-%d")}.xlsx')
-# write_notis_data(bhav_df, f'bhav_{today.strftime("%Y-%m-%d")}.xlsx')
-# print(eod_df.head(),'\n',desk_db_df.head())
+ex_dt = '11-02-2025  06:03:30'
+ex = datetime(2025, 2, 12, 9, 36, 50, microsecond=297695)
+epoch_time = int(time.mktime(ex.timetuple()))
+print(epoch_time)
 b=0
