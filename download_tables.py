@@ -22,22 +22,21 @@ table_dir = os.path.join(root_dir, 'table_data')
 # today = datetime(year=2025, month=2, day=4).date()
 
 # -------------------------------------------------------------------------------------------------------------
-table_list = ['NOTIS_DESK_WISE_NET_POSITION', 'NOTIS_NNF_WISE_NET_POSITION', 'NOTIS_USERID_WISE_NET_POSITION']
-# today = datetime(year=2025, month=1, day=10).date().strftime('%Y_%m_%d').upper()
-# today = datetime.now().date().strftime('%Y_%m_%d').upper()
-for table in table_list:
-    df = read_data_db(for_table=table)
-    # df = read_db(table)
-    # df.to_excel(f'{table}_{today}.xlsx', index=False)
-    df.to_excel(os.path.join(table_dir, f'{table}_{today.strftime("%Y_%m_%d").upper()}.xlsx'), index=False)
-    # print(f'Data fetched from {table}:\n{df.head()}')
-    # print(f"{table} data fetched and written at path: {os.path.join(table_dir, f'{table}_{today.strftime("%Y_%m_%d").upper()}.xlsx')}")
+# table_list = ['NOTIS_DESK_WISE_NET_POSITION', 'NOTIS_NNF_WISE_NET_POSITION', 'NOTIS_USERID_WISE_NET_POSITION']
+# # today = datetime(year=2025, month=1, day=10).date().strftime('%Y_%m_%d').upper()
+# # today = datetime.now().date().strftime('%Y_%m_%d').upper()
+# for table in table_list:
+#     df = read_data_db(for_table=table)
+#     # df = read_db(table)
+#     # df.to_excel(f'{table}_{today}.xlsx', index=False)
+#     df.to_excel(os.path.join(table_dir, f'{table}_{today.strftime("%Y_%m_%d").upper()}.xlsx'), index=False)
+#     # print(f'Data fetched from {table}:\n{df.head()}')
+#     # print(f"{table} data fetched and written at path: {os.path.join(table_dir, f'{table}_{today.strftime("%Y_%m_%d").upper()}.xlsx')}")
 # -------------------------------------------------------------------------------------------------------------
 
-# # n_tbl_notis_trade_book = "NOTIS_TRADE_BOOK"
-# n_tbl_notis_trade_book = "NOTIS_DESK_WISE_NET_POSITION_2025-02-04"
-# # df = read_notis_file(rf"D:\notis_analysis\modified_data\NOTIS_DATA_04FEB2025.xlsx")
-# df = read_notis_file(rf"D:\notis_analysis\table_data\NOTIS_DESK_WISE_NET_POSITION_2025_02_04.xlsx")
-# # # # # df = read_notis_file(rf"D:\notis_analysis\eod_data\Eod_2025_01_21_test_2.xlsx")
-# # # #
-# write_notis_postgredb(df, n_tbl_notis_trade_book)
+# n_tbl_notis_trade_book = "NOTIS_TRADE_BOOK_2025-02-18"
+# n_tbl_notis_trade_book = "NOTIS_DESK_WISE_NET_POSITION_2025-02-18"
+# n_tbl_notis_trade_book = "NOTIS_NNF_WISE_NET_POSITION_2025-02-18"
+n_tbl_notis_trade_book = "NOTIS_USERID_WISE_NET_POSITION_2025-02-18"
+df = read_notis_file(rf"D:\notis_analysis\table_data\NOTIS_USERID_WISE_NET_POSITION_2025_02_18.xlsx")
+write_notis_postgredb(df, n_tbl_notis_trade_book)
