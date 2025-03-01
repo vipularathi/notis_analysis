@@ -85,15 +85,15 @@ def download_tables():
     # today = datetime(year=2025, month=1, day=10).date().strftime('%Y_%m_%d').upper()
     for table in table_list:
         df = read_data_db(for_table=table)
-        df.to_excel(os.path.join(table_dir, f"{table}_{today.strftime('%Y_%m_%d').upper()}.xlsx"), index=False)
-        print(f"{table} data fetched and written at path: {os.path.join(table_dir, f'{table}_{today}.xlsx')}")
+        df.to_csv(os.path.join(table_dir, f"{table}_{today.strftime('%Y_%m_%d').upper()}.csv"), index=False)
+        print(f"{table} data fetched and written at path: {os.path.join(table_dir, f'{table}_{today}.csv')}")
 def main():
     # today = datetime.now().date().strftime("%d%b%Y").upper()
     # today = datetime(year=2024, month=12, day=24).date().strftime("%d%b%Y").upper()
     df_db = read_data_db()
     # df_db = read_data_db(for_table='notis_raw_data_2025-02-18')
     write_notis_postgredb(df_db, table_name=n_tbl_notis_raw_data, raw=True)
-    modify_filepath = os.path.join(modified_dir, f'NOTIS_TRADE_DATA_{today.strftime("%d%b%Y").upper()}.xlsx')
+    modify_filepath = os.path.join(modified_dir, f'NOTIS_TRADE_DATA_{today.strftime("%d%b%Y").upper()}.csv')
     nnf_file_path = os.path.join(root_dir, "Final_NNF_ID.xlsx")
     if not os.path.exists(nnf_file_path):
         raise FileNotFoundError("NNF File not found. Please add the NNF file and try again.")
@@ -113,7 +113,7 @@ def main():
     modified_df = modify_file(df_db, df_nnf)
     write_notis_postgredb(modified_df, table_name=n_tbl_notis_trade_book, raw=False)
     write_notis_data(modified_df, modify_filepath)
-    write_notis_data(modified_df, rf'C:\Users\vipulanand\Documents\Anand Rathi Financial Services Ltd (Synced)\OneDrive - Anand Rathi Financial Services Ltd\notis_files\NOTIS_TRADE_DATA_{today.strftime("%d%b%Y").upper()}.xlsx')
+    write_notis_data(modified_df, rf'C:\Users\vipulanand\Documents\Anand Rathi Financial Services Ltd (Synced)\OneDrive - Anand Rathi Financial Services Ltd\notis_files\NOTIS_TRADE_DATA_{today.strftime("%d%b%Y").upper()}.csv')
     print('file saved in modified_data folder')
 
 

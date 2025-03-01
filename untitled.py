@@ -3,23 +3,30 @@ import pandas as pd
 import os
 from main import read_notis_file
 import time
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta, timezone, date
 from openpyxl import Workbook, load_workbook
 from openpyxl.utils.dataframe import dataframe_to_rows
 import progressbar
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
+from sqlalchemy.orm import Session, sessionmaker
 from urllib.parse import quote
 import pytz
-from common import get_date_from_non_jiffy, get_date_from_jiffy, read_data_db, read_notis_file, write_notis_data, today, yesterday, write_notis_postgredb, read_file
+import gzip
+import xlsxwriter
+from common import get_date_from_non_jiffy, get_date_from_jiffy, read_data_db, read_notis_file, write_notis_data, today, yesterday, write_notis_postgredb, read_file, engine_str
 import warnings
-from fastapi import FastAPI, Query, status
+from fastapi import FastAPI, Query, status, Depends
 from fastapi.encoders import jsonable_encoder
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 from db_config import n_tbl_notis_trade_book, s_tbl_notis_trade_book, n_tbl_notis_raw_data, s_tbl_notis_raw_data, n_tbl_notis_nnf_data, s_tbl_notis_nnf_data
 from main import modify_file
-
+import openpyxl
+import io
+import gzip
+import progressbar
+import csv
 
 # today = datetime(year=2025, month=1, day=24).date()
 # yesterday = datetime(year=2025, month=1, day=23).date()
@@ -46,7 +53,9 @@ bhav_path = os.path.join(root_dir, 'bhavcopy')
 test_dir = os.path.join(root_dir, 'testing')
 eod_net_pos_input_dir = os.path.join(root_dir, 'test_net_position_original')
 eod_net_pos_output_dir = os.path.join(root_dir, 'test_net_position_code')
-
+zipped_dir=os.path.join(root_dir, 'zipped_files')
+dir_list = [zipped_dir]
+status = [os.makedirs(_dir, exist_ok=True) for _dir in dir_list if not os.path.exists(_dir)]
 
 # # eod_df = read_notis_file(os.path.join(eod_input_dir, f'EOD Position_{yesterday.strftime("%d_%b_%Y")}_1.xlsx'))
 # eod_df = read_notis_file(os.path.join(eod_net_pos_input_dir, f'net_position_eod_{yesterday.strftime("%d_%m_%Y")}.xlsx')) # net_position_eod_23_01_2025.xlsx
@@ -354,73 +363,277 @@ d=0
 # except Exception as e:
 #     print(f'Error: {e}')
 e=0
-tablename = f'notis_raw_data_2025-02-17'
-df = read_data_db(for_table=tablename)
-list_str_int64 = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 16, 17, 18, 19, 21, 23, 27, 28]
-list_str_none = [15, 20, 25, 30, 31, 32, 33, 34, 35, 36, 37]
-list_none_str = [38]
-for i in list_str_int64:
-    column_name = f'Column{i}'
-    df[f'Column{i}'] = df[f'Column{i}'].astype('int64')
-for i in list_str_none:
-    df[f'Column{i}'] = None
-for i in list_none_str:
-    df[f'Column{i}'] = df[f'Column{i}'].astype('str')
-print('Starting file modification...')
-df.rename(columns={
-    'Column1': 'seqNo', 'Column2': 'mkt', 'Column3': 'trdNo',
-    'Column4': 'trdTm', 'Column5': 'Tkn', 'Column6': 'trdQty',
-    'Column7': 'trdPrc', 'Column8': 'bsFlg', 'Column9': 'ordNo',
-    'Column10': 'brnCd', 'Column11': 'usrId', 'Column12': 'proCli',
-    'Column13': 'cliActNo', 'Column14': 'cpCD', 'Column15': 'remarks',
-    'Column16': 'actTyp', 'Column17': 'TCd', 'Column18': 'ordTm',
-    'Column19': 'Booktype', 'Column20': 'oppTmCd', 'Column21': 'ctclid',
-    'Column22': 'status', 'Column23': 'TmCd', 'Column24': 'sym',
-    'Column25': 'ser', 'Column26': 'inst', 'Column27': 'expDt',
-    'Column28': 'strPrc', 'Column29': 'optType', 'Column30': 'sessionID',
-    'Column31': 'echoback', 'Column32': 'Fill1', 'Column33': 'Fill2',
-    'Column34': 'Fill3', 'Column35': 'Fill4', 'Column36': 'Fill5', 'Column37': 'Fill6'
-}, inplace=True)
-
-df['ordTm'] = df['ordTm'].apply(lambda x: get_date_from_non_jiffy(int(x)))
-
-df['expDt'] = df['expDt'].apply(lambda x: get_date_from_non_jiffy(int(x)))
-df.expDt = df.expDt.astype('datetime64[ns]').dt.date
-
-df['trdTm'] = df['trdTm'].apply(lambda x: get_date_from_jiffy(int(x)))
-# --------------------------------------------------------------------------------------------------------------------------------
-df['bsFlg'] = np.where(df['bsFlg'] == 1, 'B', 'S')
-e=0
-# def collected_ctcl(series):
-#     return list(series.unique())
-# user_choice = int(input('Enter how would you like to make net-pos,\n 1-ctclidwise\n 2-symbolwise\n 3-both'))
-# if user_choice == 1 or user_choice == 3:
-#     print('Calculating ctclid wise Net-position...')
-#     grouped_df = df.groupby(['ctclid','sym','expDt','strPrc','optType','bsFlg'], as_index=False).agg({'trdQty':'sum','trdPrc':'mean'})
-# else:
-#     print('calculating sym wise netposition')
-#     grouped_df = df.groupby(['sym', 'expDt', 'strPrc', 'optType', 'bsFlg'], as_index=False).agg({'trdQty': 'sum', 'trdPrc': 'mean','ctclid':collected_ctcl})
-f=0
-# pivot_df = grouped_df.pivot_table(
+# tablename = f'notis_raw_data_2025-02-17'
+# df = read_data_db(for_table=tablename)
+# list_str_int64 = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 16, 17, 18, 19, 21, 23, 27, 28]
+# list_str_none = [15, 20, 25, 30, 31, 32, 33, 34, 35, 36, 37]
+# list_none_str = [38]
+# for i in list_str_int64:
+#     column_name = f'Column{i}'
+#     df[f'Column{i}'] = df[f'Column{i}'].astype('int64')
+# for i in list_str_none:
+#     df[f'Column{i}'] = None
+# for i in list_none_str:
+#     df[f'Column{i}'] = df[f'Column{i}'].astype('str')
+# print('Starting file modification...')
+# df.rename(columns={
+#     'Column1': 'seqNo', 'Column2': 'mkt', 'Column3': 'trdNo',
+#     'Column4': 'trdTm', 'Column5': 'Tkn', 'Column6': 'trdQty',
+#     'Column7': 'trdPrc', 'Column8': 'bsFlg', 'Column9': 'ordNo',
+#     'Column10': 'brnCd', 'Column11': 'usrId', 'Column12': 'proCli',
+#     'Column13': 'cliActNo', 'Column14': 'cpCD', 'Column15': 'remarks',
+#     'Column16': 'actTyp', 'Column17': 'TCd', 'Column18': 'ordTm',
+#     'Column19': 'Booktype', 'Column20': 'oppTmCd', 'Column21': 'ctclid',
+#     'Column22': 'status', 'Column23': 'TmCd', 'Column24': 'sym',
+#     'Column25': 'ser', 'Column26': 'inst', 'Column27': 'expDt',
+#     'Column28': 'strPrc', 'Column29': 'optType', 'Column30': 'sessionID',
+#     'Column31': 'echoback', 'Column32': 'Fill1', 'Column33': 'Fill2',
+#     'Column34': 'Fill3', 'Column35': 'Fill4', 'Column36': 'Fill5', 'Column37': 'Fill6'
+# }, inplace=True)
+#
+# df['ordTm'] = df['ordTm'].apply(lambda x: get_date_from_non_jiffy(int(x)))
+#
+# df['expDt'] = df['expDt'].apply(lambda x: get_date_from_non_jiffy(int(x)))
+# df.expDt = df.expDt.astype('datetime64[ns]').dt.date
+#
+# df['trdTm'] = df['trdTm'].apply(lambda x: get_date_from_jiffy(int(x)))
+# # --------------------------------------------------------------------------------------------------------------------------------
+# df['bsFlg'] = np.where(df['bsFlg'] == 1, 'B', 'S')
+# e=0
+# # def collected_ctcl(series):
+# #     return list(series.unique())
+# # user_choice = int(input('Enter how would you like to make net-pos,\n 1-ctclidwise\n 2-symbolwise\n 3-both'))
+# # if user_choice == 1 or user_choice == 3:
+# #     print('Calculating ctclid wise Net-position...')
+# #     grouped_df = df.groupby(['ctclid','sym','expDt','strPrc','optType','bsFlg'], as_index=False).agg({'trdQty':'sum','trdPrc':'mean'})
+# # else:
+# #     print('calculating sym wise netposition')
+# #     grouped_df = df.groupby(['sym', 'expDt', 'strPrc', 'optType', 'bsFlg'], as_index=False).agg({'trdQty': 'sum', 'trdPrc': 'mean','ctclid':collected_ctcl})
+# f=0
+# # pivot_df = grouped_df.pivot_table(
+# #     index=['ctclid', 'sym', 'expDt', 'strPrc', 'optType'],
+# #     columns='bsFlg',
+# #     values=['trdQty', 'trdPrc'],
+# #     aggfunc='sum',
+# #     fill_value=0
+# # )
+#
+# pivot_df = df.pivot_table(
 #     index=['ctclid', 'sym', 'expDt', 'strPrc', 'optType'],
 #     columns='bsFlg',
 #     values=['trdQty', 'trdPrc'],
-#     aggfunc='sum',
+#     aggfunc={'trdQty': 'sum', 'trdPrc': 'mean'},
 #     fill_value=0
 # )
-
-pivot_df = df.pivot_table(
-    index=['ctclid', 'sym', 'expDt', 'strPrc', 'optType'],
-    columns='bsFlg',
-    values=['trdQty', 'trdPrc'],
-    aggfunc={'trdQty': 'sum', 'trdPrc': 'mean'},
-    fill_value=0
-)
-
+#
+# # pivot_df.columns = ['BuyPrc', 'SellPrc','BuyVol', 'SellVol']
+# # pivot_df = pivot_df.reset_index()
+# # pivot_df = pivot_df[['ctclid', 'sym', 'expDt', 'strPrc', 'optType', 'BuyVol', 'BuyPrc', 'SellVol', 'SellPrc']]
 # pivot_df.columns = ['BuyPrc', 'SellPrc','BuyVol', 'SellVol']
 # pivot_df = pivot_df.reset_index()
 # pivot_df = pivot_df[['ctclid', 'sym', 'expDt', 'strPrc', 'optType', 'BuyVol', 'BuyPrc', 'SellVol', 'SellPrc']]
-pivot_df.columns = ['BuyPrc', 'SellPrc','BuyVol', 'SellVol']
-pivot_df = pivot_df.reset_index()
-pivot_df = pivot_df[['ctclid', 'sym', 'expDt', 'strPrc', 'optType', 'BuyVol', 'BuyPrc', 'SellVol', 'SellPrc']]
 f=0
+# engine = create_engine(engine_str)
+# sessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+# today=datetime.now().date()
+# def get_db():
+#     db = sessionLocal()
+#     try:
+#         yield db
+#     finally:
+#         db.close()
+# def test_page_download_trade_data(for_date: date,db:Session=Depends(get_db)):
+#     for_dt = pd.to_datetime(for_date).date()
+#     tablename = f'NOTIS_TRADE_BOOK' if for_dt == today else f'NOTIS_TRADE_BOOK_{for_dt}'
+#     zip_path = os.path.join(zipped_dir,f'zippped_{tablename}.xlsx.gz')
+#     if not os.path.exists(zip_path):
+#         query=text(rf'select * from "{tablename}"')
+#         result = db.execute(query).fetchall()
+#         with gzip.open(zip_path, 'wb') as f:
+#             workbook=xlsxwriter.Workbook(f,{'in_memory':True})
+#             worksheet=workbook.add_worksheet()
+#             headers = result.keys()
+#             for col, header in enumerate(headers):
+#                 worksheet.write(0, col, header)
+#             for row_num, row in enumerate(result, start=1):
+#                 for col_num, cell in enumerate(row):
+#                     worksheet.write(row_num, col_num, cell)
+#             workbook.close()
+#         # return FileResponse(zip_path, media_type='application/gzip')
+#         return pd.read_excel(zip_path)
+#     else:
+#         return pd.read_excel(zip_path)
+q=0
+# def test_xlsx_gz(for_date:date):
+#     for_dt = pd.to_datetime(for_date).date()
+#     tablename = f'NOTIS_TRADE_BOOK' if for_dt == today else f'NOTIS_TRADE_BOOK_{for_dt}'
+#     zip_path = os.path.join(zipped_dir, f'zippped_{tablename}.xlsx.gz')
+#     if not os.path.exists(zip_path):
+#         query = text(rf'select * from "{tablename}"')
+#         with engine.connect() as conn:
+#             result = conn.execute(query)
+#         total_rows = len(result.fetchall())
+#         # # wb=openpyxl.Workbook()
+#         # # ws=wb.active
+#         # # headers = result.keys()
+#         # # ws.append(headers)
+#         # # for row in result:
+#         # #     ws.append(row)
+#         # # buffer = io.BytesIO()
+#         # # wb.save(buffer)
+#         # # buffer.seek(0)
+#         # # with gzip.open(zip_path, 'wb', encoding='utf-8') as f:
+#         # #     f.write(buffer.getvalue())
+#         # with gzip.open(zip_path, 'wb') as f:
+#         #     workbook=xlsxwriter.Workbook(f,{'in_memory':True})
+#         #     worksheet=workbook.add_worksheet()
+#         #     headers = result.keys()
+#         #     for col, header in enumerate(headers):
+#         #         worksheet.write(0, col, header)
+#         #     for row_num, row in enumerate(result, start=1):
+#         #         for col_num, cell in enumerate(row):
+#         #             worksheet.write(row_num, col_num, cell)
+#         #     workbook.close()
+#         pbar=progressbar.ProgressBar(max_value=total_rows,widgets=[progressbar.Percentage(),' ',progressbar.Bar(marker='=',left='[',right=']'),progressbar.ETA()])
+#         buffer = io.BytesIO()
+#         wb = xlsxwriter.Workbook(buffer,{'in_memory':True})
+#         ws = wb.add_worksheet()
+#         # pbar.update(0)
+#         header = result.keys()
+#         for col, header_value in enumerate(header):
+#             ws.write(0, col, header_value)
+#         pbar.update(0)
+#         for row_num, row in enumerate(result, start=1):
+#             for col_num, cell in enumerate(row):
+#                 ws.write(row_num, col_num, cell)
+#             pbar.update(row_num+1)
+#         wb.close()
+#         pbar.finish()
+#         buffer.seek(0)
+#         with gzip.open(zip_path, 'wb') as f:
+#             f.write(buffer.getvalue())
+#         return 'Done'
+#     else:
+#         return True
+q=0
+# def test_xlsx_gz_2(for_date:date):
+#     for_dt = pd.to_datetime(for_date).date()
+#     tablename = f'NOTIS_TRADE_BOOK' if for_dt == today else f'NOTIS_TRADE_BOOK_{for_dt}'
+#     zip_path = os.path.join(zipped_dir, f'zippped_{tablename}.xlsx.gz')
+#     xl_path = os.path.join(zipped_dir, f'xl_{tablename}.xlsx')
+#     if not os.path.exists(zip_path):
+#         query = text(rf'select * from "{tablename}"')
+#         buffer=io.BytesIO()
+#         wb=xlsxwriter.Workbook(buffer,{'in_memory':True})
+#         ws=wb.add_worksheet()
+#         with engine.connect() as conn:
+#             result = conn.execute(query)
+#             total_rows = result.rowcount
+#             pbar = progressbar.ProgressBar(max_value=total_rows+1, widgets=[progressbar.Percentage(),' ',progressbar.Bar(marker='=',left='[',right=']'),progressbar.ETA()])
+#             header = result.keys()
+#             for col, row_value in enumerate(header):
+#                 ws.write(0,col, row_value)
+#             pbar.update(1)
+#             for row_num, row in enumerate(result, start=1):
+#                 for col_num, cell in enumerate(row):
+#                     ws.write(row_num, col_num, cell)
+#                 pbar.update(row_num+1)
+#             pbar.finish()
+#         wb.close()
+#         buffer.seek(0)
+#         print('zipping file . . .')
+#         with gzip.open(zip_path, 'wb') as f:
+#             f.write(buffer.getvalue())
+#         with open(xl_path, 'wb') as f:
+#             f.write(buffer.getvalue())
+#         df = pd.read_sql_table(tablename, con=engine)
+#         print(f"Data fetched from {tablename} table. Shape:{df.shape}")
+#         print('done')
+#     else:
+#         return True
+y=0
+# def test_xlsx_gz_3(for_date:date):
+#     for_dt = pd.to_datetime(for_date).date()
+#     tablename = f'NOTIS_TRADE_BOOK' if for_dt == today else f'NOTIS_TRADE_BOOK_{for_dt}'
+#     zip_path = os.path.join(zipped_dir, f'zippped_{tablename}.csv.gz')
+#     csv_path = os.path.join(zipped_dir, f'zippped_{tablename}.csv')
+#     # if not os.path.exists(zip_path):
+#     query = text(rf'select * from "{tablename}"')
+#     with engine.connect() as conn:
+#         result = conn.execute(query)
+#         total_rows = result.rowcount
+#         pbar = progressbar.ProgressBar(max_value=total_rows+1,widgets=[progressbar.Percentage(),' ',progressbar.Bar(marker='=', left='[', right=']'), progressbar.ETA()])
+#         buffer=io.BytesIO()
+#         with gzip.GzipFile(fileobj=buffer, mode='wb') as gz:
+#             writer = csv.writer(io.TextIOWrapper(gz, encoding='utf-8', newline=''))
+#             header = result.keys()
+#             writer.writerow(header)
+#             pbar.update(1)
+#             for row_num, row in enumerate(result, start=1):
+#                 writer.writerow(row)
+#                 pbar.update(row_num+1)
+#             pbar.finish()
+#     with open(zip_path, 'wb') as f:
+#         f.write(buffer.getvalue())
+#     print('done')
+
+# def test_csv(for_date:date):
+#     for_dt = pd.to_datetime(for_date).date()
+#     tablename = f'NOTIS_TRADE_BOOK' if for_dt == today else f'NOTIS_TRADE_BOOK_{for_dt}'
+#     csv_path = os.path.join(zipped_dir, f'zippped_{tablename}.csv')
+#     query = text(rf'select * from "{tablename}"')
+#     with engine.connect() as conn:
+#         result = conn.execute(query)
+#         total_rows = result.rowcount
+#         pbar = progressbar.ProgressBar(max_value=total_rows+1,widgets=[progressbar.Percentage(),' ',progressbar.Bar(marker='=', left='[', right=']'), progressbar.ETA()])
+#         with open(csv_path, mode='w', encoding='utf-8', newline='') as csvfile:
+#             writer = csv.writer(csvfile)
+#             header = result.keys()
+#             writer.writerow(header)
+#             pbar.update(1)
+#             for row_num, row in enumerate(result, start=1):
+#                 writer.writerow(row)
+#                 pbar.update(row_num + 1)
+#             pbar.finish()
+#     print('done')
+t=0
+# def test_modif(for_date:date):
+#     for_dt = pd.to_datetime(for_date).date()
+#     tablename = f'NOTIS_TRADE_BOOK' if for_dt == today else f'NOTIS_TRADE_BOOK_{for_dt}'
+#     zip_path = os.path.join(zipped_dir, f'zippped_{tablename}.csv.gz')
+#     csv_path = os.path.join(zipped_dir, f'csv_{tablename}.csv')
+#     query = text(rf'select * from "{tablename}"')
+#     with engine.connect() as conn:
+#         result = conn.execute(query)
+#         total_rows = result.rowcount
+#         pbar = progressbar.ProgressBar(max_value=total_rows + 1, widgets=[progressbar.Percentage(), ' ',
+#                                                                           progressbar.Bar(marker='=', left='[',
+#                                                                                           right=']'),
+#                                                                           progressbar.ETA()])
+#         buffer = io.StringIO()
+#         writer = csv.writer(buffer)
+#         header = result.keys()
+#         writer.writerow(header)
+#         pbar.update(1)
+#         for row_num, row in enumerate(result, start=1):
+#             writer.writerow(row)
+#             pbar.update(row_num + 1)
+#         pbar.finish()
+#
+#     with open(csv_path, mode='w', encoding='utf-8', newline='') as csvfile:
+#         csvfile.write(buffer.getvalue())
+#
+#     with gzip.open(zip_path, mode='wt', encoding='utf-8', newline='') as zipfile:
+#         zipfile.write(buffer.getvalue())
+o=0
+# oi=pd.to_datetime('20250220').date()
+# a = test_modif(oi)
+r=0
+for_tab = ['NOTIS_TRADE_BOOK','NOTIS_DESK_WISE_NET_POSITION', 'NOTIS_NNF_WISE_NET_POSITION', 'NOTIS_USERID_WISE_NET_POSITION']
+tod = datetime(year=2025,month=2,day=28).date()
+for each in for_tab:
+    df = read_data_db(for_table=f"{each}_{tod.strftime('%Y-%m-%d')}")
+    print(f"data read from {each}_{tod.strftime('%Y-%m-%d')}")
+    write_notis_data(df=df, filepath=os.path.join(test_dir,f"{each}_{tod.strftime('%Y-%m-%d')}.csv"))
+    print(f"data written to {each}_{tod.strftime('%Y-%m-%d')}.csv")
+u=0

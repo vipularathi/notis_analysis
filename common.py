@@ -172,25 +172,60 @@ def write_notis_postgredb(df, table_name, raw=False):
     end_time = time.time()
     print(f'Total time taken: {end_time - start_time} seconds')
 
+# def write_notis_data(df, filepath):
+#     print('Writing Notis file to excel...')
+#     wb = Workbook()
+#     ws = wb.active
+#     ws.title = 'Sheet1'
+#     rows = list(dataframe_to_rows(df, index=False, header=True))
+#     total_rows = len(rows)
+#     pbar = progressbar.ProgressBar(max_value=total_rows, widgets=[progressbar.Percentage(), ' ',
+#                                                            progressbar.Bar(marker='=', left='[', right=']'),
+#                                                            progressbar.ETA()])
+#     for i, row in enumerate(rows, start=1):
+#         ws.append(row)
+#         pbar.update(i)
+#     pbar.finish()
+#     # df.to_excel(os.path.join(modified_dir, file_name))
+#     print('Saving the file...')
+#     # wb.save(filepath)
+#     wb.save(filepath)
+#     print('New Notis excel file created')
+
 def write_notis_data(df, filepath):
-    print('Writing Notis file to excel...')
-    wb = Workbook()
-    ws = wb.active
-    ws.title = 'Sheet1'
-    rows = list(dataframe_to_rows(df, index=False, header=True))
-    total_rows = len(rows)
-    pbar = progressbar.ProgressBar(max_value=total_rows, widgets=[progressbar.Percentage(), ' ',
-                                                           progressbar.Bar(marker='=', left='[', right=']'),
-                                                           progressbar.ETA()])
-    for i, row in enumerate(rows, start=1):
-        ws.append(row)
-        pbar.update(i)
-    pbar.finish()
-    # df.to_excel(os.path.join(modified_dir, file_name))
-    print('Saving the file...')
-    # wb.save(filepath)
-    wb.save(filepath)
-    print('New Notis excel file created')
+    file_extention = os.path.splitext(filepath)[-1].lower()
+    if file_extention == '.xlsx':
+        print('Writing Notis file to excel...')
+        wb = Workbook()
+        ws = wb.active
+        ws.title = 'Sheet1'
+        rows = list(dataframe_to_rows(df, index=False, header=True))
+        total_rows = len(rows)
+        pbar = progressbar.ProgressBar(max_value=total_rows, widgets=[progressbar.Percentage(), ' ',
+                                                                      progressbar.Bar(marker='=', left='[', right=']'),
+                                                                      progressbar.ETA()])
+        for i, row in enumerate(rows, start=1):
+            ws.append(row)
+            pbar.update(i)
+        pbar.finish()
+        # df.to_excel(os.path.join(modified_dir, file_name))
+        print('Saving the file...')
+        # wb.save(filepath)
+        wb.save(filepath)
+    elif file_extention == '.csv':
+        print('Writing Notis file to CSV...')
+        # df.to_csv(filepath, index=False)
+        total_rows = len(df)
+        pbar = progressbar.ProgressBar(max_value=total_rows,widgets=[progressbar.Percentage(),' ',progressbar.Bar(marker='=',left='[',right=']'),progressbar.ETA()])
+        pbar.update(0)
+        with open(filepath,mode='w',encoding='utf-8',newline='') as f:
+            writer = csv.writer(f)
+            writer.writerow(df.columns)
+            for row_num, row in enumerate(df.itertuples(index=False, name=None), start=1):
+                writer.writerow(row)
+                pbar.update(row_num)
+        pbar.finish()
+        print('Saving the file...')
 
 def get_date_from_jiffy(dt_val):
     """
