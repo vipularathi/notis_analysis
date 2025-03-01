@@ -13,16 +13,26 @@ import psycopg2
 import time
 import warnings
 import csv
+import paramiko
 from db_config import engine_str, n_tbl_notis_trade_book, s_tbl_notis_trade_book, n_tbl_notis_raw_data, s_tbl_notis_raw_data, n_tbl_notis_nnf_data, s_tbl_notis_nnf_data
 
 holidays_25 = ['2025-02-26', '2025-03-14', '2025-03-31', '2025-04-10', '2025-04-14', '2025-04-18', '2025-05-01', '2025-08-15', '2025-08-27', '2025-10-02', '2025-10-21', '2025-10-22', '2025-11-05', '2025-12-25']
 # holidays_25.append('2024-03-20') #add unusual holidays
 today = datetime.now().date()
-# today = datetime(year=2025, month=2, day=5).date()
+# today = datetime(year=2025, month=2, day=18).date()
 # yesterday = today-timedelta(days=1)
 b_days = pd.bdate_range(start=today-timedelta(days=7), end=today, freq='C', weekmask='1111100', holidays=holidays_25).date.tolist()
 # b_days = b_days.append(pd.DatetimeIndex([pd.Timestamp(year=2024, month=1, day=20)])) #add unusual trading days
 today, yesterday = sorted(b_days)[-1], sorted(b_days)[-2]
+
+root_dir = os.path.dirname(os.path.abspath(__file__))
+bhav_dir = os.path.join(root_dir, 'bhavcopy')
+modified_dir = os.path.join(root_dir, 'modified_data')
+table_dir = os.path.join(root_dir, 'table_data')
+eod_dir = os.path.join(root_dir, 'eod_data')
+dir_list = [bhav_dir, modified_dir, table_dir, eod_dir]
+status = [os.makedirs(_dir, exist_ok=True) for _dir in dir_list if not os.path.exists(_dir)]
+
 def read_data_db(nnf=False, for_table='ENetMIS'):
     if not nnf and for_table == 'ENetMIS':
         # Sql connection parameters
@@ -162,25 +172,60 @@ def write_notis_postgredb(df, table_name, raw=False):
     end_time = time.time()
     print(f'Total time taken: {end_time - start_time} seconds')
 
+# def write_notis_data(df, filepath):
+#     print('Writing Notis file to excel...')
+#     wb = Workbook()
+#     ws = wb.active
+#     ws.title = 'Sheet1'
+#     rows = list(dataframe_to_rows(df, index=False, header=True))
+#     total_rows = len(rows)
+#     pbar = progressbar.ProgressBar(max_value=total_rows, widgets=[progressbar.Percentage(), ' ',
+#                                                            progressbar.Bar(marker='=', left='[', right=']'),
+#                                                            progressbar.ETA()])
+#     for i, row in enumerate(rows, start=1):
+#         ws.append(row)
+#         pbar.update(i)
+#     pbar.finish()
+#     # df.to_excel(os.path.join(modified_dir, file_name))
+#     print('Saving the file...')
+#     # wb.save(filepath)
+#     wb.save(filepath)
+#     print('New Notis excel file created')
+
 def write_notis_data(df, filepath):
-    print('Writing Notis file to excel...')
-    wb = Workbook()
-    ws = wb.active
-    ws.title = 'Sheet1'
-    rows = list(dataframe_to_rows(df, index=False, header=True))
-    total_rows = len(rows)
-    pbar = progressbar.ProgressBar(max_value=total_rows, widgets=[progressbar.Percentage(), ' ',
-                                                           progressbar.Bar(marker='=', left='[', right=']'),
-                                                           progressbar.ETA()])
-    for i, row in enumerate(rows, start=1):
-        ws.append(row)
-        pbar.update(i)
-    pbar.finish()
-    # df.to_excel(os.path.join(modified_dir, file_name))
-    print('Saving the file...')
-    # wb.save(filepath)
-    wb.save(filepath)
-    print('New Notis excel file created')
+    file_extention = os.path.splitext(filepath)[-1].lower()
+    if file_extention == '.xlsx':
+        print('Writing Notis file to excel...')
+        wb = Workbook()
+        ws = wb.active
+        ws.title = 'Sheet1'
+        rows = list(dataframe_to_rows(df, index=False, header=True))
+        total_rows = len(rows)
+        pbar = progressbar.ProgressBar(max_value=total_rows, widgets=[progressbar.Percentage(), ' ',
+                                                                      progressbar.Bar(marker='=', left='[', right=']'),
+                                                                      progressbar.ETA()])
+        for i, row in enumerate(rows, start=1):
+            ws.append(row)
+            pbar.update(i)
+        pbar.finish()
+        # df.to_excel(os.path.join(modified_dir, file_name))
+        print('Saving the file...')
+        # wb.save(filepath)
+        wb.save(filepath)
+    elif file_extention == '.csv':
+        print('Writing Notis file to CSV...')
+        # df.to_csv(filepath, index=False)
+        total_rows = len(df)
+        pbar = progressbar.ProgressBar(max_value=total_rows,widgets=[progressbar.Percentage(),' ',progressbar.Bar(marker='=',left='[',right=']'),progressbar.ETA()])
+        pbar.update(0)
+        with open(filepath,mode='w',encoding='utf-8',newline='') as f:
+            writer = csv.writer(f)
+            writer.writerow(df.columns)
+            for row_num, row in enumerate(df.itertuples(index=False, name=None), start=1):
+                writer.writerow(row)
+                pbar.update(row_num)
+        pbar.finish()
+        print('Saving the file...')
 
 def get_date_from_jiffy(dt_val):
     """
@@ -203,8 +248,27 @@ def get_date_from_non_jiffy(dt_val):
     """
     # Assuming dt_val is seconds since Jan 1, 1980
     base_date = datetime(1980, 1, 1, tzinfo=timezone.utc)
+    if (type(dt_val) == str):
+        dt_val = int(dt_val)
     # date_time = int(base_date.timestamp() + dt_val)
     date_time = base_date.timestamp() + dt_val
     new_date = datetime.fromtimestamp(date_time, timezone.utc)
     formatted_date = new_date.astimezone(timezone(timedelta(hours=5, minutes=30))).strftime("%Y-%m-%d %I:%M:%S")
     return formatted_date
+
+def download_bhavcopy():
+    host = '192.168.112.81'
+    username = 'greek'
+    password = 'greeksoft'
+    filename = f"regularBhavcopy_{yesterday.strftime('%d%m%Y')}.csv"  # sample=regularBhavcopy_13022025
+    remote_path = rf'/home/greek/NSE_BSE_Broadcast/NSE/Bhavcopy/Files/{filename}'
+    local_path = os.path.join(bhav_dir, filename)
+    try:
+        transport = paramiko.Transport((host, 22))
+        transport.connect(username=username, password=password)
+        sftp = paramiko.SFTPClient.from_transport(transport)
+        sftp.get(remote_path, local_path)
+        sftp.close()
+        transport.close()
+    except Exception as e:
+        print(f'Error: {e}')

@@ -13,7 +13,7 @@ import psycopg2
 import time
 import warnings
 from db_config import engine_str, n_tbl_notis_trade_book, s_tbl_notis_trade_book, n_tbl_notis_raw_data, s_tbl_notis_raw_data, n_tbl_notis_nnf_data, s_tbl_notis_nnf_data
-from common import read_data_db, read_notis_file, write_notis_data, write_notis_postgredb, get_date_from_non_jiffy, get_date_from_jiffy, today, yesterday
+from common import read_data_db, read_notis_file, write_notis_data, write_notis_postgredb, get_date_from_non_jiffy, get_date_from_jiffy, today, yesterday, root_dir, bhav_dir, modified_dir, table_dir, eod_dir
 
 warnings.filterwarnings('ignore', message="pandas only supports SQLAlchemy connectable.*")
 
@@ -83,17 +83,17 @@ def modify_file(df, df_nnf):
 def download_tables():
     table_list = ['NOTIS_DESK_WISE_NET_POSITION', 'NOTIS_NNF_WISE_NET_POSITION', 'NOTIS_USERID_WISE_NET_POSITION']
     # today = datetime(year=2025, month=1, day=10).date().strftime('%Y_%m_%d').upper()
-    today = datetime.now().date().strftime('%Y_%m_%d').upper()
     for table in table_list:
         df = read_data_db(for_table=table)
-        df.to_excel(os.path.join(table_dir, f'{table}_{today}.xlsx'), index=False)
-        print(f"{table} data fetched and written at path: {os.path.join(table_dir, f'{table}_{today}.xlsx')}")
+        df.to_csv(os.path.join(table_dir, f"{table}_{today.strftime('%Y_%m_%d').upper()}.csv"), index=False)
+        print(f"{table} data fetched and written at path: {os.path.join(table_dir, f'{table}_{today}.csv')}")
 def main():
     # today = datetime.now().date().strftime("%d%b%Y").upper()
     # today = datetime(year=2024, month=12, day=24).date().strftime("%d%b%Y").upper()
     df_db = read_data_db()
+    # df_db = read_data_db(for_table='notis_raw_data_2025-02-18')
     write_notis_postgredb(df_db, table_name=n_tbl_notis_raw_data, raw=True)
-    modify_filepath = os.path.join(modified_dir, f'NOTIS_DATA_{today.strftime("%d%b%Y").upper()}.xlsx')
+    modify_filepath = os.path.join(modified_dir, f'NOTIS_TRADE_DATA_{today.strftime("%d%b%Y").upper()}.csv')
     nnf_file_path = os.path.join(root_dir, "Final_NNF_ID.xlsx")
     if not os.path.exists(nnf_file_path):
         raise FileNotFoundError("NNF File not found. Please add the NNF file and try again.")
@@ -113,25 +113,19 @@ def main():
     modified_df = modify_file(df_db, df_nnf)
     write_notis_postgredb(modified_df, table_name=n_tbl_notis_trade_book, raw=False)
     write_notis_data(modified_df, modify_filepath)
-    write_notis_data(modified_df, rf'C:\Users\vipulanand\Documents\Anand Rathi Financial Services Ltd (Synced)\OneDrive - Anand Rathi Financial Services Ltd\notis_files\NOTIS_DATA_{today.strftime("%d%b%Y").upper()}.xlsx')
+    write_notis_data(modified_df, rf'C:\Users\vipulanand\Documents\Anand Rathi Financial Services Ltd (Synced)\OneDrive - Anand Rathi Financial Services Ltd\notis_files\NOTIS_TRADE_DATA_{today.strftime("%d%b%Y").upper()}.csv')
     print('file saved in modified_data folder')
 
 
 if __name__ == '__main__':
     stt = time.time()
-    root_dir = os.path.dirname(os.path.abspath(__file__))
-    bhav_dir = os.path.join(root_dir, 'bhavcopy')
-    modified_dir = os.path.join(root_dir, 'modified_data')
-    table_dir = os.path.join(root_dir, 'table_data')
-    eod_dir = os.path.join(root_dir, 'eod_data')
-    dir_list = [bhav_dir, modified_dir, table_dir, eod_dir]
-    status = [os.makedirs(_dir, exist_ok=True) for _dir in dir_list if not os.path.exists(_dir)]
+
     main()
     ett = time.time()
     print(f'total time taken for modifying, adding data in db and writing in local directory - {ett - stt} seconds')
-    pbar = progressbar.ProgressBar(max_value=600, widgets=[progressbar.Percentage(), ' ', progressbar.Bar(marker='=', left='[', right=']'), progressbar.ETA()])
+    pbar = progressbar.ProgressBar(max_value=100, widgets=[progressbar.Percentage(), ' ', progressbar.Bar(marker='=', left='[', right=']'), progressbar.ETA()])
     pbar.update(1)
-    for i in range(600):
+    for i in range(100):
         time.sleep(1)
         pbar.update(i + 1)
     pbar.finish()

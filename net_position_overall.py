@@ -10,10 +10,12 @@ import progressbar
 from sqlalchemy import create_engine
 from common import get_date_from_non_jiffy, read_data_db, read_notis_file, write_notis_data, today, yesterday, write_notis_postgredb, read_file
 import warnings
+import re
 
-today = datetime(year=2025, month=2, day=10).date()
-yesterday = datetime(year=2025, month=2, day=7).date()
-# dd = datetime(year=2025, month=2, day=2).date()
+
+today = datetime(year=2025, month=2, day=13).date()
+yesterday = datetime(year=2025, month=2, day=12).date()
+# dd = datetime(year=2025, month=1, day=22).date()
 pd.set_option('display.max_columns', None)
 warnings.filterwarnings('ignore')
 # holidays_25 = ['2025-02-26', '2025-03-14', '2025-03-31', '2025-04-10', '2025-04-14', '2025-04-18', '2025-05-01', '2025-08-15', '2025-08-27', '2025-10-02', '2025-10-21', '2025-10-22', '2025-11-05', '2025-12-25']
@@ -119,35 +121,38 @@ merged_df.drop(columns = ['symbol', 'expiryDate', 'strikePrice', 'optionType'], 
 a=0
 
 # --------------------------------------------------------------------------------
-# # Orig
-# # if not os.path.exists(os.path.join(bhav_path, rf'regularBhavcopy_{dd.strftime("%d%m%Y")}.xlsx')):
-# #     raise FileNotFoundError(f'Bhav copy for date:{today} is missing.')
-# bhav_df = read_file(os.path.join(bhav_path, rf'regularBhavcopy_{today.strftime("%d%m%Y")}.xlsx')) # regularBhavcopy_14012025.xlsx
-# bhav_df.columns = bhav_df.columns.str.replace(' ', '')
-# bhav_df.columns = bhav_df.columns.str.capitalize()
-# bhav_df = bhav_df.add_prefix('Bhav')
-# bhav_df.BhavExpiry = bhav_df.BhavExpiry.apply(lambda x: pd.to_datetime(get_date_from_non_jiffy(x))).dt.strftime('%Y-%m-%d')
-# bhav_df.BhavExpiry = bhav_df.BhavExpiry.apply(lambda x: pd.to_datetime(x).date())
-# bhav_df.loc[bhav_df['BhavOptiontype'] == 'XX', 'BhavStrikeprice'] = 0
-# bhav_df = bhav_df.applymap(lambda x: x.strip() if isinstance(x, str) else x)
-# bhav_df.BhavStrikeprice = bhav_df.BhavStrikeprice.apply(lambda x: x/100 if x>0 else x)
-# bhav_df.BhavStrikeprice = bhav_df.BhavStrikeprice.astype('int64')
-# col_keep = ['BhavSymbol', 'BhavExpiry', 'BhavStrikeprice', 'BhavOptiontype','BhavClosingprice']
-# bhav_df = bhav_df[col_keep]
-# bhav_df = bhav_df.drop_duplicates()
-# --------------------------------------------------------------------------------
-# For contract master bhavcopy_fo ONLY FOR 10FEB2025
-bhav_df = read_file(rf"D:\notis_analysis\testing\regularBhavcopy_10022025.xlsx")
-bhav_df.columns = bhav_df.columns.str.replace(' ','').str.capitalize()
+# Orig
+# if not os.path.exists(os.path.join(bhav_path, rf'regularBhavcopy_{dd.strftime("%d%m%Y")}.xlsx')):
+#     raise FileNotFoundError(f'Bhav copy for date:{today} is missing.')
+bhav_pattern = rf'regularBhavcopy_{today.strftime("%d%m%Y")}.(xlsx|csv)'
+bhav_matched_files = [f for f in os.listdir(bhav_path) if re.match(bhav_pattern, f)]
+bhav_df = read_file(os.path.join(bhav_path, bhav_matched_files[0])) # regularBhavcopy_14012025.xlsx
+bhav_df.columns = bhav_df.columns.str.replace(' ', '')
+bhav_df.rename(columns={'VWAPclose':'closingPrice'}, inplace=True)
+bhav_df.columns = bhav_df.columns.str.capitalize()
 bhav_df = bhav_df.add_prefix('Bhav')
+bhav_df.BhavExpiry = bhav_df.BhavExpiry.apply(lambda x: pd.to_datetime(get_date_from_non_jiffy(x))).dt.strftime('%Y-%m-%d')
+bhav_df.BhavExpiry = bhav_df.BhavExpiry.apply(lambda x: pd.to_datetime(x).date())
+bhav_df.loc[bhav_df['BhavOptiontype'] == 'XX', 'BhavStrikeprice'] = 0
+bhav_df = bhav_df.applymap(lambda x: x.strip() if isinstance(x, str) else x)
+bhav_df.BhavStrikeprice = bhav_df.BhavStrikeprice.astype('int64')
+bhav_df.BhavStrikeprice = bhav_df.BhavStrikeprice.apply(lambda x: x/100 if x>0 else x)
 col_keep = ['BhavSymbol', 'BhavExpiry', 'BhavStrikeprice', 'BhavOptiontype','BhavClosingprice']
 bhav_df = bhav_df[col_keep]
-bhav_df = bhav_df.applymap(lambda x: x.strip() if isinstance(x, str) else x)
-bhav_df.BhavExpiry = pd.to_datetime(bhav_df.BhavExpiry).dt.date
-bhav_df.BhavOptiontype = bhav_df.BhavOptiontype.replace('NULL','XX')
-bhav_df.loc[bhav_df['BhavOptiontype'] == 'XX', 'BhavStrikeprice'] = 0
-bhav_df.BhavClosingprice = bhav_df.BhavClosingprice.apply(lambda x: x*100 if x>0 else x)
 bhav_df = bhav_df.drop_duplicates()
+# --------------------------------------------------------------------------------
+# # For contract master bhavcopy_fo ONLY FOR 10FEB2025
+# bhav_df = read_file(rf"D:\notis_analysis\testing\regularBhavcopy_10022025.xlsx")
+# bhav_df.columns = bhav_df.columns.str.replace(' ','').str.capitalize()
+# bhav_df = bhav_df.add_prefix('Bhav')
+# col_keep = ['BhavSymbol', 'BhavExpiry', 'BhavStrikeprice', 'BhavOptiontype','BhavClosingprice']
+# bhav_df = bhav_df[col_keep]
+# bhav_df = bhav_df.applymap(lambda x: x.strip() if isinstance(x, str) else x)
+# bhav_df.BhavExpiry = pd.to_datetime(bhav_df.BhavExpiry).dt.date
+# bhav_df.BhavOptiontype = bhav_df.BhavOptiontype.replace('NULL','XX')
+# bhav_df.loc[bhav_df['BhavOptiontype'] == 'XX', 'BhavStrikeprice'] = 0
+# bhav_df.BhavClosingprice = bhav_df.BhavClosingprice.apply(lambda x: x*100 if x>0 else x)
+# bhav_df = bhav_df.drop_duplicates()
 
 b=0
 merged_bhav_df = merged_df.merge(bhav_df, left_on=["EodUnderlying", "EodExpiry", "EodStrike", "EodOptionType"], right_on=['BhavSymbol', 'BhavExpiry', 'BhavStrikeprice', 'BhavOptiontype'], how='left')
@@ -161,5 +166,5 @@ filtered_merged.rename(columns = {'BhavClosingprice':'FinalSettlementPrice'}, in
 # col_keep = ['Underlying', 'Expiry', 'Strike', 'OptionType','FinalNetQty','IntradayNetAvgPrice', 'BhavClosingprice']
 # filtered_merged = filtered_merged[col_keep]
 d=0
-write_notis_data(filtered_merged, os.path.join(eod_net_pos_output_dir, f'final_overall_net_pos_{today.strftime("%d_%m_%Y")}_1.xlsx'))
+write_notis_data(filtered_merged, os.path.join(eod_net_pos_output_dir, f'final_overall_net_pos_{today.strftime("%d_%m_%Y")}.xlsx'))
 e=0
