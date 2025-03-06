@@ -13,10 +13,10 @@ import psycopg2
 import time
 import warnings
 from db_config import engine_str, n_tbl_notis_trade_book, s_tbl_notis_trade_book, n_tbl_notis_raw_data, s_tbl_notis_raw_data, n_tbl_notis_nnf_data, s_tbl_notis_nnf_data
-from common import read_data_db, read_notis_file, write_notis_data, write_notis_postgredb, get_date_from_non_jiffy, get_date_from_jiffy, today, yesterday, root_dir, bhav_dir, modified_dir, table_dir, eod_dir
+from common import read_data_db, read_notis_file, write_notis_data, write_notis_postgredb, get_date_from_non_jiffy, get_date_from_jiffy, today, yesterday, root_dir, bhav_dir, modified_dir, table_dir, eod_dir, download_bhavcopy
 
 warnings.filterwarnings('ignore', message="pandas only supports SQLAlchemy connectable.*")
-
+pd.set_option('display.float_format', lambda a:'%.2f' %a)
 
 def modify_file(df, df_nnf):
     list_str_int64 = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 16, 17, 18, 19, 21, 23, 27, 28]
@@ -115,6 +115,8 @@ def main():
     write_notis_data(modified_df, modify_filepath)
     write_notis_data(modified_df, rf'C:\Users\vipulanand\Documents\Anand Rathi Financial Services Ltd (Synced)\OneDrive - Anand Rathi Financial Services Ltd\notis_files\NOTIS_TRADE_DATA_{today.strftime("%d%b%Y").upper()}.csv')
     print('file saved in modified_data folder')
+    download_bhavcopy()
+    print(f'Today\'s bhavcopy downloaded and stored at {bhav_dir}')
 
 
 if __name__ == '__main__':

@@ -135,7 +135,7 @@ def write_notis_postgredb(df, table_name, raw=False):
     start_time = time.time()
     engine = create_engine(engine_str)
 
-    with engine.connect() as conn:
+    with engine.begin() as conn:
         res = conn.execute(text(f'select count(*) from "{table_name}"'))
         row_count = res.scalar()
         if row_count > 0:
@@ -260,7 +260,7 @@ def download_bhavcopy():
     host = '192.168.112.81'
     username = 'greek'
     password = 'greeksoft'
-    filename = f"regularBhavcopy_{yesterday.strftime('%d%m%Y')}.csv"  # sample=regularBhavcopy_13022025
+    filename = f"regularNSEBhavcopy_{today.strftime('%d%m%Y')}.csv"  # sample=regularBhavcopy_13022025
     remote_path = rf'/home/greek/NSE_BSE_Broadcast/NSE/Bhavcopy/Files/{filename}'
     local_path = os.path.join(bhav_dir, filename)
     try:

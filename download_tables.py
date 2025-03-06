@@ -19,10 +19,11 @@ root_dir = os.path.dirname(os.path.abspath(__file__))
 nnf_file_path = os.path.join(root_dir, "Final_NNF_ID.xlsx")
 new_nnf_file_path = os.path.join(root_dir, 'NNF_ID.xlsx')
 table_dir = os.path.join(root_dir, 'table_data')
-today = datetime(year=2025, month=2, day=28).date()
+# today = datetime(year=2025, month=2, day=28).date()
 
 # -------------------------------------------------------------------------------------------------------------
-table_list = ['NOTIS_TRADE_BOOK_2025-02-28','NOTIS_DESK_WISE_NET_POSITION_2025-02-28', 'NOTIS_NNF_WISE_NET_POSITION_2025-02-28', 'NOTIS_USERID_WISE_NET_POSITION_2025-02-28']
+# table_list = ['NOTIS_TRADE_BOOK_2025-02-28','NOTIS_DESK_WISE_NET_POSITION_2025-02-28', 'NOTIS_NNF_WISE_NET_POSITION_2025-02-28', 'NOTIS_USERID_WISE_NET_POSITION_2025-02-28']
+table_list = ['notis_raw_data']
 # today = datetime(year=2025, month=1, day=10).date().strftime('%Y_%m_%d').upper()
 # today = datetime.now().date().strftime('%Y_%m_%d').upper()
 for table in table_list:

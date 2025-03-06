@@ -16,17 +16,22 @@ run_times = [
     (12, 30), (13, 0), (13, 30), (14, 0), (14, 30), (15, 0)
 ]
 def truncate_tables():
-    table_name = ['NOTIS_TRADE_BOOK','NOTIS_DESK_WISE_NET_POSITION','NOTIS_NNF_WISE_NET_POSITION','NOTIS_USERID_WISE_NET_POSITION']
+    table_name = ["notis_raw_data","NOTIS_TRADE_BOOK","NOTIS_DESK_WISE_NET_POSITION","NOTIS_NNF_WISE_NET_POSITION","NOTIS_USERID_WISE_NET_POSITION"]
     engine = create_engine(engine_str)
-    with engine.connect() as conn:
+    # with engine.connect() as conn:
+    with engine.begin() as conn:
         for each in table_name:
             res = conn.execute(text(f'select count(*) from "{each}"'))
             row_count = res.scalar()
             if row_count > 0:
-                conn.execute(text(f'delete from "{each}"'))
+                # conn.execute(text(f'delete from "{each}"'))
+                conn.execute(text(f'truncate table "{each}"'))
                 print(f'Existing data from table {each} deleted')
+            else:
+                print(f'No data in table {each}, no need to delete')
 
 def main():
+    truncate_tables()
     df_db = read_data_db()
     print(f'trade data fetched for {datetime.now().time()}')
     write_notis_postgredb(df_db, table_name=n_tbl_notis_raw_data, raw=True)
@@ -51,21 +56,11 @@ def main():
     print('data modified')
     write_notis_postgredb(modified_df, table_name=n_tbl_notis_trade_book, raw=False)
     print('Data fetched, modified and added to the db')
-# if __name__ == '__main__':
-#     while True:
-#         current_time = datetime.now()
-#         if current_time.hour == 9 and current_time.minute == 30:
-#             target_time = datetime.now().replace(hour=15,minute=5,second=0,microsecond=0)
-#             while datetime.now() < target_time:
-#                 main()
-#                 sleep(1800)
-#                 truncate_tables()
-#             break
-#         sleep(10)
 
 if __name__ == '__main__':
     print('Notis Main Started . . .')
     for each in run_times:
+        # truncate_tables()
         # current_time = datetime.now()
         target_time = datetime.now().replace(hour=each[0], minute=each[1], second=0, microsecond=0)
         if datetime.now() > target_time:
@@ -77,7 +72,7 @@ if __name__ == '__main__':
         while datetime.now() < target_time:
             sleep(1)
         main()
-    while datetime.now() < datetime.now().replace(hour=15,minute=5,second=0,microsecond=0):
+    while datetime.now() < datetime.now().replace(hour=15,minute=15,second=0,microsecond=0):
         sleep(1)
     truncate_tables()
     print(f'Intraday trade execution completed. Exiting...')

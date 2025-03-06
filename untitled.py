@@ -27,6 +27,7 @@ import io
 import gzip
 import progressbar
 import csv
+import sys
 
 # today = datetime(year=2025, month=1, day=24).date()
 # yesterday = datetime(year=2025, month=1, day=23).date()
@@ -597,6 +598,7 @@ y=0
 #             pbar.finish()
 #     print('done')
 t=0
+engine=create_engine(engine_str)
 # def test_modif(for_date:date):
 #     for_dt = pd.to_datetime(for_date).date()
 #     tablename = f'NOTIS_TRADE_BOOK' if for_dt == today else f'NOTIS_TRADE_BOOK_{for_dt}'
@@ -626,14 +628,293 @@ t=0
 #     with gzip.open(zip_path, mode='wt', encoding='utf-8', newline='') as zipfile:
 #         zipfile.write(buffer.getvalue())
 o=0
-# oi=pd.to_datetime('20250220').date()
+# oi=pd.to_datetime('20250224').date()
 # a = test_modif(oi)
 r=0
-for_tab = ['NOTIS_TRADE_BOOK','NOTIS_DESK_WISE_NET_POSITION', 'NOTIS_NNF_WISE_NET_POSITION', 'NOTIS_USERID_WISE_NET_POSITION']
-tod = datetime(year=2025,month=2,day=28).date()
-for each in for_tab:
-    df = read_data_db(for_table=f"{each}_{tod.strftime('%Y-%m-%d')}")
-    print(f"data read from {each}_{tod.strftime('%Y-%m-%d')}")
-    write_notis_data(df=df, filepath=os.path.join(test_dir,f"{each}_{tod.strftime('%Y-%m-%d')}.csv"))
-    print(f"data written to {each}_{tod.strftime('%Y-%m-%d')}.csv")
+# for_tab = ['NOTIS_TRADE_BOOK','NOTIS_DESK_WISE_NET_POSITION', 'NOTIS_NNF_WISE_NET_POSITION', 'NOTIS_USERID_WISE_NET_POSITION']
+# tod = datetime(year=2025,month=2,day=28).date()
+# for each in for_tab:
+#     df = read_data_db(for_table=f"{each}_{tod.strftime('%Y-%m-%d')}")
+#     print(f"data read from {each}_{tod.strftime('%Y-%m-%d')}")
+#     write_notis_data(df=df, filepath=os.path.join(test_dir,f"{each}_{tod.strftime('%Y-%m-%d')}.csv"))
+#     print(f"data written to {each}_{tod.strftime('%Y-%m-%d')}.csv")
+e=0
+# def truncate_tables():
+#     table_name = ["NOTIS_TRADE_BOOK_2024-12-31","NOTIS_DESK_WISE_NET_POSITION","NOTIS_NNF_WISE_NET_POSITION","NOTIS_USERID_WISE_NET_POSITION"]
+#     engine = create_engine(engine_str)
+#     with engine.connect() as conn:
+#         for each in table_name:
+#             print(each)
+#             res = conn.execute(text(f'select count(*) from "{each}"'))
+#             row_count = res.scalar()
+#             if row_count > 0:
+#                 conn.execute(text(f'delete from "{each}"'))
+#                 print(f'Existing data from table {each} deleted')
+#             else:
+#                 print(f'No data in table {each}, no need to delete')
+# truncate_tables()
 u=0
+# import os
+# import io
+# import gzip
+# import progressbar
+# import pandas as pd
+# from sqlalchemy.sql import text
+# from openpyxl import Workbook
+# from fastapi.responses import FileResponse
+#
+#
+# def export_db_to_xlsx(tablename, zip_path):
+#     if not os.path.exists(zip_path):
+#         stt = datetime.now()
+#         query = text(f'select * from "{tablename}"')
+#         with engine.connect() as conn:
+#             result = conn.execute(query)
+#         total_rows = result.rowcount
+#         batch_size = 1_000_000  # 1 million rows per sheet
+#         num_sheets = (total_rows // batch_size) + (1 if total_rows % batch_size else 0)
+#
+#         print(f'Total rows in DB: {total_rows}, Splitting into {num_sheets} sheets')
+#
+#         buffer = io.BytesIO()
+#         wb = Workbook()
+#         ws = wb.active
+#         ws.title = "Sheet1"
+#
+#         header = list(result.keys())
+#         ws.append(header)
+#
+#         pbar = progressbar.ProgressBar(max_value=total_rows + 1, widgets=[
+#             progressbar.Percentage(), ' ',
+#             progressbar.Bar(marker='=', left='[', right=']'),
+#             progressbar.ETA()
+#         ])
+#         pbar.update(1)
+#
+#         sheet_index = 1
+#         row_num = 0
+#         for row in result:
+#             if row_num > 0 and row_num % batch_size == 0:
+#                 sheet_index += 1
+#                 ws = wb.create_sheet(title=f"Sheet{sheet_index}")
+#                 ws.append(header)
+#             ws.append(tuple(row))
+#             row_num += 1
+#             pbar.update(row_num + 1)
+#
+#         pbar.finish()
+#
+#         wb.save(buffer)
+#         buffer.seek(0)
+#
+#         with gzip.open(zip_path, 'wb') as f_out:
+#             f_out.write(buffer.getvalue())
+#         ett=datetime.now()
+#         print(f"Data exported successfully with {num_sheets} sheets.")
+#         print(f'total time taken for zip_path1:{(ett-stt).total_seconds()}')
+#         # return FileResponse(path=zip_path, media_type='application/gzip')
+#     else:
+#         return FileResponse(path=zip_path, media_type='application/gzip')
+#
+# def export_db_to_xlsx_2(tablename, zip_path):
+#     if not os.path.exists(zip_path):
+#         stt=datetime.now()
+#         query = text(f'select * from "{tablename}"')
+#         with engine.connect() as conn:
+#             result = conn.execute(query)
+#         total_rows = result.rowcount
+#         batch_size = 1_000_000  # 1 million rows per sheet
+#         num_sheets = (total_rows // batch_size) + (1 if total_rows % batch_size else 0)
+#         print(f'Total rows in DB: {total_rows}, Splitting into {num_sheets} sheets')
+#         buffer = io.BytesIO()
+#         wb = xlsxwriter.Workbook(buffer, {'in_memory':True})
+#         # ws = wb.add_worksheet()
+#         header = result.keys()
+#
+#         pbar = progressbar.ProgressBar(max_value=total_rows + 1, widgets=[progressbar.Percentage(), ' ',progressbar.Bar(marker='=', left='[',right=']'),progressbar.ETA()])
+#         # # for col, header_value in enumerate(header):
+#         # #     ws.write(0,col,header_value)
+#         # #
+#         # # for row_num, row in enumerate(result, start=1):
+#         # #     for col_num, cell in enumerate(row):
+#         # #         ws.write(row_num,col_num,cell)
+#         # #     pbar.update(row_num)
+#         # # pbar.finish()
+#         # # wb.close()
+#         # #
+#         # # buffer.seek(0)
+#         # # with gzip.open(zip_path,'wb') as f:
+#         # #     f.write(buffer.getvalue())
+#         # for sheet_num in range(num_sheets):
+#         #     ws = wb.add_worksheet(f'Sheet{sheet_num+1}')
+#         #     for col, header_value in enumerate(header):
+#         #         ws.write(0,col,header_value)
+#         #     start_index = sheet_num*batch_size
+#         #     last_index = min(start_index,total_rows)
+#         #     for row_num, row in enumerate(result[start_index:last_index], start=1):
+#         #         for col_num, cell in enumerate(row):
+#         #             ws.write(row_num,col_num,cell)
+#         #         pbar.update(start_index+row_num)
+#         # pbar.finish()
+#         # wb.close()
+#
+#         sheet_idx = 0
+#         ws = wb.add_worksheet(f'Sheet{sheet_idx+1}')
+#         for col, header_value in enumerate(header):
+#             ws.write(0, col, header_value)
+#         row_cnt = 1
+#         with engine.connect() as conn:
+#             result = conn.execution_options(stream_results=True).execute(query)
+#             for row_num, row in enumerate(result, start=1):
+#                 if row_cnt>batch_size:
+#                     sheet_idx+=1
+#                     row_cnt = 1
+#                     ws = wb.add_worksheet(f'Sheet{sheet_idx+1}')
+#                     for col, header_value in enumerate(header):
+#                         ws.write(0, col, header_value)
+#
+#                 for col_num, cell in enumerate(row):
+#                     ws.write(row_cnt, col_num, cell)
+#                 row_cnt+=1
+#                 pbar.update(row_num)
+#         pbar.finish()
+#         wb.close()
+#
+#         buffer.seek(0)
+#         with gzip.open(zip_path, 'wb') as f:
+#             f.write(buffer.getvalue())
+#         ett=datetime.now()
+#         print(f'total time taken for zip_path2:{(ett-stt).total_seconds()}')
+#         print('done')
+#
+# def export_db_to_xlsx_3(tablename, zip_path):
+#     if not os.path.exists(zip_path):
+#         stt=datetime.now()
+#         query = text(f'select * from "{tablename}"')
+#         count_query = text(f'select count(*) from "{tablename}"')
+#         with engine.connect() as conn:
+#             total_rows = conn.execute(count_query).scalar()
+#         # total_rows = result.rowcount
+#         batch_size = 1_000_000  # 1 million rows per sheet
+#         num_sheets = (total_rows // batch_size) + (1 if total_rows % batch_size else 0)
+#         print(f'Total rows in DB: {total_rows}, Splitting into {num_sheets} sheets')
+#         buffer = io.BytesIO()
+#         # wb = xlsxwriter.Workbook(buffer, {'in_memory':True})
+#         # writer = pd.ExcelWriter(buffer, engine='xlsxwriter')
+#         writer = pd.ExcelWriter(buffer, engine='openpyxl')
+#         # ws = wb.add_worksheet()
+#         # header = result.keys()
+#
+#         pbar = progressbar.ProgressBar(max_value=total_rows + 1, widgets=[progressbar.Percentage(), ' ',progressbar.Bar(marker='=', left='[',right=']'),progressbar.ETA()])
+#
+#         # # sheet_idx = 0
+#         # # ws = wb.add_worksheet(f'Sheet{sheet_idx+1}')
+#         # # for col, header_value in enumerate(header):
+#         # #     ws.write(0, col, header_value)
+#         # # row_cnt = 1
+#         # # with engine.connect() as conn:
+#         # #     result = conn.execution_options(stream_results=True).execute(query)
+#         # #     for row_num, row in enumerate(result, start=1):
+#         # #         if row_cnt>batch_size:
+#         # #             sheet_idx+=1
+#         # #             row_cnt = 1
+#         # #             ws = wb.add_worksheet(f'Sheet{sheet_idx+1}')
+#         # #             for col, header_value in enumerate(header):
+#         # #                 ws.write(0, col, header_value)
+#         # #
+#         # #         for col_num, cell in enumerate(row):
+#         # #             ws.write(row_cnt, col_num, cell)
+#         # #         row_cnt+=1
+#         # #         pbar.update(row_num)
+#         # # pbar.finish()
+#         # # wb.close()
+#         # to_update = 0
+#         # with engine.connect() as conn:
+#         #     for i, df in enumerate(pd.read_sql(query, conn, chunksize=batch_size)):
+#         #         df.to_excel(writer, sheet_name=f'Sheet{i+1}', index=False)
+#         #         to_update+=len(df)
+#         #         pbar.update(to_update)
+#         #         print(f'Written sheet{i+1} with {len(df)}rows')
+#         # writer.close()
+#         # pbar.finish()
+#
+#         to_update = 0
+#         with engine.connect() as conn:
+#             for i, df in enumerate(pd.read_sql(query, conn, chunksize=batch_size)):
+#                 temp_csv = io.StringIO()
+#                 df.to_csv(temp_csv, index=False)
+#                 temp_csv.seek(0)
+#                 df = pd.read_csv(temp_csv, index_col=False)
+#                 df.to_excel(writer, sheet_name=f'Sheet{i+1}', index=False)
+#                 to_update+=len(df)
+#                 pbar.update(to_update)
+#                 sys.stdout.flush()
+#                 print(f'Written sheet{i+1} with {len(df)} rows')
+#         writer.close()
+#         pbar.finish()
+#
+#         buffer.seek(0)
+#         with gzip.open(zip_path, 'wb') as f:
+#             f.write(buffer.getvalue())
+#         ett=datetime.now()
+#         print(f'total time taken for zip_path3:{(ett-stt).total_seconds()}')
+#         print('done')
+#
+# tablename = 'NOTIS_TRADE_BOOK_2025-02-24'
+# zip_path = os.path.join(zipped_dir, f'zipped_{tablename}_older.xlsx.gz')
+# zip_path1 = os.path.join(zipped_dir, f'zipped_{tablename}_test1.xlsx.gz')
+# zip_path2 = os.path.join(zipped_dir, f'zipped_{tablename}_test2.xlsx.gz')
+# zip_path3 = os.path.join(zipped_dir, f'zipped_{tablename}_test3.xlsx.gz')
+# # export_db_to_xlsx(tablename, zip_path1)
+# # export_db_to_xlsx_2(tablename, zip_path2)
+# # export_db_to_xlsx_3(tablename, zip_path3)
+u=0
+tablename = 'NOTIS_TRADE_BOOK_2025-03-04'
+zip_path4 = os.path.join(zipped_dir, f'zipped_{tablename}_test_2.xlsx.gz')
+def get_db():
+    engine=create_engine(engine_str)
+    sessionLocal = sessionmaker(autoflush=False, autocommit=False, bind=engine)
+    db = sessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+def export_test_1(tablename, zip_path, db):
+    if not os.path.exists(zip_path):
+        stt=datetime.now()
+        total_rows = db.execute(text(rf'select count(*) from "{tablename}"')).scalar()
+        page_size = 5_00_000
+        num_pages = total_rows//page_size + (1 if (total_rows%page_size) else 0)
+        buffer = io.BytesIO()
+        wb = xlsxwriter.Workbook(buffer,{'in_memory':True})
+        # pbar = progressbar.ProgressBar(max_value=total_rows + 1, widgets=[progressbar.Percentage(),'', progressbar.Bar(marker='=', left='[',right=']'), progressbar.ETA()])
+        for page in range(num_pages):
+            query = f'select * from "{tablename}" limit {page_size} offset {(page)*page_size}'
+            print(query)
+            pbar = progressbar.ProgressBar(max_value=total_rows + 1, widgets=[progressbar.Percentage(), '',
+                                                                              progressbar.Bar(marker='=', left='[',
+                                                                                              right=']'),
+                                                                              progressbar.ETA()])
+            result = db.execute(query)
+            ws = wb.add_worksheet(f'Sheet{page+1}')
+            for col, header in enumerate(result.keys()):
+                ws.write(0,col,header)
+            for rn,row in enumerate(result, start=1):
+                for col, cell in enumerate(row):
+                    ws.write(rn, col, cell)
+                pbar.update(rn)
+            pbar.finish()
+            p = 0
+        wb.close()
+        print('fetching data from buffer')
+        buffer.seek(0)
+        print('Writing to xlsx file and zipping . . ')
+        with gzip.open(zip_path, 'wb') as f:
+            f.write(buffer.getvalue())
+        ett=datetime.now()
+        print(f'total time taken for zip_path4:{(ett-stt).total_seconds()}')
+
+
+db=next(get_db())
+export_test_1(tablename, zip_path4, db)
+y=0
