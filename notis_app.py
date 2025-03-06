@@ -9,6 +9,7 @@ import json
 from datetime import datetime, timedelta, timezone, date
 from openpyxl import Workbook, load_workbook
 from openpyxl.utils.dataframe import dataframe_to_rows
+import xlsxwriter
 import progressbar
 from sqlalchemy import create_engine
 from sqlalchemy.sql import text
@@ -22,8 +23,9 @@ import gzip
 import uvicorn
 from db_config import n_tbl_notis_trade_book, s_tbl_notis_trade_book, n_tbl_notis_raw_data, s_tbl_notis_raw_data, n_tbl_notis_nnf_data, s_tbl_notis_nnf_data, engine_str
 from main import modify_file
-from common import get_date_from_non_jiffy,get_date_from_jiffy, read_data_db, read_notis_file, write_notis_data, today, yesterday, write_notis_postgredb, read_file
+from common import get_date_from_non_jiffy,get_date_from_jiffy, read_data_db, read_notis_file, write_notis_data, write_notis_postgredb, read_file
 
+today = datetime.now().date()
 # today = datetime(year=2025, month=1, day=24).date()
 # yesterday = datetime(year=2025, month=1, day=23).date()
 pd.set_option('display.max_columns', None)
@@ -57,23 +59,23 @@ def get_db():
     finally:
         db.close()
 
-def stream_data(db: Session, tablename: str):
-    def conv_str(obj):
-        if isinstance(obj,datetime):
-            # return obj.strftime('%Y-%m-%d %H:%M:%S')
-            return obj.isoformat()
-    yield '['
-    first = True
-    query = text(rf'Select * from "{tablename}"')
-    with db.connection().execution_options(stream_results=True) as conn:
-        result = conn.execute(query)
-        for row in result:
-            if not first:
-                yield ','
-            first = False
-            # print(json.dumps(dict(row), default=conv_str))
-            yield json.dumps(dict(row), default=conv_str)
-    yield ']'
+# def stream_data(db: Session, tablename: str):
+#     def conv_str(obj):
+#         if isinstance(obj,datetime):
+#             # return obj.strftime('%Y-%m-%d %H:%M:%S')
+#             return obj.isoformat()
+#     yield '['
+#     first = True
+#     query = text(rf'Select * from "{tablename}"')
+#     with db.connection().execution_options(stream_results=True) as conn:
+#         result = conn.execute(query)
+#         for row in result:
+#             if not first:
+#                 yield ','
+#             first = False
+#             # print(json.dumps(dict(row), default=conv_str))
+#             yield json.dumps(dict(row), default=conv_str)
+#     yield ']'
 
 class ServiceApp:
     def __init__(self):
@@ -126,26 +128,33 @@ class ServiceApp:
             tablename = f'NOTIS_DESK_WISE_NET_POSITION' if for_dt == today else f'NOTIS_DESK_WISE_NET_POSITION_{for_dt}'
         elif for_table == 'rawdata':
             tablename = f'notis_raw_data' if for_dt == today else f'notis_raw_data_{for_dt}'
-
+        print(f'tablename={tablename} today is {today}')
         # tablename = f'NOTIS_TRADE_BOOK' if for_dt==today else f'NOTIS_TRADE_BOOK_{for_dt}'
         query=text(rf'Select * from "{tablename}" limit {page_size} offset {(page -1)*page_size}')
         result = db.execute(query).fetchall()
         total_rows = db.execute(text(rf'Select count(*) from "{tablename}"')).scalar()
+        # json_data = {
+        #     'data':[{k: conv_str(v) for k, v in dict(row).items()} for row in result],
+        #     'total_rows':total_rows,
+        #     'page':page,
+        #     'page_size':page_size
+        # }
         json_data = {
-            'data':[{k: conv_str(v) for k, v in dict(row).items()} for row in result],
+            'data':[{k: conv_str(v) for k, v in row._mapping.items()} for row in result],
             'total_rows':total_rows,
             'page':page,
             'page_size':page_size
         }
         if not len(result):
-            return Response(content=json.dumps(json_data), media_type='application/json')
+            json_data = pd.DataFrame(columns=['data','total_rows','page','page_size']).to_json(orient='records')
+            return Response(content=json_data, media_type='application/json')
         else:
             compressed_data = gzip.compress(json.dumps(json_data).encode('utf-8'))
             print(f'\ntotal_rows={json_data["total_rows"]}\tpage={json_data["page"]}\tpage_size={json_data["page_size"]}\n')
             return Response(content=compressed_data, media_type='application/gzip')
             # return Response(content=json.dumps(json_data), media_type='application/json')
 
-    def download_data(self,for_date:date=Query(),for_table:str=Query()):
+    def download_data(self,for_date:date=Query(),for_table:str=Query(), db:Session=Depends(get_db)):
         for_dt = pd.to_datetime(for_date).date()
         if for_table == 'tradebook':
             tablename = f'NOTIS_TRADE_BOOK' if for_dt == today else f'NOTIS_TRADE_BOOK_{for_dt}'
@@ -165,8 +174,12 @@ class ServiceApp:
         else:
             tablename = f'notis_raw_data' if for_dt == today else f'notis_raw_data_{for_dt}'
 
-        zip_path = os.path.join(zipped_dir, f'zipped_{tablename}.csv.gz')
-        if for_dt == today and for_table in ['netPosition','eodNetPosition','rawtradebooknetposi']:
+        if for_dt == today:
+            zip_path = os.path.join(zipped_dir, f'zipped_{tablename}_{for_dt}.xlsx.gz')
+        else:
+            zip_path = os.path.join(zipped_dir, f'zipped_{tablename}.xlsx.gz')
+
+        if for_table in ['netPosition','eodNetPosition','rawtradebooknetposi']:
             if for_table == 'netPosition' or for_table=='eodNetPosition':
                 desk_db_df = read_data_db(for_table=tablename)
                 desk_db_df.expiryDate = desk_db_df.expiryDate.astype('datetime64[ns]')
@@ -183,19 +196,26 @@ class ServiceApp:
                 grouped_desk_db_df.expiryDate = grouped_desk_db_df.expiryDate.astype(str)
                 if grouped_desk_db_df.empty:
                     return JSONResponse(content={"message": "No data available"}, status_code=204)
-                # json_data = grouped_desk_db_df.to_json(orient='records')
-                # if not len(grouped_desk_db_df):
-                #     return Response(content=json_data, media_type='application/json')
-                # else:
-                #     compressed_data = gzip.compress(json_data.encode('utf-8'))
-                #     return Response(content=compressed_data, media_type='application/gzip')
-                buffer = io.StringIO()
-                writer = csv.writer(buffer)
-                writer.writerow(grouped_desk_db_df.columns)
-                writer.writerow(grouped_desk_db_df.values)
-                with gzip.open(zip_path, 'wt', encoding='utf-8', newline='') as f:
+                # # json_data = grouped_desk_db_df.to_json(orient='records')
+                # # if not len(grouped_desk_db_df):
+                # #     return Response(content=json_data, media_type='application/json')
+                # # else:
+                # #     compressed_data = gzip.compress(json_data.encode('utf-8'))
+                # #     return Response(content=compressed_data, media_type='application/gzip')
+                # buffer = io.StringIO()
+                # writer = csv.writer(buffer)
+                # writer.writerow(grouped_desk_db_df.columns)
+                # writer.writerow(grouped_desk_db_df.values)
+                # with gzip.open(zip_path, 'wt', encoding='utf-8', newline='') as f:
+                #     f.write(buffer.getvalue())
+                # return FileResponse(zip_path, media_type='application/gzip')
+                buffer = io.BytesIO()
+                with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
+                    grouped_desk_db_df.to_excel(writer, index=False)
+                buffer.seek(0)
+                with gzip.open(zip_path, 'wb') as f:
                     f.write(buffer.getvalue())
-                return FileResponse(zip_path, media_type='application/gzip')
+                return FileResponse(zip_path,media_type='application/gzip')
             else:
                 df = read_data_db(for_table=tablename)
                 if not len(df):
@@ -244,43 +264,83 @@ class ServiceApp:
                 pivot_df['expDt'] = pivot_df['expDt'].astype(str)
                 pivot_df['IntradayVolume'] = pivot_df['BuyVol'] - pivot_df['SellVol']
 
-                # json_data = pivot_df.to_json(orient='records')
-                # # # return pivot_df.to_dict(orient='records')
+                # # json_data = pivot_df.to_json(orient='records')
+                # # # # return pivot_df.to_dict(orient='records')
+                # # # compressed_data = gzip.compress(json_data.encode('utf-8'))
+                # # # return Response(content=compressed_data, media_type='application/gzip')
                 # # compressed_data = gzip.compress(json_data.encode('utf-8'))
                 # # return Response(content=compressed_data, media_type='application/gzip')
-                # compressed_data = gzip.compress(json_data.encode('utf-8'))
-                # return Response(content=compressed_data, media_type='application/gzip')
-                buffer = io.StringIO()
-                writer = csv.writer(buffer)
-                writer.writerow(pivot_df.columns)
-                writer.writerow(pivot_df.values)
-                with gzip.open(zip_path,'wt',encoding='utf-8',newline='') as f:
+                # buffer = io.StringIO()
+                # writer = csv.writer(buffer)
+                # writer.writerow(pivot_df.columns)
+                # writer.writerow(pivot_df.values)
+                # with gzip.open(zip_path,'wt',encoding='utf-8',newline='') as f:
+                #     f.write(buffer.getvalue())
+                # return FileResponse(zip_path, media_type='application/gzip')
+                buffer = io.BytesIO()
+                with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
+                    pivot_df.to_excel(writer, index=False)
+                buffer.seek(0)
+                with gzip.open(zip_path, 'wb') as f:
                     f.write(buffer.getvalue())
                 return FileResponse(zip_path, media_type='application/gzip')
-
         else:
             if not os.path.exists(zip_path):
-                query = text(f'select * from "{tablename}"')
-                buffer = io.StringIO()
-                with engine.connect() as conn:
-                    result = conn.execute(query)
-                    total_rows = result.rowcount
-                    pbar=progressbar.ProgressBar(max_value=total_rows+1,widgets=[progressbar.Percentage(),' ',progressbar.Bar(marker='=', left='[', right=']'), progressbar.ETA()])
-
-                    # with gzip.GzipFile(fileobj=buffer,mode='wb') as gz:
-                        # writer = csv.writer(io.TextIOWrapper(gz, encoding='utf-8-sig', newline=''), quoting=csv.QUOTE_ALL)
-                    writer = csv.writer(buffer)
-                    header = result.keys()
-                    writer.writerow(header)
-                    pbar.update(1)
-                    for row_num, row in enumerate(result, start=1):
-                        writer.writerow(row)
-                        pbar.update(row_num+1)
+                # query = text(f'select * from "{tablename}"')
+                # buffer = io.StringIO()
+                # with engine.connect() as conn:
+                #     result = conn.execute(query)
+                #     total_rows = result.rowcount
+                #     pbar=progressbar.ProgressBar(max_value=total_rows+1,widgets=[progressbar.Percentage(),' ',progressbar.Bar(marker='=', left='[', right=']'), progressbar.ETA()])
+                #     writer = csv.writer(buffer)
+                #     header = result.keys()
+                #     writer.writerow(header)
+                #     pbar.update(1)
+                #     for row_num, row in enumerate(result, start=1):
+                #         writer.writerow(row)
+                #         pbar.update(row_num+1)
+                #     pbar.finish()
+                #     print(f"Total rows in DB: {total_rows}, Total rows written: {row_num}")
+                # with gzip.open(zip_path,'wt', encoding='utf-8', newline='') as f:
+                #     f.write(buffer.getvalue())
+                # return FileResponse(path=zip_path,media_type='application/gzip')
+                stt = datetime.now()
+                total_rows = db.execute(text(rf'select count(*) from "{tablename}"')).scalar()
+                page_size = 5_00_000
+                num_pages = total_rows // page_size + (1 if (total_rows % page_size) else 0)
+                print(f'Total rows in DB: {total_rows}, Splitting into {num_pages} sheets')
+                buffer = io.BytesIO()
+                wb = xlsxwriter.Workbook(buffer, {'in_memory': True})
+                for page in range(num_pages):
+                    query = f'select * from "{tablename}" limit {page_size} offset {(page) * page_size}'
+                    print(query)
+                    pbar = progressbar.ProgressBar(
+                        max_value=total_rows + 1,
+                        widgets=[
+                            progressbar.Percentage(), '',
+                            progressbar.Bar(marker='=',left='[',right=']'),
+                            progressbar.ETA()
+                        ]
+                    )
+                    result = db.execute(text(query))
+                    ws = wb.add_worksheet(f'Sheet{page + 1}')
+                    for col, header in enumerate(result.keys()):
+                        ws.write(0, col, header)
+                    for rn, row in enumerate(result, start=1):
+                        for col, cell in enumerate(row):
+                            ws.write(rn, col, cell)
+                        pbar.update(rn)
                     pbar.finish()
-                    print(f"Total rows in DB: {total_rows}, Total rows written: {row_num}")
-                with gzip.open(zip_path,'wt', encoding='utf-8', newline='') as f:
+                    p = 0
+                wb.close()
+                print('fetching data from buffer')
+                buffer.seek(0)
+                print('Writing to xlsx file and zipping . . ')
+                with gzip.open(zip_path, 'wb') as f:
                     f.write(buffer.getvalue())
-                return FileResponse(path=zip_path,media_type='application/gzip')
+                ett = datetime.now()
+                print(f'total time taken for zip_path:{(ett - stt).total_seconds()}')
+                return FileResponse(path=zip_path, media_type='application/gzip')
             else:
                 return FileResponse(path=zip_path, media_type='application/gzip')
 

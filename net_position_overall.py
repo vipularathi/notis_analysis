@@ -13,8 +13,9 @@ import warnings
 import re
 
 
-today = datetime(year=2025, month=2, day=13).date()
-yesterday = datetime(year=2025, month=2, day=12).date()
+today = datetime(year=2025, month=3, day=5).date()
+yesterday = datetime(year=2025, month=3, day=4).date()
+# yesterday = today - timedelta(days=1)
 # dd = datetime(year=2025, month=1, day=22).date()
 pd.set_option('display.max_columns', None)
 warnings.filterwarnings('ignore')
@@ -42,7 +43,7 @@ eod_net_pos_output_dir = os.path.join(root_dir, 'overall_net_position_output')
 
 
 # eod_df = read_notis_file(os.path.join(eod_input_dir, f'EOD Position_{yesterday.strftime("%d_%b_%Y")}_1.xlsx'))
-eod_df = read_file(os.path.join(eod_net_pos_input_dir, f'EOD_Position_{yesterday.strftime("%d_%b_%Y")}_1_overall.xlsx')) #EOD Position_28_Jan_2025_1_overall
+eod_df = read_file(os.path.join(eod_input_dir, f'EOD Position {yesterday.strftime("%d-%b-%Y")}.xlsx')) #EOD Position 28-Jan-2025
 # # eod_df = read_notis_file(os.path.join(eod_dir, rf'NOTIS_DESK_WISE_FINAL_NET_POSITION_{yesterday.strftime("%Y-%m-%d")}_testing_1.xlsx'))
 eod_df.columns = eod_df.columns.str.replace(' ', '')
 eod_df.drop(columns=[col for col in eod_df.columns if col is None], inplace=True)
@@ -71,7 +72,7 @@ desk_db_df.strikePrice = desk_db_df.strikePrice.apply(lambda x: x/100 if x>0 els
 desk_db_df.strikePrice = desk_db_df.strikePrice.astype('int64')
 # grouped_desk_db_df = desk_db_df.groupby(by=['mainGroup','symbol', 'expiryDate', 'strikePrice', 'optionType']).agg({'buyAvgQty':'sum','sellAvgQty':'sum','volume':'sum'}).reset_index()
 # grouped_desk_db_df = grouped_desk_db_df.drop_duplicates()
-grouped_desk_db_df = desk_db_df.groupby(by=['symbol', 'expiryDate', 'strikePrice', 'optionType']).agg({'buyAvgQty':'sum','buyAvgPrice':'sum','sellAvgQty':'sum','sellAvgPrice':'sum'}).reset_index()
+grouped_desk_db_df = desk_db_df.groupby(by=['symbol', 'expiryDate', 'strikePrice', 'optionType']).agg({'buyAvgQty':'sum','buyAvgPrice':'mean','sellAvgQty':'sum','sellAvgPrice':'mean'}).reset_index()
 grouped_desk_db_df['IntradayVolume'] = grouped_desk_db_df['buyAvgQty'] - grouped_desk_db_df['sellAvgQty']
 grouped_desk_db_df.rename(columns={'buyAvgQty':'buyQty','sellAvgQty':'sellQty'})
 # bhav_df = read_notis_file(os.path.join(bhav_path, rf'regularBhavcopy_{today.strftime("%d%m%Y")}.xlsx')) # regularBhavcopy_14012025.xlsx
@@ -124,15 +125,15 @@ a=0
 # Orig
 # if not os.path.exists(os.path.join(bhav_path, rf'regularBhavcopy_{dd.strftime("%d%m%Y")}.xlsx')):
 #     raise FileNotFoundError(f'Bhav copy for date:{today} is missing.')
-bhav_pattern = rf'regularBhavcopy_{today.strftime("%d%m%Y")}.(xlsx|csv)'
+bhav_pattern = rf'regularNSEBhavcopy_{today.strftime("%d%m%Y")}.(xlsx|csv)'
 bhav_matched_files = [f for f in os.listdir(bhav_path) if re.match(bhav_pattern, f)]
 bhav_df = read_file(os.path.join(bhav_path, bhav_matched_files[0])) # regularBhavcopy_14012025.xlsx
 bhav_df.columns = bhav_df.columns.str.replace(' ', '')
 bhav_df.rename(columns={'VWAPclose':'closingPrice'}, inplace=True)
 bhav_df.columns = bhav_df.columns.str.capitalize()
 bhav_df = bhav_df.add_prefix('Bhav')
-bhav_df.BhavExpiry = bhav_df.BhavExpiry.apply(lambda x: pd.to_datetime(get_date_from_non_jiffy(x))).dt.strftime('%Y-%m-%d')
-bhav_df.BhavExpiry = bhav_df.BhavExpiry.apply(lambda x: pd.to_datetime(x).date())
+bhav_df.BhavExpiry = bhav_df.BhavExpiry.apply(lambda x: pd.to_datetime(get_date_from_non_jiffy(x)).date())
+# bhav_df.BhavExpiry = bhav_df.BhavExpiry.apply(lambda x: pd.to_datetime(x).date())
 bhav_df.loc[bhav_df['BhavOptiontype'] == 'XX', 'BhavStrikeprice'] = 0
 bhav_df = bhav_df.applymap(lambda x: x.strip() if isinstance(x, str) else x)
 bhav_df.BhavStrikeprice = bhav_df.BhavStrikeprice.astype('int64')
@@ -142,7 +143,7 @@ bhav_df = bhav_df[col_keep]
 bhav_df = bhav_df.drop_duplicates()
 # --------------------------------------------------------------------------------
 # # For contract master bhavcopy_fo ONLY FOR 10FEB2025
-# bhav_df = read_file(rf"D:\notis_analysis\testing\regularBhavcopy_10022025.xlsx")
+# bhav_df = read_file(rf"D:\notis_analysis\testing\regularBhavcopy_{today.strftime('%d%m%Y')}.csv")
 # bhav_df.columns = bhav_df.columns.str.replace(' ','').str.capitalize()
 # bhav_df = bhav_df.add_prefix('Bhav')
 # col_keep = ['BhavSymbol', 'BhavExpiry', 'BhavStrikeprice', 'BhavOptiontype','BhavClosingprice']
