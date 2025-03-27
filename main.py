@@ -14,6 +14,8 @@ import time
 import warnings
 from db_config import engine_str, n_tbl_notis_trade_book, s_tbl_notis_trade_book, n_tbl_notis_raw_data, s_tbl_notis_raw_data, n_tbl_notis_nnf_data, s_tbl_notis_nnf_data
 from common import read_data_db, read_notis_file, write_notis_data, write_notis_postgredb, get_date_from_non_jiffy, get_date_from_jiffy, today, yesterday, root_dir, bhav_dir, modified_dir, table_dir, eod_dir, download_bhavcopy
+from net_position_cp_noncp import calc_eod_cp_noncp
+from bse_utility import get_bse_trade
 
 warnings.filterwarnings('ignore', message="pandas only supports SQLAlchemy connectable.*")
 pd.set_option('display.float_format', lambda a:'%.2f' %a)
@@ -58,9 +60,19 @@ def modify_file(df, df_nnf):
 
     df['trdTm'] = df['trdTm'].apply(lambda x: get_date_from_jiffy(int(x)))
     pbar.update(80)
+    df.ordTm = df.ordTm.astype('datetime64[ns]')
+    df.ordTm = df.ordTm.dt.date
+    df.expDt = df.expDt.astype('datetime64[ns]')
+    df.expDt = df.expDt.dt.date
+    df.trdTm = df.trdTm.astype('datetime64[ns]')
+    df.trdTm = df.trdTm.dt.date
     # --------------------------------------------------------------------------------------------------------------------------------
     df['bsFlg'] = np.where(df['bsFlg'] == 1, 'B', 'S')
     pbar.update(90)
+
+    df['remarks'] = df['cpCD'].apply(lambda x: 'CP' if x.startswith('Y') else 'non CP')
+    df.rename(columns={'remarks': 'broker'}, inplace=True)
+    pbar.update(95)
 
     df['ctclid'] = df['ctclid'].astype('float64')
     df_nnf['NNFID'] = df_nnf['NNFID'].astype('float64')
@@ -85,13 +97,28 @@ def download_tables():
     # today = datetime(year=2025, month=1, day=10).date().strftime('%Y_%m_%d').upper()
     for table in table_list:
         df = read_data_db(for_table=table)
-        df.to_csv(os.path.join(table_dir, f"{table}_{today.strftime('%Y_%m_%d').upper()}.csv"), index=False)
+        df.to_csv(os.path.join(table_dir, f"{table}_{today.strftime('%Y-%m-%d').upper()}.csv"), index=False)
         print(f"{table} data fetched and written at path: {os.path.join(table_dir, f'{table}_{today}.csv')}")
+
+def truncate_tables():
+    table_name = ["notis_raw_data","NOTIS_TRADE_BOOK","NOTIS_DESK_WISE_NET_POSITION","NOTIS_NNF_WISE_NET_POSITION","NOTIS_USERID_WISE_NET_POSITION",f'NOTIS_EOD_NET_POS_CP_NONCP_{today.strftime("%Y-%m-%d")}']
+    engine = create_engine(engine_str)
+    # with engine.connect() as conn:
+    with engine.begin() as conn:
+        for each in table_name:
+            res = conn.execute(text(f'select count(*) from "{each}"'))
+            row_count = res.scalar()
+            if row_count > 0:
+                # conn.execute(text(f'delete from "{each}"'))
+                conn.execute(text(f'truncate table "{each}"'))
+                print(f'Existing data from table {each} deleted')
+            else:
+                print(f'No data in table {each}, no need to delete')
 def main():
-    # today = datetime.now().date().strftime("%d%b%Y").upper()
-    # today = datetime(year=2024, month=12, day=24).date().strftime("%d%b%Y").upper()
+    truncate_tables()
+    # today = datetime(year=2025, month=3, day=7).date()
     df_db = read_data_db()
-    # df_db = read_data_db(for_table='notis_raw_data_2025-02-18')
+    # df_db = read_data_db(for_table=f'notis_raw_data_{today.strftime("%Y-%m-%d")}')
     write_notis_postgredb(df_db, table_name=n_tbl_notis_raw_data, raw=True)
     modify_filepath = os.path.join(modified_dir, f'NOTIS_TRADE_DATA_{today.strftime("%d%b%Y").upper()}.csv')
     nnf_file_path = os.path.join(root_dir, "Final_NNF_ID.xlsx")
@@ -117,7 +144,11 @@ def main():
     print('file saved in modified_data folder')
     download_bhavcopy()
     print(f'Today\'s bhavcopy downloaded and stored at {bhav_dir}')
-
+    print(f'Updating cp-noncp eod table...')
+    stt = datetime.now()
+    calc_eod_cp_noncp()
+    ett = datetime.now()
+    print(f'Eod(cp-noncp) updation completed. Total time taken: {(ett - stt).seconds} seconds')
 
 if __name__ == '__main__':
     stt = time.time()
@@ -132,3 +163,8 @@ if __name__ == '__main__':
         pbar.update(i + 1)
     pbar.finish()
     download_tables()
+    print(f'fetching BSE trades...')
+    stt = datetime.now()
+    get_bse_trade()
+    ett = datetime.now()
+    print(f'BSE trade fetched. Total time taken: {(ett - stt).seconds} seconds')

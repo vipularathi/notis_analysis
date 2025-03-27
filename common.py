@@ -14,6 +14,9 @@ import time
 import warnings
 import csv
 import paramiko
+import logging
+from logging.handlers import TimedRotatingFileHandler
+import sys
 from db_config import engine_str, n_tbl_notis_trade_book, s_tbl_notis_trade_book, n_tbl_notis_raw_data, s_tbl_notis_raw_data, n_tbl_notis_nnf_data, s_tbl_notis_nnf_data
 
 holidays_25 = ['2025-02-26', '2025-03-14', '2025-03-31', '2025-04-10', '2025-04-14', '2025-04-18', '2025-05-01', '2025-08-15', '2025-08-27', '2025-10-02', '2025-10-21', '2025-10-22', '2025-11-05', '2025-12-25']
@@ -30,17 +33,45 @@ bhav_dir = os.path.join(root_dir, 'bhavcopy')
 modified_dir = os.path.join(root_dir, 'modified_data')
 table_dir = os.path.join(root_dir, 'table_data')
 eod_dir = os.path.join(root_dir, 'eod_data')
-dir_list = [bhav_dir, modified_dir, table_dir, eod_dir]
+bse_dir = os.path.join(root_dir, 'bse_data')
+logs_dir = os.path.join(root_dir, 'logs')
+volt_dir = os.path.join(root_dir, 'nse_fo_voltality_file')
+dir_list = [bhav_dir, modified_dir, table_dir, eod_dir, bse_dir, logs_dir, volt_dir]
 status = [os.makedirs(_dir, exist_ok=True) for _dir in dir_list if not os.path.exists(_dir)]
 
-def read_data_db(nnf=False, for_table='ENetMIS'):
+def define_logger():
+    # Logging Definitions
+    log_lvl = logging.DEBUG
+    console_log_lvl = logging.INFO
+    _logger = logging.getLogger('arathi')
+    # logger.setLevel(log_lvl)
+    _logger.setLevel(console_log_lvl)
+    log_file = os.path.join(logs_dir, f'logs_arathi_{datetime.now().strftime("%Y%m%d")}.log')
+    handler = TimedRotatingFileHandler(log_file, when='D', delay=True)
+    handler.setLevel(log_lvl)
+    console = logging.StreamHandler(stream=sys.stdout)
+    console.setLevel(console_log_lvl)
+    # formatter = logging.Formatter('%(asctime)s %(name)s %(levelname)s %(message)s')  #NOSONAR
+    # formatter = logging.Formatter('%(asctime)s %(levelname)s %(filename)s %(funcName)s %(message)s')
+    formatter = logging.Formatter('%(asctime)s %(levelname)s <%(funcName)s> %(message)s')
+    handler.setFormatter(formatter)
+    console.setFormatter(formatter)
+    _logger.addHandler(handler)  # Comment to disable file logs
+    _logger.addHandler(console)
+    # logger.propagate = False  # Removes AWS Level Logging as it tracks root propagation as well
+    return _logger
+logger = define_logger()
+def read_data_db(nnf=False, for_table='ENetMIS', from_time:str='', to_time:str=''):
     if not nnf and for_table == 'ENetMIS':
         # Sql connection parameters
         sql_server = "rms.ar.db"
         sql_database = "ENetMIS"
         sql_username = "notice_user"
         sql_password = "Notice@2024"
-        sql_query = "SELECT * FROM [ENetMIS].[dbo].[NSE_FO_AA100_view]"
+        if not from_time:
+            sql_query = "SELECT * FROM [ENetMIS].[dbo].[NSE_FO_AA100_view]"
+        else:
+            sql_query = f"SELECT * FROM [ENetMIS].[dbo].[NSE_FO_AA100_view] WHERE CreateDate BETWEEN '{from_time}' AND '{to_time}';"
 
         try:
             sql_connection_string = (
@@ -62,7 +93,33 @@ def read_data_db(nnf=False, for_table='ENetMIS'):
         df = pd.read_sql_table(n_tbl_notis_nnf_data, con=engine)
         print(f"Data fetched from {for_table} table. Shape:{df.shape}")
         return df
-
+    elif not nnf and for_table == 'TradeHist':
+        logger.info(f'fetching BSE trade data from {from_time} to {to_time}')
+        sql_server = '172.30.100.41'
+        sql_port = '1450'
+        sql_db = 'OMNE_ARD_PRD'
+        sql_userid = 'Pos_User'
+        sql_paswd = 'Pass@Word1'
+        if not from_time:
+            sql_query = (
+                f"select mnmFillPrice,mnmSegment, mnmTradingSymbol,mnmTransactionType,mnmAccountId,mnmUser , mnmFillSize, mnmSymbolName, mnmExpiryDate, mnmOptionType, mnmStrikePrice, mnmAvgPrice, mnmExecutingBroker from TradeHist where (mnmSymbolName = 'BSXOPT' or mnmSymbolName = 'BSE')")
+        else:
+            sql_query = (
+                f"select mnmFillPrice,mnmSegment, mnmTradingSymbol,mnmTransactionType,mnmAccountId,mnmUser , mnmFillSize, mnmSymbolName, mnmExpiryDate, mnmOptionType, mnmStrikePrice, mnmAvgPrice, mnmExecutingBroker from TradeHist where (mnmSymbolName = 'BSXOPT' or mnmSymbolName = 'BSE') and mnmExchangeTime between \'{from_time}\' and \'{to_time}\'")
+        try:
+            sql_engine_str = (
+                f"DRIVER={{ODBC Driver 17 for SQL Server}};"
+                f"SERVER={sql_server},{sql_port};"
+                f"DATABASE={sql_db};"
+                f"UID={sql_userid};"
+                f"PWD={sql_paswd};"
+            )
+            with pyodbc.connect(sql_engine_str) as sql_conn:
+                df_bse = pd.read_sql_query(sql_query, sql_conn)
+            logger.info(f'data fetched for bse: {df_bse.shape}')
+            return df_bse
+        except (pyodbc.Error, psycopg2.Error) as e:
+            logger.info(f'Error in fetching data: {e}')
     elif not nnf and for_table!='ENetMIS':
         engine = create_engine(engine_str)
         df = pd.read_sql_table(for_table, con=engine)
@@ -93,7 +150,7 @@ def read_file(filepath):
     file_extension = os.path.splitext(filepath)[-1].lower()
     data = []
     if file_extension == '.xlsx':
-        wb = load_workbook(filepath, read_only=True)
+        wb = load_workbook(filepath, read_only=True, data_only=True)
         sheet = wb.active
         total_rows = sheet.max_row
         print('Reading Excel file...')
@@ -141,6 +198,8 @@ def write_notis_postgredb(df, table_name, raw=False):
         if row_count > 0:
             conn.execute(text(f'delete from "{table_name}"'))
             print(f'Existing data from table {table_name} deleted')
+        else:
+            print(f'No existing data in table {table_name}')
     print(f'Writing {"Raw" if raw else "Modified"} data to database...')
     total_rows = len(df)
     pbar = progressbar.ProgressBar(max_value=total_rows, widgets=[
@@ -245,6 +304,7 @@ def get_date_from_non_jiffy(dt_val):
     Converts the 1980 format date time to a readable format.
     :param dt_val: long
     :return: long (epoch time in seconds)
+    :sample: 1742322599
     """
     # Assuming dt_val is seconds since Jan 1, 1980
     base_date = datetime(1980, 1, 1, tzinfo=timezone.utc)
@@ -253,6 +313,28 @@ def get_date_from_non_jiffy(dt_val):
     # date_time = int(base_date.timestamp() + dt_val)
     date_time = base_date.timestamp() + dt_val
     new_date = datetime.fromtimestamp(date_time, timezone.utc)
+    formatted_date = new_date.astimezone(timezone(timedelta(hours=5, minutes=30))).strftime("%Y-%m-%d %I:%M:%S")
+    return formatted_date
+
+# Not working for some cases correctly
+def get_date_from_non_jiffy_new(dt_val):
+    """
+    Converts the 1980 format date time to a readable format.
+    :param dt_val: long
+    :return: long (epoch time in seconds)
+    :sample: 1742322599
+    """
+    # Assuming dt_val is seconds since Jan 1, 1980
+    base_date_1980 = datetime(1980, 1, 1, tzinfo=timezone.utc).timestamp()
+    base_date_1970 = datetime(1970, 1, 1, tzinfo=timezone.utc).timestamp()
+    if (type(dt_val) == str):
+        dt_val = int(dt_val)
+    if dt_val > base_date_1970:
+        calc_time = dt_val
+    else:
+        calc_time = base_date_1980 + dt_val
+    # date_time = base_date.timestamp() + dt_val
+    new_date = datetime.fromtimestamp(calc_time, timezone.utc)
     formatted_date = new_date.astimezone(timezone(timedelta(hours=5, minutes=30))).strftime("%Y-%m-%d %I:%M:%S")
     return formatted_date
 
@@ -272,3 +354,4 @@ def download_bhavcopy():
         transport.close()
     except Exception as e:
         print(f'Error: {e}')
+

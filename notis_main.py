@@ -10,13 +10,23 @@ from sqlalchemy import create_engine, text
 from main import modify_file
 from common import read_data_db, today, write_notis_postgredb, engine_str, root_dir
 from db_config import n_tbl_notis_nnf_data, n_tbl_notis_trade_book, n_tbl_notis_raw_data
+from net_position_cp_noncp import calc_eod_cp_noncp
 
+# run_times = [
+#     (9, 30), (10, 0), (10, 30), (11, 0), (11, 30), (12, 0),
+#     (12, 30), (13, 0), (13, 30), (14, 0), (14, 30), (15, 0)
+# ]
 run_times = [
-    (9, 30), (10, 0), (10, 30), (11, 0), (11, 30), (12, 0),
-    (12, 30), (13, 0), (13, 30), (14, 0), (14, 30), (15, 0)
+    (9, 20), (9, 30), (9, 40), (9, 50),
+    (10, 0), (10, 10), (10, 20), (10, 30), (10, 40), (10, 50),
+    (11, 0), (11, 10), (11, 20), (11, 30), (11, 40), (11, 50),
+    (12, 0), (12, 10), (12, 20), (12, 27), (12, 40), (12, 50),
+    (13, 0), (13, 10), (13, 20), (13, 30), (13, 40), (13, 50),
+    (14, 0), (14, 10), (14, 20), (14, 30), (14, 40), (14, 50),
+    (15, 0), (15, 15), (15, 50)
 ]
 def truncate_tables():
-    table_name = ["notis_raw_data","NOTIS_TRADE_BOOK","NOTIS_DESK_WISE_NET_POSITION","NOTIS_NNF_WISE_NET_POSITION","NOTIS_USERID_WISE_NET_POSITION"]
+    table_name = ["notis_raw_data","NOTIS_TRADE_BOOK","NOTIS_DESK_WISE_NET_POSITION","NOTIS_NNF_WISE_NET_POSITION","NOTIS_USERID_WISE_NET_POSITION",f'NOTIS_EOD_NET_POS_CP_NONCP_{today.strftime("%Y-%m-%d")}']
     engine = create_engine(engine_str)
     # with engine.connect() as conn:
     with engine.begin() as conn:
@@ -31,6 +41,7 @@ def truncate_tables():
                 print(f'No data in table {each}, no need to delete')
 
 def main():
+    stt=datetime.now()
     truncate_tables()
     df_db = read_data_db()
     print(f'trade data fetched for {datetime.now().time()}')
@@ -56,6 +67,13 @@ def main():
     print('data modified')
     write_notis_postgredb(modified_df, table_name=n_tbl_notis_trade_book, raw=False)
     print('Data fetched, modified and added to the db')
+    ett=datetime.now()
+    print(f'total time taken to update {len(df_db)} rows: {(ett-stt).seconds} seconds')
+    print(f'Updating cp-noncp eod table...')
+    stt=datetime.now()
+    calc_eod_cp_noncp()
+    ett=datetime.now()
+    print(f'Eod(cp-noncp) updation completed. Total time taken: {(ett-stt).seconds} seconds')
 
 if __name__ == '__main__':
     print('Notis Main Started . . .')
@@ -65,7 +83,7 @@ if __name__ == '__main__':
         target_time = datetime.now().replace(hour=each[0], minute=each[1], second=0, microsecond=0)
         if datetime.now() > target_time:
             continue
-        truncated_time = target_time - timedelta(minutes=2)
+        truncated_time = target_time - timedelta(seconds=30)
         while datetime.now() < truncated_time:
             sleep(1)
         truncate_tables()

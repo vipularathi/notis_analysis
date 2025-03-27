@@ -1,9 +1,9 @@
-import io
+import io, re
 import csv
 import numpy as np
 import pandas as pd
 import os
-from main import read_notis_file
+
 import time
 import json
 from datetime import datetime, timedelta, timezone, date
@@ -19,15 +19,14 @@ from fastapi import FastAPI, Query, status, Response, Depends
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse, StreamingResponse, FileResponse
 from fastapi.middleware.cors import CORSMiddleware
-import gzip, re
+import gzip
 import uvicorn
 from db_config import n_tbl_notis_trade_book, s_tbl_notis_trade_book, n_tbl_notis_raw_data, s_tbl_notis_raw_data, n_tbl_notis_nnf_data, s_tbl_notis_nnf_data, engine_str
 from main import modify_file
-from common import get_date_from_non_jiffy,get_date_from_jiffy, read_data_db, read_notis_file, write_notis_data, write_notis_postgredb, read_file, volt_dir
+from common import get_date_from_non_jiffy,get_date_from_jiffy, read_data_db, read_notis_file, write_notis_data, write_notis_postgredb, read_file, today, yesterday, logger, volt_dir
 
-today = datetime.now().date()
-# today = datetime(year=2025, month=1, day=24).date()
-yesterday = today - timedelta(days=1)
+# today = datetime.now().date()
+# today = datetime(year=2025, month=3, day=24).date()
 # yesterday = datetime(year=2025, month=1, day=23).date()
 pd.set_option('display.max_columns', None)
 warnings.filterwarnings('ignore')
@@ -74,7 +73,7 @@ def get_db():
 #             if not first:
 #                 yield ','
 #             first = False
-#             # print(json.dumps(dict(row), default=conv_str))
+#             # logger.info(json.dumps(dict(row), default=conv_str))
 #             yield json.dumps(dict(row), default=conv_str)
 #     yield ']'
 
@@ -83,6 +82,7 @@ class ServiceApp:
         self.app = FastAPI(title='NOTIS_Net_Position', description='Notis_net_position', docs_url='/docs', openapi_url='/openapi.json')
         self.app.add_middleware(CORSMiddleware, allow_origins = ['*'], allow_credentials = True, allow_methods=['*'], allow_headers=['*'])
         self.add_routes()
+        self.main_mod_df = pd.DataFrame()
 
     def add_routes(self):
         self.app.add_api_route('/netPosition/intraday', methods=['GET'], endpoint=self.get_intraday_net_position)
@@ -120,20 +120,20 @@ class ServiceApp:
     def get_data(self, for_date:date=Query(), for_table:str=Query(), page:int=Query(1), page_size:int=Query(1000),db:Session=Depends(get_db)):
         for_dt = pd.to_datetime(for_date).date()
         if for_table == 'modifiedtradebook':
-            tablename = f'NOTIS_TRADE_BOOK' if for_dt == today else f'NOTIS_TRADE_BOOK_{for_dt}'
+            tablename = f"test_mod_{today}" if for_dt == today else f'NOTIS_TRADE_BOOK_{for_dt}'
         elif for_table == 'nnfwise':
-            tablename = f'NOTIS_NNF_WISE_NET_POSITION' if for_dt == today else f'NOTIS_NNF_WISE_NET_POSITION_{for_dt}'
+            tablename = f'test_net_pos_nnf_{today}' if for_dt == today else f'NOTIS_NNF_WISE_NET_POSITION_{for_dt}'
         elif for_table == 'useridwise':
-            tablename = f'NOTIS_USERID_WISE_NET_POSITION' if for_dt == today else f'NOTIS_USERID_WISE_NET_POSITION_{for_dt}'
+            tablename = f'test_net_pos_desk_{today}' if for_dt == today else f'NOTIS_USERID_WISE_NET_POSITION_{for_dt}'
         elif for_table == 'deskwise':
-            tablename = f'NOTIS_DESK_WISE_NET_POSITION' if for_dt == today else f'NOTIS_DESK_WISE_NET_POSITION_{for_dt}'
+            tablename = f'test_net_pos_desk_{today}' if for_dt == today else f'NOTIS_DESK_WISE_NET_POSITION_{for_dt}'
         elif for_table == 'rawtradebook':
-            tablename = f'notis_raw_data' if for_dt == today else f'notis_raw_data_{for_dt}'
+            tablename = f'test_raw_{today}' if for_dt == today else f'notis_raw_data_{for_dt}'
         elif for_table == 'eodnetposcp':
-            tablename = f'NOTIS_EOD_NET_POS_CP_NONCP_{today.strftime("%Y-%m-%d")}' if for_dt == today else f'NOTIS_EOD_NET_POS_CP_NONCP_{for_dt.strftime("%Y-%m-%d")}'
+            tablename = f'test_cp_noncp_{today}' if for_dt == today else f'NOTIS_EOD_NET_POS_CP_NONCP_{for_dt.strftime("%Y-%m-%d")}'
         elif for_table == f'bsetradebook':
             tablename = f'test_bse_{today.strftime("%Y-%m-%d")}' if for_dt == today else f'BSE_TRADE_DATA_{for_dt.strftime("%Y-%m-%d")}'
-        # print(f'tablename={tablename}')
+        # logger.info(f'tablename={tablename}')
         # tablename = f'NOTIS_TRADE_BOOK' if for_dt==today else f'NOTIS_TRADE_BOOK_{for_dt}'
         query=text(rf'Select * from "{tablename}" limit {page_size} offset {(page -1)*page_size}')
         result = db.execute(query).fetchall()
@@ -155,34 +155,34 @@ class ServiceApp:
             return Response(content=json_data, media_type='application/json')
         else:
             compressed_data = gzip.compress(json.dumps(json_data).encode('utf-8'))
-            print(f'\ntotal_rows={json_data["total_rows"]}\tpage={json_data["page"]}\tpage_size={json_data["page_size"]}\n')
+            logger.info(f'\ntotal_rows={json_data["total_rows"]}\tpage={json_data["page"]}\tpage_size={json_data["page_size"]}\n')
             return Response(content=compressed_data, media_type='application/gzip')
             # return Response(content=json.dumps(json_data), media_type='application/json')
 
     def download_data(self,for_date:date=Query(),for_table:str=Query(), db:Session=Depends(get_db)):
         for_dt = pd.to_datetime(for_date).date()
         if for_table == 'modifiedtradebook':
-            tablename = f'NOTIS_TRADE_BOOK' if for_dt == today else f'NOTIS_TRADE_BOOK_{for_dt}'
+            tablename = f'test_mod_{today}' if for_dt == today else f'NOTIS_TRADE_BOOK_{for_dt}'
         elif for_table == 'nnfwise':
-            tablename = f'NOTIS_NNF_WISE_NET_POSITION' if for_dt == today else f'NOTIS_NNF_WISE_NET_POSITION_{for_dt}'
+            tablename = f'test_net_pos_nnf_{today}' if for_dt == today else f'NOTIS_NNF_WISE_NET_POSITION_{for_dt}'
         elif for_table == 'useridwise':
-            tablename = f'NOTIS_USERID_WISE_NET_POSITION' if for_dt == today else f'NOTIS_USERID_WISE_NET_POSITION_{for_dt}'
+            tablename = f'test_net_pos_nnf_{today}' if for_dt == today else f'NOTIS_USERID_WISE_NET_POSITION_{for_dt}'
         elif for_table == 'deskwise':
-            tablename = f'NOTIS_DESK_WISE_NET_POSITION' if for_dt == today else f'NOTIS_DESK_WISE_NET_POSITION_{for_dt}'
+            tablename = f'test_net_pos_desk_{today}' if for_dt == today else f'NOTIS_DESK_WISE_NET_POSITION_{for_dt}'
         elif for_table == 'rawtradebook':
-            tablename = f'notis_raw_data' if for_dt == today else f'notis_raw_data_{for_dt}'
+            tablename = f'test_raw_{today}' if for_dt == today else f'notis_raw_data_{for_dt}'
         # netPosition eodNetPosition rawtradebooknetposi
         elif for_table == 'modifiedtradebooknetposi':
-            tablename = f'NOTIS_DESK_WISE_NET_POSITION' if for_dt == today else f'NOTIS_DESK_WISE_NET_POSITION_{for_dt}'
+            tablename = f'test_net_pos_desk_{today}' if for_dt == today else f'NOTIS_DESK_WISE_NET_POSITION_{for_dt}'
         elif for_table == 'eodNetPosition':
-            tablename = f'NOTIS_DESK_WISE_NET_POSITION' if for_dt == today else f'NOTIS_DESK_WISE_NET_POSITION_{for_dt}'
+            tablename = f'test_net_pos_desk_{today}' if for_dt == today else f'NOTIS_DESK_WISE_NET_POSITION_{for_dt}'
         elif for_table == f'rawtradebooknetposi':
-            tablename = f'notis_raw_data' if for_dt == today else f'notis_raw_data_{for_dt}'
+            tablename = f'test_raw_{today}' if for_dt == today else f'notis_raw_data_{for_dt}'
         elif for_table == f'eodnetposcp':
-            tablename = f'NOTIS_EOD_NET_POS_CP_NONCP_{today.strftime("%Y-%m-%d")}' if for_dt == today else f'NOTIS_EOD_NET_POS_CP_NONCP_{for_dt.strftime("%Y-%m-%d")}'
+            tablename = f'test_cp_noncp_{today}' if for_dt == today else f'NOTIS_EOD_NET_POS_CP_NONCP_{for_dt.strftime("%Y-%m-%d")}'
         elif for_table == f'bsetradebook':
             tablename = f'test_bse_{today.strftime("%Y-%m-%d")}' if for_dt == today else f'BSE_TRADE_DATA_{for_dt.strftime("%Y-%m-%d")}'
-
+        # logger.info(f'tablename is {tablename}')
         if for_dt == today:
             zip_path = os.path.join(zipped_dir, f'zipped_{tablename}_{for_dt}.xlsx.gz')
         else:
@@ -239,7 +239,7 @@ class ServiceApp:
                     df[f'Column{i}'] = None
                 for i in list_none_str:
                     df[f'Column{i}'] = df[f'Column{i}'].astype('str')
-                print('Starting file modification...')
+                logger.info('Starting file modification...')
                 df.rename(columns={
                     'Column1': 'seqNo', 'Column2': 'mkt', 'Column3': 'trdNo',
                     'Column4': 'trdTm', 'Column5': 'Tkn', 'Column6': 'trdQty',
@@ -299,12 +299,12 @@ class ServiceApp:
             #     total_rows = db.execute(text(rf'select count(*) from "{tablename}"')).scalar()
             #     page_size = 5_00_000
             #     num_pages = total_rows // page_size + (1 if (total_rows % page_size) else 0)
-            #     print(f'Total rows in DB: {total_rows}, Splitting into {num_pages} sheets')
+            #     logger.info(f'Total rows in DB: {total_rows}, Splitting into {num_pages} sheets')
             #     buffer = io.BytesIO()
             #     wb = xlsxwriter.Workbook(buffer, {'in_memory': True})
             #     for page in range(num_pages):
             #         query = f'select * from "{tablename}" limit {page_size} offset {(page) * page_size}'
-            #         print(query)
+            #         logger.info(query)
             #         pbar = progressbar.ProgressBar(
             #             max_value=total_rows + 1,
             #             widgets=[
@@ -324,13 +324,13 @@ class ServiceApp:
             #         pbar.finish()
             #         p = 0
             #     wb.close()
-            #     print('fetching data from buffer')
+            #     logger.info('fetching data from buffer')
             #     buffer.seek(0)
-            #     print('Writing to xlsx file and zipping . . ')
+            #     logger.info('Writing to xlsx file and zipping . . ')
             #     with gzip.open(zip_path, 'wb') as f:
             #         f.write(buffer.getvalue())
             #     ett = datetime.now()
-            #     print(f'total time taken for zip_path:{(ett - stt).total_seconds()}')
+            #     logger.info(f'total time taken for zip_path:{(ett - stt).total_seconds()}')
             #     return FileResponse(path=zip_path, media_type='application/gzip')
             # else:
             #     return FileResponse(path=zip_path, media_type='application/gzip')
@@ -338,12 +338,12 @@ class ServiceApp:
             total_rows = db.execute(text(rf'select count(*) from "{tablename}"')).scalar()
             page_size = 5_00_000
             num_pages = total_rows // page_size + (1 if (total_rows % page_size) else 0)
-            print(f'Total rows in DB: {total_rows}, Splitting into {num_pages} sheets')
+            logger.info(f'Total rows in DB: {total_rows}, Splitting into {num_pages} sheets')
             buffer = io.BytesIO()
             wb = xlsxwriter.Workbook(buffer, {'in_memory': True})
             for page in range(num_pages):
                 query = f'select * from "{tablename}" limit {page_size} offset {(page) * page_size}'
-                print(query)
+                logger.info(query)
                 pbar = progressbar.ProgressBar(
                     max_value=total_rows + 1,
                     widgets=[
@@ -362,13 +362,13 @@ class ServiceApp:
                     pbar.update(rn)
                 pbar.finish()
             wb.close()
-            print('fetching data from buffer')
+            logger.info('fetching data from buffer')
             buffer.seek(0)
-            print('Writing to xlsx file and zipping . . ')
+            logger.info('Writing to xlsx file and zipping . . ')
             with gzip.open(zip_path, 'wb') as f:
                 f.write(buffer.getvalue())
             ett = datetime.now()
-            print(f'total time taken for zip_path:{(ett - stt).total_seconds()}')
+            logger.info(f'total time taken for zip_path:{(ett - stt).total_seconds()}')
             return FileResponse(path=zip_path, media_type='application/gzip')
 
 
@@ -401,7 +401,7 @@ class ServiceApp:
     #         return Response(content=json.dumps(json_data), media_type='application/json')
     #     else:
     #         compressed_data = gzip.compress(json.dumps(json_data).encode('utf-8'))
-    #         print(f'\ntotal_rows={json_data["total_rows"]}\tpage={json_data["page"]}\tpage_size={json_data["page_size"]}\n')
+    #         logger.info(f'\ntotal_rows={json_data["total_rows"]}\tpage={json_data["page"]}\tpage_size={json_data["page_size"]}\n')
     #         return Response(content=compressed_data, media_type='application/gzip')
     #         # return Response(content=json.dumps(json_data), media_type='application/json')
     #     # desk_db_df = read_data_db(for_table=tablename)
@@ -449,7 +449,7 @@ class ServiceApp:
     def get_intraday_net_position(self, for_date:date=Query()):
         for_dt = pd.to_datetime(for_date).date()
         if for_dt == today:
-            tablename = f'NOTIS_DESK_WISE_NET_POSITION'
+            tablename = f'test_net_pos_desk_{today}'
         else:
             tablename = f'NOTIS_DESK_WISE_NET_POSITION_{for_dt}'
         desk_db_df = read_data_db(for_table=tablename)
@@ -491,7 +491,7 @@ class ServiceApp:
     def get_raw_net_position(self, for_date:date=Query()):
         for_dt = pd.to_datetime(for_date).date()
         if for_dt == today:
-            tablename = f'notis_raw_data'
+            tablename = f'test_raw_{today}'
         else:
             tablename = f'notis_raw_data_{for_dt}'
         df = read_data_db(for_table=tablename)
@@ -509,7 +509,7 @@ class ServiceApp:
                 df[f'Column{i}'] = None
             for i in list_none_str:
                 df[f'Column{i}'] = df[f'Column{i}'].astype('str')
-            print('Starting file modification...')
+            logger.info('Starting file modification...')
             df.rename(columns={
                 'Column1': 'seqNo', 'Column2': 'mkt', 'Column3': 'trdNo',
                 'Column4': 'trdTm', 'Column5': 'Tkn', 'Column6': 'trdQty',
@@ -586,10 +586,9 @@ class ServiceApp:
         if not pivot_df.empty:
             return Response(content=json_data, media_type='application/json')
 
-
 service = ServiceApp()
 app = service.app
 
 if __name__ == '__main__':
-    uvicorn.run('notis_app:app', host='172.16.47.81', port=8841, workers=4)
+    uvicorn.run('temp_app:app', host='172.16.47.81', port=8871, workers=6)
 
