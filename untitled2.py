@@ -1,323 +1,315 @@
-# import re
-# from datetime import datetime, timezone, timedelta
-# import pandas as pd
-#
-# import base64
-# from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
-# from cryptography.hazmat.primitives import padding
-# from cryptography.hazmat.backends import default_backend
-# from django.utils.encoding import force_bytes, force_str
-# import requests
-# import os
-#
-# from common import today, volt_dir
-#
-# SECRET_KEY = "yi91poFLFMiXnkB12j/KY0RjG1fwTO7MwQWXjszcPGE="
-# value = force_bytes("ARathi@123456")
-# backend = default_backend()
-# key = force_bytes(base64.urlsafe_b64decode(SECRET_KEY))
-# access_token = ''
-#
-#
-# class Crypto:
-#     def __init__(self):
-#         self.encryptor = Cipher(algorithms.AES(key), modes.ECB(), backend).encryptor()
-#         self.decryptor = Cipher(algorithms.AES(key), modes.ECB(), backend).decryptor()
-#
-#     def encrypt(self):
-#         padder = padding.PKCS7(algorithms.AES(key).block_size).padder()
-#         padded_data = padder.update(value) + padder.finalize()
-#         encrypted_text = self.encryptor.update(padded_data) + self.encryptor.finalize()
-#         return encrypted_text
-#
-#     def decrypt(self, value):
-#         padder = padding.PKCS7(algorithms.AES(key).block_size).unpadder()
-#         decrypted_data = self.decryptor.update(value)
-#         unpadded = padder.update(decrypted_data) + padder.finalize()
-#         return unpadded
-#
-# def login():
-#     global access_token
-#     host = "https://www.connect2nse.com/extranet-api/"
-#     memberCode = '06769'
-#     loginId = '06769APIIT19'
-#     crypto = Crypto()
-#     password = force_str(base64.urlsafe_b64encode(crypto.encrypt()))
-#     url = f"{host}/login/2.0"
-#     payload = {"memberCode": memberCode, "loginId": loginId, "password": password}
-#     headers = {'Content-Type': 'application/json'}
-#     response = requests.post(url=url, json=payload, headers=headers)
-#     # logger.info(response.content)
-#     # data = response.json()
-#     # return data
-#     if response.status_code == 200:
-#         response_data = response.json()
-#         access_token = response_data.get('token')  # Store session token
-#         print(f"Login successful. Access token: {access_token}")
-#     else:
-#         print(f"Login failed. Status code: {response.status_code}, Message: {response.text}")
-#
-# def download_file_from_UAT():
-#     global access_token
-#     segment = 'FO'
-#     folder_path = 'volatility'
-#     file_name = 'FOVOLT_26032025'
-#
-#     base_url = 'https://www.connect2nse.com/extranet-api/common/file/download/2.0'
-#     final_url = f"{base_url}segment={segment}&folderPath={folder_path}&filename={file_name}"
-#
-#     # old code
-#     # final_url = f"{base_url}{file_name}"
-#     file_path = os.path.join(volt_dir, f'NSE_FO_Volatility_{today}.xlsx')
-#     # extracted_file_path = os.path.join(data_dir, saved_file_name.replace('.gz', ''))
-#
-#     # print(f"Downloading from URL: {final_url}")
-#     # print(f'Downloading file::>>{saved_file_name}')
-#     # print(f"Saving to: {file_path}")
-#     headers = {'Authorization':f'Bearer {access_token}','Content-Type': 'application/json'}
-#     # response = requests.get(final_url, headers=headers)
-#     try:
-#         print(final_url)
-#         response = requests.get(final_url, headers=headers)
-#         print(response)
-#         # print(f'Response status::>>{response},  {saved_file_name} downloaded successfully')
-#     except requests.RequestException as e:
-#         print(f'Failed to download {file_name}. Error ::::{e}')
-#
-#     # # file_path = os.path.join(self.data_dir, saved_file_name)
-#     # # extracted_file_path = os.path.join(self.data_dir, saved_file_name.replace('.gz', ''))
-#     # #
-#     # # logger.info(f"Downloading from URL: {final_url}")
-#     # # print(f'Downloading file::>>{saved_file_name}')
-#     # # logger.info(f"Saving to: {file_path}")
-#     #
-#     # # Download the file
-#     # try:
-#     #     # time.sleep(1)
-#     #     response = requests.get(final_url, headers=self.headers)
-#     #     print(f'Response status::>>{response},  {saved_file_name} downloaded successfully')
-#     #     response.raise_for_status()  # Raise an error for bad HTTP status codes
-#     #     with open(file_path, 'wb') as file:
-#     #         file.write(response.content)
-#     #     logger.info(f"File downloaded successfully: {saved_file_name}")
-#     #
-#     #     # Extract the .gz file if it's a gzip file
-#     #     if saved_file_name.endswith('.gz'):
-#     #         self.extract_gzip(file_path, extracted_file_path, is_priority)
-#     #
-#     #         # Check if the file is 'contract.gz'
-#     #         if saved_file_name == 'contract.gz' and segment == 'FO':
-#     #             print(f'Extracted file path::>>{extracted_file_path}')
-#     #             self.process_contract_file(extracted_file_path)
-#     #             self.fno_master_inhouse(extracted_file_path)
-#     #         if saved_file_name.startswith('CM_NSE_CM_security'):
-#     #             self.process_cm_securities(extracted_file_path)
-#     #
-#     #     # Extract the .rar file if it's a rar file
-#     #     elif saved_file_name.endswith('.rar'):
-#     #         self.extract_rar(file_path, self.data_dir, is_priority)
-#     #
-#     #     # Extract .zip files
-#     #     elif saved_file_name.endswith('.zip'):
-#     #         self.extract_zip(file_path, self.data_dir, is_priority)
-#     #         if saved_file_name.startswith('BhavCopy_NSE_FO_0_0_0_'):
-#     #             # self.process_bhavcopy_fo(self.data_dir,file_name)
-#     #             # user, password, host, port, database
-#     #             self.process_bhavcopy_fo_test(self.data_dir, file_name, self.greek_server['user'],
-#     #                                           self.greek_server['password'], self.greek_server['host'],
-#     #                                           self.greek_server['port'], self.greek_server['dbname'])
-#     #             self.process_bhavcopy_fo_test(self.data_dir, file_name, self.db_params_219['user'],
-#     #                                           self.db_params_219['password'], self.db_params_219['host'],
-#     #                                           self.db_params_219['port'], self.db_params_219['database'])
-#     #         if saved_file_name.startswith('CM_BhavCopy_NSE_CM_0_0_0_'):
-#     #             # self.process_bhavcopy_cm(self.data_dir,file_name)
-#     #             self.process_bhavcopy_cm_test(self.data_dir, file_name, self.db_params_219['user'],
-#     #                                           self.db_params_219['password'], self.db_params_219['host'],
-#     #                                           self.db_params_219['port'], self.db_params_219['database'])
-#     #             self.process_bhavcopy_cm_test(self.data_dir, file_name, self.greek_server['user'],
-#     #                                           self.greek_server['password'], self.greek_server['host'],
-#     #                                           self.greek_server['port'], self.greek_server['dbname'])
-#     #
-#     #     elif saved_file_name.startswith('fo_contract_stream_info'):
-#     #         self.process_fo_contract_stream_info(self.data_dir, file_name, self.linux_server, self.linux_username,
-#     #                                              self.linux_password, self.remote_path)
-#     #
-#     #
-#     #
-#     #
-#     # except requests.RequestException as e:
-#     #     print(f'Failed to download {file_name}. Error ::::{e}')
-#     #     logger.error(f"Failed to download the file: {file_name}. Error: {e}\nTraceback: {traceback.format_exc()}")
-#     #     if is_priority == 1:
-#     #         body = f'Failed to download {file_name}. Error ::::{e}'
-#     #         self.send_mail(body)
-#     #         raise
-#
-# res=login()
-# res=download_file_from_UAT()
-# # crypto = Crypto()
-# # text_encp_password_main = force_str(base64.urlsafe_b64encode(crypto.encrypt()))
-# # encrypted_password = text_encp_password_main
-# # print(f'Encrypted Password::>>{encrypted_password}')
-#
-# # if __name__ == '__main__':
-# #     print('>>>>>>>>>>>')
-# #     crypto = Crypto()
-# #     text = force_str(base64.urlsafe_b64encode(crypto.encrypt()))
-# #     print(text)
-# #     # print('<<<<<<<<<<<<<')
-# #     # text = force_str(crypto.decrypt(base64.urlsafe_b64decode(text)))
-# #     # print(text)
-# #     # text = force_str(crypto.decrypt(base64.urlsafe_b64decode("LvRHkSW+8OIMyk51T87KDQ==")))
-# #     # print(text)
-#
-# # info = login()
-# # access_token = info['result']['token']
-#
-#
-# # volt_df = pd.read_csv(r"C:\Users\vipulanand\Downloads\FOVOLT_24032025.csv", index_col=False)
-# # volt_df.columns = [re.sub(r'\s','',each) for each in df.columns]
-# # sym_list = ['NIFTY','BANKNIFTY','FINNIFTY','MIDCPNIFTY']
-# # volt_df=volt_df.query("Symbol in @sym_list")
-# # volt_df.rename(columns={'UnderlyingClosePrice(A)' : 'UnderlyingClosePrice'}, inplace=True)
-# # df = volt_df[['Symbol','UnderlyingClosePrice']]
-# # p=0
-# # data = {
-# #     'symbol': ['NIFTY'] * 5 + ['BANKNIFTY'] * 5 + ['FINNIFTY'] * 5
-# # }
-# # # df1 = read_data_db()
-# # # merged_df = df1.merge(volt_df,how='left',left_on='symbol',right_on='Symbol')
-# # p=0
-p=0
-import os, requests, io, base64
-from datetime import datetime,date,time,timedelta
-import pandas as pd
-from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
-from cryptography.hazmat.primitives import padding
-from cryptography.hazmat.backends import default_backend
-from django.utils.encoding import force_bytes, force_str
+from datetime import datetime
+import sqlalchemy as sql
+from sqlalchemy import MetaData, Table, Column, Integer, DateTime, DECIMAL, VARCHAR, TEXT, Index, UniqueConstraint, \
+    func, BOOLEAN, create_engine, Date, ForeignKey, Enum, Time, Float, text, String, BigInteger, Boolean
+from sqlalchemy.dialects.postgresql import JSONB, TIMESTAMP
+from urllib.parse import quote
 
-SECRET_KEY = "yi91poFLFMiXnkB12j/KY0RjG1fwTO7MwQWXjszcPGE="
-value = force_bytes("ARathi@123456")
-member_code = '06769'
-login_id = '06769APIIT19'
-backend = default_backend()
-key = force_bytes(base64.urlsafe_b64decode(SECRET_KEY))
-session_token = ''
-today = datetime.now().date()
-yesterday = today - timedelta(days=1)
-root_dir = os.getcwd()
-base_url = 'https://www.connect2nse.com/extranet-api'
+today = datetime.now()
+use_sqlite = False
+rdbms_type = "postgres"
 
-class Crypto:
-    def __init__(self):
-        self.encryptor = Cipher(algorithms.AES(key), modes.ECB(), backend).encryptor()
-        self.decryptor = Cipher(algorithms.AES(key), modes.ECB(), backend).decryptor()
+db_name = f"NOTIS_API"
+pg_user = "postgres"
+pg_pass = "postgres"
+pg_host = "192.168.112.219"
+pg_port = "5432"
 
-    def encrypt(self):
-        padder = padding.PKCS7(algorithms.AES(key).block_size).padder()
-        padded_data = padder.update(value) + padder.finalize()
-        encrypted_text = self.encryptor.update(padded_data) + self.encryptor.finalize()
-        return encrypted_text
+notis_sql_server = "rms.ar.db"
+notis_sql_database = "ENetMIS"
+notis_sql_username = "notice_user"
+notis_sql_password = "Notice@2024"
+notis_encoded_password = quote(notis_sql_password)
 
-    def decrypt(self, value):
-        padder = padding.PKCS7(algorithms.AES(key).block_size).unpadder()
-        decrypted_data = self.decryptor.update(value)
-        unpadded = padder.update(decrypted_data) + padder.finalize()
-        return unpadded
+bse_sql_server = '172.30.100.41'
+bse_sql_port = '1450'
+bse_sql_db = 'OMNE_ARD_PRD'
+bse_sql_userid = 'Pos_User'
+bse_sql_paswd = 'Pass@Word1'
+bse_encoded_password = quote(bse_sql_paswd)
 
-def login():
-    global session_token
-    url = f'{base_url}/login/2.0'
-
-    crypto = Crypto()
-    encrypted_password = force_str(base64.urlsafe_b64encode(crypto.encrypt()))
-    print(f'Encrypted Password::>>{encrypted_password}')
-
-    payload = {
-        "memberCode": member_code,
-        "loginId": login_id,
-        "password": encrypted_password
-    }
-
-    headers = {
-        'Content-Type': 'application/json'
-    }
-
-    response = requests.post(url, json=payload, headers=headers)
-
-    if response.status_code == 200:
-        response_data = response.json()
-        session_token = response_data.get('token')
-        # print("Login successful:", response_data)
-        print(f"Login successful.\nSession token: {session_token}")
-        return True
-    else:
-        print(f"Login failed. Status code: {response.status_code}, Message: {response.text}")
-
-def download_volatility_file():
-    df=pd.DataFrame()
-    download_url = f'{base_url}/common/file/download/2.0?'
-    segment = 'FO'
-    folder_path = '/Volatility'
-    file_name = f'FOVOLT_{yesterday.strftime("%d%m%Y")}.csv' #sample=FOVOLT_26032025
-    params = {
-        "segment" : segment,
-        "folderPath" : folder_path,
-        "filename" : file_name
-    }
-    # final_url = f"{download_url}segment={segment}&folderPath={folder_path}&filename={file_name}"
-    file_path = os.path.join(root_dir, f'{file_name}')
-    headers = {'Authorization':f'Bearer {session_token}'}
-
-    # print(f"Downloading from URL: {final_url}")
-    print(f"Saving to: {file_path}")
-
-    response = requests.get(download_url, headers=headers, params=params)
-    print(f'Response status::>>{response}')
-    if response.status_code == 200:
-        df = pd.read_csv(io.BytesIO(response.content))
-        with open(file_path, 'wb') as file:
-            file.write(response.content)
-        print(f"File downloaded successfully at {file_path}")
-    else:
-        print(f"Could not download the file.\nStatus code: {response.status_code}, Message: {response.text}")
-    # print(df.head())
-    return df
-if login():
-    volt_df = download_volatility_file()
-i=0
-# import pandas as pd
-# import os,re
-# import numpy as np
-# from common import today, yesterday,volt_dir, read_file, read_data_db
-#
-# volt_df = read_file(os.path.join(volt_dir,f'FOVOLT_{yesterday.strftime("%d%m%Y")}.csv'))
-# volt_df.columns = [re.sub(r'\s','',each) for each in volt_df.columns]
-# volt_df = volt_df.iloc[:,1:3]
-# volt_df.rename(columns={'UnderlyingClosePrice(A)': 'SpotClosePrice'}, inplace=True)
-# sym_list = ['NIFTY','BANKNIFTY','FINNIFTY','MIDCPNIFTY']
-# volt_df=volt_df.query("Symbol in @sym_list")
-#
-# tablename = f'test_cp_noncp_{today}'
-# cp_df = read_data_db(for_table=tablename)
-# cp_df.columns = [re.sub(r'Eod|\s','',each) for each in cp_df.columns]
-#
-# merged_df = cp_df.merge(volt_df,how='left',left_on=['Underlying'], right_on=['Symbol'])
-# merged_df.drop(columns=['Symbol'], inplace=True)
-# merged_df = merged_df.query("OptionType == 'CE' or OptionType == 'PE'")
-# merged_df.drop_duplicates(inplace=True)
-#
-# pivot_df = merged_df.pivot_table(
-#     index=['Broker','Underlying','SpotClosePrice'],
-#     columns=['OptionType'],
-#     values=['FinalNetQty'],
-#     aggfunc={'FinalNetQty':'sum'},
-#     fill_value=0
+engine_str = f"postgresql+psycopg2://{pg_user}:{pg_pass}@{pg_host}:{pg_port}/{db_name}"
+notis_engine_str = (
+    f"mssql+pyodbc://{notis_sql_username}:{notis_encoded_password}"
+    f"@{notis_sql_server}/{notis_sql_database}"
+    f"?driver=ODBC+Driver+17+for+SQL+Server"
+)
+# notis_engine_str = (
+#     f"DRIVER={{ODBC Driver 17 for SQL Server}};"
+#     f"SERVER={notis_sql_server};"
+#     f"DATABASE={notis_sql_database};"
+#     f"UID={notis_sql_username};"
+#     f"PWD={notis_encoded_password}"
 # )
-# pivot_df.columns = ['CE','PE']
-# pivot_df.reset_index(inplace=True)
-# pivot_df.SpotClosePrice = pivot_df.SpotClosePrice.astype('float64')
-# pivot_df['NetQty'] = pivot_df['CE']-pivot_df['PE']
-# pivot_df['Exposure(in Crs)'] = (pivot_df['NetQty']*pivot_df['SpotClosePrice'])/10000000
-o=0
+bse_engine_str = (
+    f"mssql+pyodbc://{bse_sql_userid}:{bse_encoded_password}"
+    f"@{bse_sql_server},{bse_sql_port}/{bse_sql_db}"
+    f"?driver=ODBC+Driver+17+for+SQL+Server"
+)
+# bse_engine_str = (
+#     f"DRIVER={{ODBC Driver 17 for SQL Server}};"
+#     f"SERVER={bse_sql_server},{bse_sql_port};"
+#     f"DATABASE={bse_sql_db};"
+#     f"UID={bse_sql_userid};"
+#     f"PWD={bse_encoded_password};"
+# )
+
+metadata = MetaData()
+
+n_tbl_notis_trade_book = f"NOTIS_TRADE_BOOK_{today}"
+s_tbl_notis_trade_book = Table(
+    n_tbl_notis_trade_book, metadata,
+    Column("ID", BigInteger),
+    Column("seqNo", BigInteger),
+    Column("mkt", BigInteger),
+    Column("trdNo", BigInteger),
+    Column("trdTm", String(50)),
+    Column("Tkn", BigInteger),
+    Column("trdQty", BigInteger),
+    Column("trdPrc", BigInteger),
+    Column("bsFlg", String(50)),
+    Column("ordNo", BigInteger),
+    Column("brnCd", BigInteger),
+    Column("usrId", BigInteger),
+    Column("proCli", BigInteger),
+    Column("cliActNo", String(50)),
+    Column("cpCD", String(50)),
+    Column("broker", String(50)),  # Assuming NULL values would be represented as empty String(50)s in absence of nullable clause
+    Column("actTyp", BigInteger),
+    Column("TCd", BigInteger),
+    Column("ordTm", String(50)),
+    Column("Booktype", BigInteger),
+    Column("oppTmCd", String(50), nullable=True),  # Changed NoneType to String(50) to handle nullable scenario
+    Column("ctclid", BigInteger),
+    Column("status", String(50)),
+    Column("TmCd", BigInteger),
+    Column("sym", String(50)),
+    Column("ser", String(50), nullable=True),  # Changed NoneType to String(50)
+    Column("inst", String(50)),
+    Column("expDt", String(50)),
+    Column("strPrc", BigInteger),
+    Column("optType", String(50)),
+    Column("sessionID", String(50), nullable=True),  # Changed NoneType to String(50)
+    Column("echoback", String(50), nullable=True),  # Changed NoneType to String(50)
+    Column("Fill1", String(50), nullable=True),  # Changed NoneType to String(50)
+    Column("Fill2", String(50), nullable=True),
+    Column("Fill3", String(50), nullable=True),
+    Column("Fill4", String(50), nullable=True),
+    Column("Fill5", String(50), nullable=True),
+    Column("Fill6", String(50), nullable=True),
+    Column("Column38", String(50)),
+    Column("messageId", BigInteger),
+    Column("CreateDate", DateTime),
+    Column("TerminalID", String(50)),
+    Column("TerminalName", String(50)),
+    Column("UserID", String(50)),
+    Column("SubGroup", String(50)),
+    Column("MainGroup", String(50)),
+    Column("NeatID", String(50))
+)
+
+n_tbl_notis_raw_data = f"notis_raw_data_{today}"
+s_tbl_notis_raw_data = Table(
+    n_tbl_notis_raw_data, metadata,
+    Column("ID", BigInteger),
+    Column("Column1", BigInteger),
+    Column("Column2", BigInteger),
+    Column("Column3", BigInteger),
+    Column("Column4", String(50)),
+    Column("Column5", BigInteger),
+    Column("Column6", BigInteger),
+    Column("Column7", BigInteger),
+    Column("Column8", String(50)),
+    Column("Column9", BigInteger),
+    Column("Column10", BigInteger),
+    Column("Column11", BigInteger),
+    Column("Column12", BigInteger),
+    Column("Column13", String(50)),
+    Column("Column14", String(50)),
+    Column("Column15", String(50), nullable=True),
+    Column("Column16", BigInteger),
+    Column("Column17", BigInteger),
+    Column("Column18", String(50)),
+    Column("Column19", BigInteger),
+    Column("Column20", String(50), nullable=True),
+    Column("Column21", BigInteger),
+    Column("Column22", String(50)),
+    Column("Column23", BigInteger),
+    Column("Column24", String(50)),
+    Column("Column25", String(50), nullable=True),
+    Column("Column26", String(50)),
+    Column("Column27", String(50)),
+    Column("Column28", BigInteger),
+    Column("Column29", String(50)),
+    Column("Column30", String(50), nullable=True),
+    Column("Column31", String(50), nullable=True),
+    Column("Column32", String(50), nullable=True),
+    Column("Column33", String(50), nullable=True),
+    Column("Column34", String(50), nullable=True),
+    Column("Column35", String(50), nullable=True),
+    Column("Column36", String(50)),
+    Column("Column37", BigInteger),
+    Column("Column38", String(50)),
+    Column("messageId", BigInteger),
+    Column("CreateDate", DateTime)
+)
+
+n_tbl_notis_nnf_data = "nnf_data"
+s_tbl_notis_nnf_data = Table(
+    n_tbl_notis_nnf_data, metadata,
+    Column("NNFID", BigInteger),
+    Column("TerminalID", String(50)),
+    Column("TerminalName", String(50)),
+    Column("UserID", String(50)),
+    Column("SubGroup", String(50)),
+    Column("MainGroup", String(50)),
+    Column("NeatID", BigInteger)
+)
+
+# # n_tbl_notis_desk_wise_final_net_position = f"NOTIS_DESK_WISE_FINAL_NET_POSITION_{datetime(year=2025, month=1, day=8).date().strftime('%Y-%m-%d')}"
+# n_tbl_notis_datewise_net_position = f"NOTIS_NET_POSITION_{datetime.now().date().strftime('%Y-%m-%d')}"
+# s_tbl_notis_datewise_net_position = Table(
+#     n_tbl_notis_datewise_net_position, metadata,
+#     Column("Underlying", String(50)),
+#     Column("Strike", BigInteger),
+#     Column("OptionType", String(2)),
+#     Column("Expiry", String(50)),
+#     Column("Long", BigInteger, nullable=True),
+#     Column("Short", BigInteger, nullable=True),
+#     Column("ClosingQty", BigInteger, nullable=True),
+#     Column("ClosingPrice", BigInteger),
+#     Column("SubGroup", String(50)),
+#     Column("MainGroup", String(50)),
+# )
+
+# n_tbl_notis_desk_wise_net_position = f"NOTIS_DESK_WISE_EOD_POSITION_{datetime.now().date().strftime('%Y-%m-%d')}"
+# s_tbl_notis_desk_wise_net_position = Table(
+#     n_tbl_notis_desk_wise_net_position, metadata,
+#     Column("EodUnderlying", String(50)),
+#     Column("EodStrike", Float),
+#     Column("EodOptionType", String(10)),
+#     Column("EodExpiry", String(50)),
+#     Column("EodLong", BigInteger),
+#     Column("EodShort", BigInteger),
+#     Column("EodClosingQty", BigInteger),
+#     Column("EodClosingPrice", Float),
+#     Column("EodSubGroup", String(50)),
+#     Column("EodMainGroup", String(50)),
+#     Column("BuyQty", BigInteger),
+#     Column("buyAvgPrice", Float),
+#     Column("SellQty", BigInteger),
+#     Column("sellAvgPrice", Float),
+#     Column("volume", BigInteger),
+#     Column("ClosingQty", BigInteger),
+#     Column("ClosingPrice", Float),
+#     Column("Long", BigInteger),
+#     Column("Short", BigInteger),
+#     Column("IntradayPnL", Float, nullable=True),
+#     Column("expired", Boolean, nullable=True),
+#     Column("Spot", Float, nullable=True),
+#     Column("ExpRate", Float, nullable=True),
+#     Column("ExpBuyQty", BigInteger, nullable=True),
+#     Column("ExpBuyRate", Float, nullable=True),
+#     Column("ExpSellQty", BigInteger, nullable=True),
+#     Column("ExpSellRate", Float, nullable=True),
+#     Column("ExpBuyValue", Float, nullable=True),
+#     Column("ExpSellValue", Float, nullable=True)
+# )
+
+# n_tbl_notis_net_position = f"NOTIS_NET_POSITION"
+# s_tbl_notis_net_position = Table(
+#     n_tbl_notis_net_position, metadata,
+#     Column("EodUnderlying", String(50)),
+#     Column("EodStrike", BigInteger),
+#     Column("EodOptionType", String(2)),
+#     Column("EodExpiry", String(50)),
+#     Column("EodLong", BigInteger, nullable=True),
+#     Column("EodShort", BigInteger, nullable=True),
+#     Column("EodClosingQty", BigInteger, nullable=True),
+#     Column("EodClosingPrice", BigInteger, nullable=True),
+#     Column("EodSubGroup", String(50)),
+#     Column("EodMainGroup", String(50)),
+#     Column("BuyQty", BigInteger, nullable=True),
+#     Column("SellQty", BigInteger, nullable=True),
+#     Column("volume", BigInteger, nullable=True),
+#     Column("ClosingQty", BigInteger, nullable=True),
+#     Column("ClosingPrice", BigInteger)
+# )
+
+n_tbl_notis_eod_net_pos_cp_noncp = f"NOTIS_EOD_NET_POS_CP_NONCP_{today}"
+# n_tbl_notis_eod_net_pos_cp_noncp = f"NOTIS_EOD_NET_POS_CP_NONCP_{datetime(year=2025,month=3,day=13).date().strftime('%Y-%m-%d')}"
+s_tbl_notis_eod_net_pos_cp_noncp = Table(
+    n_tbl_notis_eod_net_pos_cp_noncp, metadata,
+    Column("EodBroker", String(50)),
+    Column("EodUnderlying", String(50)),
+    Column("EodExpiry", String(50)),
+    Column("EodStrike", BigInteger),
+    Column("EodOptionType", String(50)),
+    Column("EodNetQuantity", BigInteger),
+    Column("EodClosingPrice", BigInteger),
+    Column("buyQty", BigInteger,nullable=True),
+    Column("buyAvgPrice", BigInteger,nullable=True),
+    Column("sellQty", BigInteger,nullable=True),
+    Column("sellAvgPrice", BigInteger,nullable=True),
+    Column("IntradayVolume", BigInteger,nullable=True),
+    Column("FinalNetQty", BigInteger),
+    Column("FinalSettlementPrice", BigInteger, nullable=True)
+)
+
+# n_tbl_bse_trade_data = f"BSE_TRADE_DATA_{datetime(year=2025, month=3, day=17).date().strftime('%Y-%m-%d')}"
+n_tbl_bse_trade_data = f"BSE_TRADE_DATA_{today}"
+s_tbl_add = Table(
+    n_tbl_bse_trade_data, metadata,
+    Column("TerminalID", String(50)),
+    Column("Symbol", String(50)),
+    Column("ExpiryDate", String(50)),
+    Column("OptionType", String(50)),
+    Column("StrikePrice", BigInteger),
+    Column("BuyPrc", BigInteger,nullable=True),
+    Column("SellPrc", BigInteger,nullable=True),
+    Column("BuyVol", BigInteger,nullable=True),
+    Column("SellVol", BigInteger,nullable=True),
+    Column("BSEIntradayVol", BigInteger),
+    Column("ExecutingBroker", String(50)),
+    Column("TradingSymbol", String(50))
+)
+
+n_tbl_notis_desk_wise_net_position = f"NOTIS_DESK_WISE_NET_POSITION_{today}"
+s_tbl_add_notis = Table(
+    n_tbl_notis_desk_wise_net_position, metadata,
+    Column("mainGroup", String(50)),
+    Column("subGroup", String(50)),
+    Column("buyAvgPrice", Float, nullable=True),
+    Column("buyAvgQty", Integer, nullable=True),
+    Column("sellAvgPrice", Float, nullable=True),
+    Column("sellAvgQty", Integer, nullable=True),
+    Column("symbol", String(50)),
+    Column("expiryDate", String(50)),
+    Column("strikePrice", Integer),
+    Column("optionType", String(50))
+)
+
+n_tbl_notis_net_pos_cp_noncp = f"NOTIS_NET_POS_CP_NONCP_{today}"
+s_tbl_add_notis_net_pos_cp_noncp = Table(
+    n_tbl_notis_net_pos_cp_noncp, metadata,
+    Column("EodBroker", String(50)),
+    Column("EodUnderlying", String(50)),
+    Column("EodExpiry", String(50)),
+    Column("EodStrike", BigInteger),
+    Column("EodOptionType", String(50)),
+    Column("EodNetQuantity", BigInteger),
+    Column("EodClosingPrice", BigInteger),
+    Column("buyQty", Integer, nullable=True),
+    Column("buyAvgPrice", BigInteger, nullable=True),
+    Column("sellQty", Integer, nullable=True),
+    Column("sellAvgPrice", BigInteger, nullable=True),
+    Column("IntradayVolume", Integer, nullable=True),
+    Column("FinalNetQty", BigInteger),
+    Column("FinalSettlementPrice", Integer, nullable=True)
+)
+
+# Last and after all table declarations
+# noinspection PyUnboundLocalVariable
+meta_engine = sql.create_engine(engine_str)
+metadata.create_all(meta_engine)
+meta_engine.dispose()

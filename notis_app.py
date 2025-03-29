@@ -557,7 +557,7 @@ class ServiceApp:
         sym_list = ['NIFTY', 'BANKNIFTY', 'FINNIFTY', 'MIDCPNIFTY']
         volt_df = volt_df.query("Symbol in @sym_list")
 
-        tablename = f'test_cp_noncp_{today}'
+        tablename = f'NOTIS_EOD_NET_POS_CP_NONCP_{today.strftime("%Y-%m-%d")}'
         cp_df = read_data_db(for_table=tablename)
         cp_df.columns = [re.sub(r'Eod|\s', '', each) for each in cp_df.columns]
 
@@ -587,9 +587,11 @@ class ServiceApp:
             return Response(content=json_data, media_type='application/json')
 
 
+
+
 service = ServiceApp()
 app = service.app
 
 if __name__ == '__main__':
-    uvicorn.run('notis_app:app', host='172.16.47.81', port=8841, workers=4)
+    uvicorn.run('notis_app:app', host='172.16.47.81', port=8871, workers=4)
 

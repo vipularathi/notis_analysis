@@ -32,11 +32,19 @@ root_dir = os.path.dirname(os.path.abspath(__file__))
 bhav_dir = os.path.join(root_dir, 'bhavcopy')
 modified_dir = os.path.join(root_dir, 'modified_data')
 table_dir = os.path.join(root_dir, 'table_data')
-eod_dir = os.path.join(root_dir, 'eod_data')
 bse_dir = os.path.join(root_dir, 'bse_data')
 logs_dir = os.path.join(root_dir, 'logs')
 volt_dir = os.path.join(root_dir, 'nse_fo_voltality_file')
-dir_list = [bhav_dir, modified_dir, table_dir, eod_dir, bse_dir, logs_dir, volt_dir]
+nnf_file_path = os.path.join(root_dir, "Final_NNF_ID.xlsx")
+eod_test_dir = os.path.join(root_dir, 'eod_testing')
+eod_input_dir = os.path.join(root_dir, 'eod_original')
+eod_output_dir = os.path.join(root_dir, 'eod_data')
+test_dir = os.path.join(root_dir, 'testing')
+eod_net_pos_input_dir = os.path.join(root_dir, 'test_net_position_original')
+eod_net_pos_output_dir = os.path.join(root_dir, 'test_net_position_code')
+zipped_dir = os.path.join(root_dir, 'zipped_files')
+
+dir_list = [bhav_dir, modified_dir, table_dir, eod_input_dir, bse_dir, logs_dir, volt_dir, zipped_dir, test_dir, logs_dir]
 status = [os.makedirs(_dir, exist_ok=True) for _dir in dir_list if not os.path.exists(_dir)]
 
 def define_logger():
@@ -61,7 +69,7 @@ def define_logger():
     # logger.propagate = False  # Removes AWS Level Logging as it tracks root propagation as well
     return _logger
 logger = define_logger()
-def read_data_db(nnf=False, for_table='ENetMIS', from_time:str='', to_time:str=''):
+def read_data_db(nnf=False, for_table='ENetMIS', from_time:str='', to_time:str='', from_source=False):
     if not nnf and for_table == 'ENetMIS':
         # Sql connection parameters
         sql_server = "rms.ar.db"
@@ -72,7 +80,17 @@ def read_data_db(nnf=False, for_table='ENetMIS', from_time:str='', to_time:str='
             sql_query = "SELECT * FROM [ENetMIS].[dbo].[NSE_FO_AA100_view]"
         else:
             sql_query = f"SELECT * FROM [ENetMIS].[dbo].[NSE_FO_AA100_view] WHERE CreateDate BETWEEN '{from_time}' AND '{to_time}';"
-
+        # if from_source:
+        #     sql_query = f"""
+        #                     WITH CTE AS (
+        #                         SELECT *,
+        #                                ROW_NUMBER() OVER (ORDER BY (SELECT NULL)) AS RowNum
+        #                         FROM [ENetMIS].[dbo].[NSE_FO_AA100_view]
+        #                     )
+        #                     SELECT *
+        #                     FROM CTE
+        #                     WHERE RowNum > {offset} AND RowNum <= {offset + page_size};
+        #                     """
         try:
             sql_connection_string = (
                 f"DRIVER={{ODBC Driver 17 for SQL Server}};"
@@ -83,27 +101,29 @@ def read_data_db(nnf=False, for_table='ENetMIS', from_time:str='', to_time:str='
             )
             with pyodbc.connect(sql_connection_string) as sql_conn:
                 df = pd.read_sql_query(sql_query, sql_conn)
-            print(f"Data fetched from SQL Server. Shape:{df.shape}")
+            logger.info(f"Data fetched from SQL Server. Shape:{df.shape}")
             return df
 
         except (pyodbc.Error, psycopg2.Error) as e:
-            print("Error occurred:", e)
+            logger.info("Error occurred:", e)
     elif nnf and for_table != 'ENetMIS':
         engine = create_engine(engine_str)
         df = pd.read_sql_table(n_tbl_notis_nnf_data, con=engine)
-        print(f"Data fetched from {for_table} table. Shape:{df.shape}")
+        logger.info(f"Data fetched from {for_table} table. Shape:{df.shape}")
         return df
     elif not nnf and for_table == 'TradeHist':
-        logger.info(f'fetching BSE trade data from {from_time} to {to_time}')
+
         sql_server = '172.30.100.41'
         sql_port = '1450'
         sql_db = 'OMNE_ARD_PRD'
         sql_userid = 'Pos_User'
         sql_paswd = 'Pass@Word1'
         if not from_time:
+            logger.info(f'Fetching today\'s BSE trade data till now.')
             sql_query = (
                 f"select mnmFillPrice,mnmSegment, mnmTradingSymbol,mnmTransactionType,mnmAccountId,mnmUser , mnmFillSize, mnmSymbolName, mnmExpiryDate, mnmOptionType, mnmStrikePrice, mnmAvgPrice, mnmExecutingBroker from TradeHist where (mnmSymbolName = 'BSXOPT' or mnmSymbolName = 'BSE')")
         else:
+            logger.info(f'Fetching BSE trade data from {from_time} to {to_time}')
             sql_query = (
                 f"select mnmFillPrice,mnmSegment, mnmTradingSymbol,mnmTransactionType,mnmAccountId,mnmUser , mnmFillSize, mnmSymbolName, mnmExpiryDate, mnmOptionType, mnmStrikePrice, mnmAvgPrice, mnmExecutingBroker from TradeHist where (mnmSymbolName = 'BSXOPT' or mnmSymbolName = 'BSE') and mnmExchangeTime between \'{from_time}\' and \'{to_time}\'")
         try:
@@ -123,14 +143,14 @@ def read_data_db(nnf=False, for_table='ENetMIS', from_time:str='', to_time:str='
     elif not nnf and for_table!='ENetMIS':
         engine = create_engine(engine_str)
         df = pd.read_sql_table(for_table, con=engine)
-        print(f"Data fetched from {for_table} table. Shape:{df.shape}")
+        logger.info(f"Data fetched from {for_table} table. Shape:{df.shape}")
         return df
 
 def read_notis_file(filepath):
     wb = load_workbook(filepath, read_only=True)
     sheet = wb.active
     total_rows = sheet.max_row
-    print('Reading Notis file...')
+    logger.info('Reading Notis file...')
     pbar = progressbar.ProgressBar(max_value=total_rows, widgets=[progressbar.Percentage(), ' ',
                                                            progressbar.Bar(marker='=', left='[', right=']'),
                                                            progressbar.ETA()])
@@ -143,7 +163,7 @@ def read_notis_file(filepath):
     pbar.finish()
 
     df = pd.DataFrame(data[1:], columns=data[0])
-    print('Notis file read')
+    logger.info('Notis file read')
     return df
 
 def read_file(filepath):
@@ -153,7 +173,7 @@ def read_file(filepath):
         wb = load_workbook(filepath, read_only=True, data_only=True)
         sheet = wb.active
         total_rows = sheet.max_row
-        print('Reading Excel file...')
+        logger.info('Reading Excel file...')
         pbar = progressbar.ProgressBar(max_value=total_rows, widgets=[progressbar.Percentage(), ' ',
                                                                progressbar.Bar(marker='=', left='[', right=']'),
                                                                progressbar.ETA()])
@@ -164,43 +184,75 @@ def read_file(filepath):
             pbar.update(i)
         pbar.finish()
         # df = pd.DataFrame(data[1:], columns=data[0])
-        print('Excel file read')
+        logger.info('Excel file read')
 
     elif file_extension == '.csv':
         total_rows = sum(1 for _ in open(filepath, 'r', encoding='utf-8')) - 1
-        print(f'Reading CSV file...')
+        logger.info(f'Reading CSV file...')
         pbar = progressbar.ProgressBar(max_value=total_rows, widgets=[progressbar.Percentage(), ' ',
                                                                progressbar.Bar(marker='=', left='[', right=']'),
                                                                progressbar.ETA()])
         pbar.update(0)
         with open(filepath, 'r', encoding='utf-8') as csv_file:
-            # reader = csv.reader(csv_file)
-            # header = next(reader)
-            # for i, row in enumerate(reader, start=1):
-            #     data.append(row)
-            #     pbar.update(i)
             for i, row in enumerate(csv_file, start=0):
                 data.append(row.strip().split(','))
                 pbar.update(i)
         pbar.finish()
         # df = pd.DataFrame(data, columns=header)
-        print('CSV file read')
+        logger.info('CSV file read')
     df = pd.DataFrame(data[1:], columns=data[0])
     return df
 
-def write_notis_postgredb(df, table_name, raw=False):
+# def write_notis_postgredb(df, table_name, raw=False):
+#     start_time = time.time()
+#     engine = create_engine(engine_str)
+#
+#     with engine.begin() as conn:
+#         res = conn.execute(text(f'select count(*) from "{table_name}"'))
+#         row_count = res.scalar()
+#         if row_count > 0:
+#             conn.execute(text(f'delete from "{table_name}"'))
+#             logger.info(f'Existing data from table {table_name} deleted')
+#         else:
+#             logger.info(f'No existing data in table {table_name}')
+#     logger.info(f'Writing {"Raw" if raw else "Modified"} data to database...')
+#     total_rows = len(df)
+#     pbar = progressbar.ProgressBar(max_value=total_rows, widgets=[
+#         progressbar.Percentage(), ' ',
+#         progressbar.Bar(marker='=', left='[', right=']'),
+#         progressbar.ETA()
+#     ])
+#
+#     if raw:
+#         list_str_int64 = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 16, 17, 18, 19, 21, 23, 27, 28]
+#         list_str_none = [15, 20, 25, 30, 31, 32, 33, 34, 35, 36, 37]
+#         list_none_str = [38]
+#         for i in list_str_int64:
+#             # df_db.loc[:, f'Column{i}'] = df_db.loc[:, f'Column{i}'].astype('int64')
+#             column_name = f'Column{i}'
+#             df[f'Column{i}'] = df[f'Column{i}'].astype('int64')
+#         for i in list_str_none:
+#             df[f'Column{i}'] = None
+#         for i in list_none_str:
+#             df[f'Column{i}'] = df[f'Column{i}'].astype('str')
+#     chunk_size = 1000
+#     for i in range(0, total_rows, chunk_size):
+#         chunk = df.iloc[i:i + chunk_size]
+#         chunk.to_sql(table_name, engine, index=False, if_exists='append', method='multi')
+#         pbar.update(min(i + chunk_size, total_rows))
+#
+#     pbar.finish()
+#     logger.info(f'{"Raw" if raw else "Modified"} Data successfully inserted into database')
+#     end_time = time.time()
+#     logger.info(f'Total time taken: {end_time - start_time} seconds')
+
+def write_notis_postgredb(df, table_name, raw=False, truncate_required=False):
     start_time = time.time()
     engine = create_engine(engine_str)
 
-    with engine.begin() as conn:
-        res = conn.execute(text(f'select count(*) from "{table_name}"'))
-        row_count = res.scalar()
-        if row_count > 0:
-            conn.execute(text(f'delete from "{table_name}"'))
-            print(f'Existing data from table {table_name} deleted')
-        else:
-            print(f'No existing data in table {table_name}')
-    print(f'Writing {"Raw" if raw else "Modified"} data to database...')
+    if truncate_required:
+        truncate_tables(table_name)
+    logger.info(f'Writing {"Raw" if raw else "Modified"} data to database...')
     total_rows = len(df)
     pbar = progressbar.ProgressBar(max_value=total_rows, widgets=[
         progressbar.Percentage(), ' ',
@@ -227,12 +279,12 @@ def write_notis_postgredb(df, table_name, raw=False):
         pbar.update(min(i + chunk_size, total_rows))
 
     pbar.finish()
-    print(f'{"Raw" if raw else "Modified"} Data successfully inserted into database')
+    logger.info(f'{"Raw" if raw else "Modified"} Data successfully inserted into database')
     end_time = time.time()
-    print(f'Total time taken: {end_time - start_time} seconds')
+    logger.info(f'Total time taken: {end_time - start_time} seconds')
 
 # def write_notis_data(df, filepath):
-#     print('Writing Notis file to excel...')
+#     logger.info('Writing Notis file to excel...')
 #     wb = Workbook()
 #     ws = wb.active
 #     ws.title = 'Sheet1'
@@ -246,15 +298,15 @@ def write_notis_postgredb(df, table_name, raw=False):
 #         pbar.update(i)
 #     pbar.finish()
 #     # df.to_excel(os.path.join(modified_dir, file_name))
-#     print('Saving the file...')
+#     logger.info('Saving the file...')
 #     # wb.save(filepath)
 #     wb.save(filepath)
-#     print('New Notis excel file created')
+#     logger.info('New Notis excel file created')
 
 def write_notis_data(df, filepath):
     file_extention = os.path.splitext(filepath)[-1].lower()
     if file_extention == '.xlsx':
-        print('Writing Notis file to excel...')
+        logger.info('Writing Notis file to excel...')
         wb = Workbook()
         ws = wb.active
         ws.title = 'Sheet1'
@@ -268,11 +320,11 @@ def write_notis_data(df, filepath):
             pbar.update(i)
         pbar.finish()
         # df.to_excel(os.path.join(modified_dir, file_name))
-        print('Saving the file...')
+        logger.info('Saving the file...')
         # wb.save(filepath)
         wb.save(filepath)
     elif file_extention == '.csv':
-        print('Writing Notis file to CSV...')
+        logger.info('Writing Notis file to CSV...')
         # df.to_csv(filepath, index=False)
         total_rows = len(df)
         pbar = progressbar.ProgressBar(max_value=total_rows,widgets=[progressbar.Percentage(),' ',progressbar.Bar(marker='=',left='[',right=']'),progressbar.ETA()])
@@ -284,7 +336,7 @@ def write_notis_data(df, filepath):
                 writer.writerow(row)
                 pbar.update(row_num)
         pbar.finish()
-        print('Saving the file...')
+        logger.info('Saving the file...')
 
 def get_date_from_jiffy(dt_val):
     """
@@ -353,5 +405,16 @@ def download_bhavcopy():
         sftp.close()
         transport.close()
     except Exception as e:
-        print(f'Error: {e}')
+        logger.info(f'Error: {e}')
+
+def truncate_tables(tablename):
+    engine = create_engine(engine_str)
+    with engine.begin() as conn:
+        res = conn.execute(text(f'select count(*) from "{tablename}"'))
+        row_count = res.scalar()
+        if row_count > 0:
+            conn.execute(text(f'truncate table "{tablename}"'))
+            logger.info(f'Existing data from table {tablename} deleted')
+        else:
+            logger.info(f'No data in table {tablename}, no need to delete')
 

@@ -23,31 +23,37 @@ test_dir = os.path.join(root_dir,'testing')
 # today = datetime(year=2025, month=3, day=7).date()
 
 # # -------------------------------------------------------------------------------------------------------------
+for_date = datetime(year=2025, month=3, day=27).date()
 # table_list = ['NOTIS_EOD_NET_POS_CP_NONCP_2025-03-20','NOTIS_TRADE_BOOK_2025-02-28','NOTIS_DESK_WISE_NET_POSITION_2025-02-28', 'NOTIS_NNF_WISE_NET_POSITION_2025-02-28', 'NOTIS_USERID_WISE_NET_POSITION_2025-02-28']
-table_list = ['notis_raw_data_2025-03-17']
-# today = datetime(year=2025, month=1, day=10).date().strftime('%Y_%m_%d').upper()
-# today = datetime.now().date().strftime('%Y_%m_%d').upper()
+# table_list = [
+#     f'NOTIS_DESK_WISE_NET_POSITION_{for_date}',f'test_net_pos_desk_{for_date}',
+#     f'test_cp_noncp_{for_date}',
+#     f'test_mod_{for_date}',f'NOTIS_TRADE_BOOK_{for_date}',
+#     f'test_net_pos_nnf_{for_date}', f'NOTIS_NNF_WISE_NET_POSITION_{for_date}',
+#     f'test_raw_{for_date}', f'notis_raw_data_{for_date}',
+#     f'test_bse_{for_date}', f'BSE_TRADE_DATA_{for_date}'
+# ]
+table_list = ['NOTIS_EOD_NET_POS_CP_NONCP_2025-03-28']
+# # today = datetime(year=2025, month=1, day=10).date().strftime('%Y_%m_%d').upper()
+# # today = datetime.now().date().strftime('%Y_%m_%d').upper()
 for table in table_list:
     df = read_data_db(for_table=table)
-    # df = read_db(table)
-    # df.to_excel(f'{table}_{today}.xlsx', index=False)
+#     # df = read_db(table)
+#     # df.to_excel(f'{table}_{today}.xlsx', index=False)
     write_notis_data(df,os.path.join(test_dir, f'{table}.xlsx'))
-    # df.to_excel(os.path.join(test_dir, f'{table}.xlsx'), index=False)
-    print(f'Data fetched from {table}:\n{df.head()}')
-    # print(f"{table} data fetched and written at path: {os.path.join(table_dir, f'{table}_{today.strftime("%Y_%m_%d").upper()}.xlsx')}")
+#     # df.to_excel(os.path.join(test_dir, f'{table}.xlsx'), index=False)
+#     print(f'Data fetched from {table}:\n{df.head()}')
+#     # print(f"{table} data fetched and written at path: {os.path.join(table_dir, f'{table}_{today.strftime("%Y_%m_%d").upper()}.xlsx')}")
 # # -------------------------------------------------------------------------------------------------------------
-
-# table_list = [f'NOTIS_EOD_NET_POS_CP_NONCP_2025-03-18']
-# # table_list = [f'NOTIS_DESK_WISE_NET_POSITION', f'NOTIS_NNF_WISE_NET_POSITION', f'NOTIS_USERID_WISE_NET_POSITION']
-# for each in table_list:
-#     # df = read_file(rf"D:\notis_analysis\table_data\{each}_{today.strftime('%Y_%m_%d')}.csv")
-#     df = read_file(rf"D:\notis_analysis\overall_net_position_output\final_cp_ncp_net_pos_18_03_2025_all.xlsx")
-#     # list_str_int64 = [1, 2, 3, 4, 6, 7, 8, 10, 11, 12, 16, 17, 18, 23, 27, 28,46]
-#     # list_str_int64 = [1, 2, 3, 6, 7, 10, 11, 12,17,18,20,22,24,29,40,47]
-#     # for i, col in enumerate(df.columns.tolist(),start=1):
-#     #     if i in list_str_int64:
-#     #         df[col] = df[col].astype('int64')
-#     # df['CreateDate'] = pd.to_datetime(today)
-#     p=0
-#     # write_notis_postgredb(df, f'{each}_{today.strftime("%Y-%m-%d")}')
-#     write_notis_postgredb(df, f'{each}')
+# df_desk = read_data_db(for_table=table_list[0])
+# df_desk_test = read_data_db(for_table=table_list[1])
+# df_cp = read_data_db(for_table=table_list[2])
+# df_mod_test = read_data_db(for_table=table_list[3])
+# df_mod = read_data_db(for_table=table_list[4])
+# df_nnf_test = read_data_db(for_table=table_list[5])
+# df_nnf = read_data_db(for_table=table_list[6])
+# df_raw_test = read_data_db(for_table=table_list[7])
+# df_raw = read_data_db(for_table=table_list[8])
+# df_bse_test = read_data_db(for_table=table_list[9])
+# df_bse = read_data_db(for_table=table_list[10])
+p=0
