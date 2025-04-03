@@ -89,10 +89,10 @@ def download_volatility_file():
         with open(file_path, 'wb') as file:
             file.write(response.content)
         print(f"File downloaded successfully at {file_path}")
+        return volt_df
     else:
         print(f"Could not download the file.\nStatus code: {response.status_code}, Message: {response.text}")
-    # print(df.head())
-    return volt_df
+
 
 if login():
     volt_df = download_volatility_file()

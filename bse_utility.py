@@ -119,4 +119,4 @@ class BSEUtility:
         logger.info(f'pivot shape: {pivot_df.shape}')
         return pivot_df
 
-# get_bse_trade()
+# a=BSEUtility.get_bse_trade_data()

@@ -99,7 +99,7 @@ s_tbl_notis_trade_book = Table(
     Column("Fill6", String(50), nullable=True),
     Column("Column38", String(50)),
     Column("messageId", BigInteger),
-    Column("CreateDate", DateTime),
+    Column("CreateDate", String(50)),
     Column("TerminalID", String(50)),
     Column("TerminalName", String(50)),
     Column("UserID", String(50)),

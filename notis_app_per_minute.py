@@ -125,7 +125,7 @@ class ServiceApp:
         elif for_table == 'nnfwise':
             tablename = f'NOTIS_NNF_WISE_NET_POSITION_{today}' if for_dt == today else f'NOTIS_NNF_WISE_NET_POSITION_{for_dt}'
         elif for_table == 'useridwise': #to_remove
-            tablename = f'NOTIS_DESK_WISE_NET_POSITION_{today}' if for_dt == today else f'NOTIS_USERID_WISE_NET_POSITION_{for_dt}'
+            tablename = f'NOTIS_DESK_WISE_NET_POSITION_{today}' if for_dt == today else f'NOTIS_DESK_WISE_NET_POSITION_{for_dt}'
         elif for_table == 'deskwise':
             tablename = f'NOTIS_DESK_WISE_NET_POSITION_{today}' if for_dt == today else f'NOTIS_DESK_WISE_NET_POSITION_{for_dt}'
         elif for_table == 'rawtradebook':
@@ -164,7 +164,7 @@ class ServiceApp:
         elif for_table == 'nnfwise':
             tablename = f'NOTIS_NNF_WISE_NET_POSITION_{today}' if for_dt == today else f'NOTIS_NNF_WISE_NET_POSITION_{for_dt}'
         elif for_table == 'useridwise':
-            tablename = f'NOTIS_NNF_WISE_NET_POSITION_{today}' if for_dt == today else f'NOTIS_USERID_WISE_NET_POSITION_{for_dt}'
+            tablename = f'NOTIS_NNF_WISE_NET_POSITION_{today}' if for_dt == today else f'NOTIS_NNF_WISE_NET_POSITION_{for_dt}'
         elif for_table == 'deskwise':
             tablename = f'NOTIS_DESK_WISE_NET_POSITION_{today}' if for_dt == today else f'NOTIS_DESK_WISE_NET_POSITION_{for_dt}'
         elif for_table == 'rawtradebook':
@@ -606,14 +606,29 @@ class ServiceApp:
                     SELECT mnmFillPrice, mnmSegment, mnmTradingSymbol, mnmTransactionType, mnmAccountId, mnmUser, mnmFillSize, mnmSymbolName, mnmExpiryDate, mnmOptionType, mnmStrikePrice, mnmAvgPrice, mnmExecutingBroker,
                            ROW_NUMBER() OVER (ORDER BY (SELECT NULL)) AS RowNum
                     FROM [OMNE_ARD_PRD].[dbo].[TradeHist]
-                    WHERE mnmSymbolName = 'BSXOPT' OR mnmSymbolName = 'BSE'
+                    WHERE mnmExchSeg = 'bse_fo' and mnmAccountId = 'AA100'
                 )
                 SELECT mnmFillPrice, mnmSegment, mnmTradingSymbol, mnmTransactionType, mnmAccountId, mnmUser, mnmFillSize, mnmSymbolName, mnmExpiryDate, mnmOptionType, mnmStrikePrice, mnmAvgPrice, mnmExecutingBroker
                 FROM CTE
                 WHERE RowNum > {offset} AND RowNum <= {offset + page_size};
             """)
-            result = db.execute(query).fetchall()
-            total_rows = db.execute(text(rf"""Select count(*) from [OMNE_ARD_PRD].[dbo].[TradeHist] WHERE (mnmSymbolName = 'BSXOPT' OR mnmSymbolName = 'BSE')""")).scalar()
+            query2 = text(f"""
+                WITH CTE AS (
+                    SELECT mnmFillPrice, mnmSegment, mnmTradingSymbol, mnmTransactionType, mnmAccountId, mnmUser, mnmFillSize, mnmSymbolName, mnmExpiryDate, mnmOptionType, mnmStrikePrice, mnmAvgPrice, mnmExecutingBroker,
+                           ROW_NUMBER() OVER (ORDER BY (SELECT NULL)) AS RowNum
+                    FROM [OMNE_ARD_PRD_HNI].[dbo].[TradeHist]
+                    WHERE mnmExchSeg = 'bse_fo' and mnmAccountId = 'AA100'
+                )
+                SELECT mnmFillPrice, mnmSegment, mnmTradingSymbol, mnmTransactionType, mnmAccountId, mnmUser, mnmFillSize, mnmSymbolName, mnmExpiryDate, mnmOptionType, mnmStrikePrice, mnmAvgPrice, mnmExecutingBroker
+                FROM CTE
+                WHERE RowNum > {offset} AND RowNum <= {offset + page_size};
+            """)
+            result1 = db.execute(query).fetchall()
+            result2 = db.execute(query2).fetchall()
+            result = result1 + result2
+            total_rows1 = db.execute(text(rf"""Select count(*) from [OMNE_ARD_PRD].[dbo].[TradeHist] WHERE mnmExchSeg = 'bse_fo' and mnmAccountId = 'AA100'""")).scalar()
+            total_rows2 = db.execute(text(rf"""Select count(*) from [OMNE_ARD_PRD_HNI].[dbo].[TradeHist] WHERE mnmExchSeg = 'bse_fo' and mnmAccountId = 'AA100'""")).scalar()
+            total_rows = total_rows1 + total_rows2
         json_data = {
             'data': [{k: conv_str(v) for k, v in row._mapping.items()} for row in result],
             'total_rows': total_rows,
@@ -635,14 +650,18 @@ class ServiceApp:
         if for_table == f'sourcenotisraw':
             total_rows = db.execute(text(rf'Select count(*) from [ENetMIS].[dbo].[NSE_FO_AA100_view]')).scalar()
         elif for_table == f'sourcebseraw':
-            total_rows = db.execute(text(
-                rf"""Select count(*) from [OMNE_ARD_PRD].[dbo].[TradeHist] WHERE (mnmSymbolName = 'BSXOPT' OR mnmSymbolName = 'BSE')""")).scalar()
+            total_rows1 = db.execute(text(
+                rf"""Select count(*) from [OMNE_ARD_PRD].[dbo].[TradeHist] WHERE mnmExchSeg = 'bse_fo' and mnmAccountId = 'AA100'""")).scalar()
+            total_rows2 = db.execute(text(
+                rf"""Select count(*) from [OMNE_ARD_PRD_HNI].[dbo].[TradeHist] WHERE mnmExchSeg = 'bse_fo' and mnmAccountId = 'AA100'""")).scalar()
+            total_rows = total_rows1 + total_rows2
         page_size = 5_00_000
         num_pages = total_rows // page_size + (1 if (total_rows % page_size) else 0)
         logger.info(f'Total rows in DB: {total_rows}, Splitting into {num_pages} sheets')
         buffer = io.BytesIO()
         wb = xlsxwriter.Workbook(buffer, {'in_memory': True})
         for page in range(num_pages):
+            query2,query='',''
             offset = (page - 1) * page_size
             if for_table == f'sourcenotisraw':
                 query = (f"""
@@ -656,15 +675,45 @@ class ServiceApp:
                     WHERE RowNum > {page * page_size} AND RowNum <= {(page + 1) * page_size};
                 """)
             elif for_table == f'sourcebseraw':
+                # query = (f"""
+                #     WITH CTE AS (
+                #         SELECT mnmFillPrice, mnmSegment, mnmTradingSymbol, mnmTransactionType, mnmAccountId, mnmUser, mnmFillSize, mnmSymbolName, mnmExpiryDate, mnmOptionType, mnmStrikePrice, mnmAvgPrice, mnmExecutingBroker,
+                #                ROW_NUMBER() OVER (ORDER BY (SELECT NULL)) AS RowNum
+                #         FROM [OMNE_ARD_PRD].[dbo].[TradeHist]
+                #         WHERE mnmExchSeg = 'bse_fo' and mnmAccountId = 'AA100'
+                #     )
+                #     SELECT mnmFillPrice, mnmSegment, mnmTradingSymbol, mnmTransactionType, mnmAccountId, mnmUser, mnmFillSize, mnmSymbolName, mnmExpiryDate, mnmOptionType, mnmStrikePrice, mnmAvgPrice, mnmExecutingBroker
+                #     FROM CTE
+                #     WHERE RowNum > {page * page_size} AND RowNum <= {(page + 1) * page_size};
+                # """)
+                # query2 = (f"""
+                #     WITH CTE AS (
+                #         SELECT mnmFillPrice, mnmSegment, mnmTradingSymbol, mnmTransactionType, mnmAccountId, mnmUser, mnmFillSize, mnmSymbolName, mnmExpiryDate, mnmOptionType, mnmStrikePrice, mnmAvgPrice, mnmExecutingBroker,
+                #                ROW_NUMBER() OVER (ORDER BY (SELECT NULL)) AS RowNum
+                #         FROM [OMNE_ARD_PRD_HNI].[dbo].[TradeHist]
+                #         WHERE mnmExchSeg = 'bse_fo' and mnmAccountId = 'AA100'
+                #     )
+                #     SELECT mnmFillPrice, mnmSegment, mnmTradingSymbol, mnmTransactionType, mnmAccountId, mnmUser, mnmFillSize, mnmSymbolName, mnmExpiryDate, mnmOptionType, mnmStrikePrice, mnmAvgPrice, mnmExecutingBroker
+                #     FROM CTE
+                #     WHERE RowNum > {page * page_size} AND RowNum <= {(page + 1) * page_size};
+                # """)
                 query = (f"""
-                    WITH CTE AS (
+                    WITH CTE1 AS (
                         SELECT mnmFillPrice, mnmSegment, mnmTradingSymbol, mnmTransactionType, mnmAccountId, mnmUser, mnmFillSize, mnmSymbolName, mnmExpiryDate, mnmOptionType, mnmStrikePrice, mnmAvgPrice, mnmExecutingBroker,
                                ROW_NUMBER() OVER (ORDER BY (SELECT NULL)) AS RowNum
                         FROM [OMNE_ARD_PRD].[dbo].[TradeHist]
-                        WHERE mnmSymbolName = 'BSXOPT' OR mnmSymbolName = 'BSE'
+                        WHERE mnmExchSeg = 'bse_fo' and mnmAccountId = 'AA100'
+                    ),
+                    CTE2 AS (
+                        SELECT mnmFillPrice, mnmSegment, mnmTradingSymbol, mnmTransactionType, mnmAccountId, mnmUser, mnmFillSize, mnmSymbolName, mnmExpiryDate, mnmOptionType, mnmStrikePrice, mnmAvgPrice, mnmExecutingBroker,
+                               ROW_NUMBER() OVER (ORDER BY (SELECT NULL)) AS RowNum
+                        FROM [OMNE_ARD_PRD_HNI].[dbo].[TradeHist]
+                        WHERE mnmExchSeg = 'bse_fo' and mnmAccountId = 'AA100'
                     )
-                    SELECT mnmFillPrice, mnmSegment, mnmTradingSymbol, mnmTransactionType, mnmAccountId, mnmUser, mnmFillSize, mnmSymbolName, mnmExpiryDate, mnmOptionType, mnmStrikePrice, mnmAvgPrice, mnmExecutingBroker
-                    FROM CTE
+                    SELECT * FROM CTE1
+                    WHERE RowNum > {page * page_size} AND RowNum <= {(page + 1) * page_size}
+                    UNION ALL
+                    SELECT * FROM CTE2
                     WHERE RowNum > {page * page_size} AND RowNum <= {(page + 1) * page_size};
                 """)
             logger.info(query)
@@ -699,5 +748,5 @@ service = ServiceApp()
 app = service.app
 
 if __name__ == '__main__':
-    uvicorn.run('temp_app:app', host='172.16.47.81', port=8871, workers=6)
+    uvicorn.run('notis_app_per_minute:app', host='172.16.47.81', port=8871, workers=6)
 

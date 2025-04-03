@@ -8,11 +8,10 @@ from openpyxl.utils.dataframe import dataframe_to_rows
 from sqlalchemy import create_engine, text, insert
 
 from db_config import n_tbl_notis_trade_book, n_tbl_notis_raw_data, n_tbl_notis_nnf_data, n_tbl_notis_desk_wise_net_position, n_tbl_notis_nnf_wise_net_position, n_tbl_notis_eod_net_pos_cp_noncp, n_tbl_bse_trade_data
-from common import read_data_db, read_notis_file, write_notis_data, write_notis_postgredb, get_date_from_non_jiffy, get_date_from_jiffy, today, yesterday, root_dir, bhav_dir, modified_dir, table_dir, download_bhavcopy
+from common import read_data_db, read_notis_file, write_notis_data, write_notis_postgredb, get_date_from_non_jiffy, get_date_from_jiffy, today, yesterday, root_dir, bhav_dir, modified_dir, table_dir, download_bhavcopy, bse_dir
 from nse_utility import NSEUtility
 from bse_utility import BSEUtility
-# from net_position_cp_noncp import calc_eod_cp_noncp
-# from bse_utility import get_bse_trade
+
 
 warnings.filterwarnings('ignore', message="pandas only supports SQLAlchemy connectable.*")
 pd.set_option('display.float_format', lambda a:'%.2f' %a)
@@ -90,7 +89,7 @@ pd.set_option('display.float_format', lambda a:'%.2f' %a)
 #     return merged_df
 
 def download_tables():
-    table_list = [n_tbl_notis_desk_wise_net_position, n_tbl_notis_nnf_wise_net_position]
+    table_list = [n_tbl_notis_desk_wise_net_position, n_tbl_notis_nnf_wise_net_position,n_tbl_notis_eod_net_pos_cp_noncp]
     # today = datetime(year=2025, month=1, day=10).date().strftime('%Y_%m_%d').upper()
     for table in table_list:
         df = read_data_db(for_table=table)
@@ -115,7 +114,6 @@ def main():
     # truncate_tables()
     # today = datetime(year=2025, month=3, day=7).date()
     df_db = read_data_db()
-    # df_db = read_data_db(for_table=f'notis_raw_data_{today.strftime("%Y-%m-%d")}')
     write_notis_postgredb(df=df_db, table_name=n_tbl_notis_raw_data, raw=True, truncate_required=True)
     modify_filepath = os.path.join(modified_dir, f'NOTIS_TRADE_DATA_{today.strftime("%d%b%Y").upper()}.csv')
     nnf_file_path = os.path.join(root_dir, "Final_NNF_ID.xlsx")
@@ -139,24 +137,48 @@ def main():
     write_notis_data(modified_df, modify_filepath)
     write_notis_data(modified_df, rf'C:\Users\vipulanand\Documents\Anand Rathi Financial Services Ltd (Synced)\OneDrive - Anand Rathi Financial Services Ltd\notis_files\NOTIS_TRADE_DATA_{today.strftime("%d%b%Y").upper()}.csv')
     print('file saved in modified_data folder')
-    # make net-pos tables
+    # # make net-pos tables
+    # pivot_df = modified_df.pivot_table(
+    #     index=['MainGroup', 'SubGroup', 'broker', 'ctclid', 'sym', 'expDt', 'strPrc', 'optType'],
+    #     columns=['bsFlg'],
+    #     values=['trdQty', 'trdPrc'],
+    #     aggfunc={'trdQty': 'sum', 'trdPrc': 'mean'},
+    #     fill_value=0
+    # )
+    # if len(modified_df.bsFlg.unique()) == 1:
+    #     if modified_df.bsFlg.unique().tolist()[0] == 'B':
+    #         pivot_df['SellAvgPrc'] = 0;
+    #         pivot_df['SellQty'] = 0
+    #     elif modified_df.bsFlg.unique().tolist()[0] == 'S':
+    #         pivot_df['BuyAvgPrc'] = 0;
+    #         pivot_df['BuyQty'] = 0
+    # elif len(modified_df) == 0 or len(pivot_df) == 0:
+    #     pivot_df.columns = ['_'.join(col).strip() for col in pivot_df.columns.values]
+    # pivot_df.columns = ['BuyAvgPrc', 'SellAvgPrc', 'BuyQty', 'SellQty']
+    # pivot_df.reset_index(inplace=True)
+    modified_df['trdQtyPrc'] = modified_df['trdQty'] * modified_df['trdPrc']
     pivot_df = modified_df.pivot_table(
         index=['MainGroup', 'SubGroup', 'broker', 'ctclid', 'sym', 'expDt', 'strPrc', 'optType'],
         columns=['bsFlg'],
-        values=['trdQty', 'trdPrc'],
-        aggfunc={'trdQty': 'sum', 'trdPrc': 'mean'},
+        values=['trdQty', 'trdQtyPrc'],
+        aggfunc={'trdQty': 'sum', 'trdQtyPrc': 'sum'},
         fill_value=0
     )
     if len(modified_df.bsFlg.unique()) == 1:
         if modified_df.bsFlg.unique().tolist()[0] == 'B':
-            pivot_df['SellAvgPrc'] = 0;
+            pivot_df['SellTrdQtyPrc'] = 0;
             pivot_df['SellQty'] = 0
         elif modified_df.bsFlg.unique().tolist()[0] == 'S':
-            pivot_df['BuyAvgPrc'] = 0;
+            pivot_df['BuyTrdQtyPrc'] = 0;
             pivot_df['BuyQty'] = 0
     elif len(modified_df) == 0 or len(pivot_df) == 0:
         pivot_df.columns = ['_'.join(col).strip() for col in pivot_df.columns.values]
-    pivot_df.columns = ['BuyAvgPrc', 'SellAvgPrc', 'BuyQty', 'SellQty']
+    pivot_df.columns = ['BuyQty', 'SellQty', 'BuyTrdQtyPrc', 'SellTrdQtyPrc']
+    pivot_df['BuyAvgPrc'] = pivot_df.apply(lambda row: row['BuyTrdQtyPrc'] / row['BuyQty'] if row['BuyQty'] > 0 else 0,
+                                           axis=1)
+    pivot_df['SellAvgPrc'] = pivot_df.apply(
+        lambda row: row['SellTrdQtyPrc'] / row['SellQty'] if row['SellQty'] > 0 else 0, axis=1)
+    pivot_df.drop(columns=['BuyTrdQtyPrc', 'SellTrdQtyPrc'], inplace=True)
     pivot_df.reset_index(inplace=True)
     pivot_df.rename(columns={'MainGroup': 'mainGroup', 'SubGroup': 'subGroup', 'sym': 'symbol', 'expDt': 'expiryDate',
                              'strPrc': 'strikePrice', 'optType': 'optionType', 'BuyAvgPrc': 'buyAvgPrice',
@@ -172,15 +194,10 @@ def main():
     # CP NONCP
     cp_noncp_db_df = NSEUtility.calc_eod_cp_noncp(pivot_df)
     write_notis_postgredb(cp_noncp_db_df, table_name=n_tbl_notis_eod_net_pos_cp_noncp, truncate_required=True)
-    # download_bhavcopy()
-    # print(f'Today\'s bhavcopy downloaded and stored at {bhav_dir}')
-    # print(f'Updating cp-noncp eod table...')
-    # stt = datetime.now()
-    # calc_eod_cp_noncp()
-    # ett = datetime.now()
-    # print(f'Eod(cp-noncp) updation completed. Total time taken: {(ett - stt).seconds} seconds')
 
 if __name__ == '__main__':
+    download_bhavcopy()
+    print(f'Today\'s bhavcopy downloaded and stored at {bhav_dir}')
     stt = time.time()
     main()
     ett = time.time()
@@ -192,11 +209,10 @@ if __name__ == '__main__':
         pbar.update(i + 1)
     pbar.finish()
     download_tables()
-    download_bhavcopy()
-    print(f'Today\'s bhavcopy downloaded and stored at {bhav_dir}')
     print(f'fetching BSE trades...')
     stt = datetime.now()
     df_bse = BSEUtility.get_bse_trade_data()
+    write_notis_data(df_bse, os.path.join(bse_dir,f'BSE_TRADE_DATA_{today.strftime("%d%b%Y").upper()}.xlsx'))
     write_notis_postgredb(df=df_bse, table_name=n_tbl_bse_trade_data, truncate_required=True)
     ett = datetime.now()
     print(f'BSE trade fetched. Total time taken: {(ett - stt).seconds} seconds')

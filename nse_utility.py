@@ -58,11 +58,11 @@ class NSEUtility:
         df['trdTm'] = df['trdTm'].apply(lambda x: get_date_from_jiffy(int(x)))
         pbar.update(80)
         df.ordTm = df.ordTm.astype('datetime64[ns]')
-        df.ordTm = df.ordTm.dt.date
+        df.ordTm = df.ordTm.dt.strftime('%d-%m-%Y %H:%M:%S')
         df.expDt = df.expDt.astype('datetime64[ns]')
-        df.expDt = df.expDt.dt.date
+        df.expDt = df.expDt.dt.strftime('%d-%m-%Y')
         df.trdTm = df.trdTm.astype('datetime64[ns]')
-        df.trdTm = df.trdTm.dt.date
+        df.trdTm = df.trdTm.dt.strftime('%d-%m-%Y %H:%M:%S')
         # --------------------------------------------------------------------------------------------------------------------------------
         df['bsFlg'] = np.where(df['bsFlg'] == 1, 'B', 'S')
         pbar.update(90)
@@ -77,7 +77,7 @@ class NSEUtility:
         missing_ctclid = set(df['ctclid'].unique()) - set(df_nnf['NNFID'].unique())
         if missing_ctclid:
             logger.info(f"Missing ctclid(s) from NNF file: {missing_ctclid}")
-            raise ValueError(f'The ctclid values are not matching the NNFID values - {missing_ctclid}')
+            # raise ValueError(f'The ctclid values are not matching the NNFID values - {missing_ctclid}')
         else:
             logger.info('All ctclid values are present in NNF file.\n')
         merged_df = pd.merge(df, df_nnf, left_on='ctclid', right_on='NNFID', how='left')
@@ -86,6 +86,7 @@ class NSEUtility:
         # --------------------------------------------------------------------------------------------------------------------------------
         pbar.finish()
         merged_df[['TerminalID', 'TerminalName', 'UserID', 'SubGroup', 'MainGroup', 'NeatID']] = merged_df[['TerminalID', 'TerminalName', 'UserID', 'SubGroup', 'MainGroup', 'NeatID']].fillna('NONE')
+        merged_df['CreateDate'] = merged_df['CreateDate'].astype(str)
         merged_df = merged_df.drop_duplicates()
         return merged_df
 
@@ -104,6 +105,7 @@ class NSEUtility:
 
         grouped_eod = eod_df.groupby(by=['EodBroker','EodUnderlying','EodExpiry','EodStrike','EodOptionType'], as_index=False).agg({'EodNetQuantity':'sum','EodClosingPrice':'mean'})
         grouped_eod = grouped_eod.drop_duplicates()
+
         desk_db_df.loc[desk_db_df['optionType'] == 'XX', 'strikePrice'] = 0
         desk_db_df.strikePrice = desk_db_df.strikePrice.apply(lambda x: x/100 if x>0 else x)
         desk_db_df.strikePrice = desk_db_df.strikePrice.astype('int64')

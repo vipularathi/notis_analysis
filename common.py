@@ -47,6 +47,8 @@ zipped_dir = os.path.join(root_dir, 'zipped_files')
 dir_list = [bhav_dir, modified_dir, table_dir, eod_input_dir, bse_dir, logs_dir, volt_dir, zipped_dir, test_dir, logs_dir]
 status = [os.makedirs(_dir, exist_ok=True) for _dir in dir_list if not os.path.exists(_dir)]
 
+engine = create_engine(engine_str, pool_size = 20, max_overflow = 10)
+
 def define_logger():
     # Logging Definitions
     log_lvl = logging.DEBUG
@@ -70,6 +72,7 @@ def define_logger():
     return _logger
 logger = define_logger()
 def read_data_db(nnf=False, for_table='ENetMIS', from_time:str='', to_time:str='', from_source=False):
+    global engine
     if not nnf and for_table == 'ENetMIS':
         # Sql connection parameters
         sql_server = "rms.ar.db"
@@ -107,12 +110,12 @@ def read_data_db(nnf=False, for_table='ENetMIS', from_time:str='', to_time:str='
         except (pyodbc.Error, psycopg2.Error) as e:
             logger.info("Error occurred:", e)
     elif nnf and for_table != 'ENetMIS':
-        engine = create_engine(engine_str)
-        df = pd.read_sql_table(n_tbl_notis_nnf_data, con=engine)
+        # engine = create_engine(engine_str)
+        with engine.begin() as conn:
+            df = pd.read_sql_table(n_tbl_notis_nnf_data, con=conn)
         logger.info(f"Data fetched from {for_table} table. Shape:{df.shape}")
         return df
     elif not nnf and for_table == 'TradeHist':
-
         sql_server = '172.30.100.41'
         sql_port = '1450'
         sql_db = 'OMNE_ARD_PRD'
@@ -120,12 +123,20 @@ def read_data_db(nnf=False, for_table='ENetMIS', from_time:str='', to_time:str='
         sql_paswd = 'Pass@Word1'
         if not from_time:
             logger.info(f'Fetching today\'s BSE trade data till now.')
+            # sql_query = (
+            #     f"select mnmFillPrice,mnmSegment, mnmTradingSymbol,mnmTransactionType,mnmAccountId,mnmUser , mnmFillSize, mnmSymbolName, mnmExpiryDate, mnmOptionType, mnmStrikePrice, mnmAvgPrice, mnmExecutingBroker from TradeHist where (mnmSymbolName = 'BSXOPT' or mnmSymbolName = 'BSE')")
             sql_query = (
-                f"select mnmFillPrice,mnmSegment, mnmTradingSymbol,mnmTransactionType,mnmAccountId,mnmUser , mnmFillSize, mnmSymbolName, mnmExpiryDate, mnmOptionType, mnmStrikePrice, mnmAvgPrice, mnmExecutingBroker from TradeHist where (mnmSymbolName = 'BSXOPT' or mnmSymbolName = 'BSE')")
+                f"select mnmFillPrice,mnmSegment, mnmTradingSymbol,mnmTransactionType,mnmAccountId,mnmUser , mnmFillSize, mnmSymbolName, mnmExpiryDate, mnmOptionType, mnmStrikePrice, mnmAvgPrice, mnmExecutingBroker from [OMNE_ARD_PRD].[dbo].[TradeHist] where mnmExchSeg = 'bse_fo' and mnmAccountId = 'AA100'")
+            sql_query2 = (
+                f"select mnmFillPrice,mnmSegment, mnmTradingSymbol,mnmTransactionType,mnmAccountId,mnmUser , mnmFillSize, mnmSymbolName, mnmExpiryDate, mnmOptionType, mnmStrikePrice, mnmAvgPrice, mnmExecutingBroker from [OMNE_ARD_PRD_HNI].[dbo].[TradeHist] where mnmExchSeg = 'bse_fo' and mnmAccountId = 'AA100'")
         else:
             logger.info(f'Fetching BSE trade data from {from_time} to {to_time}')
+            # sql_query = (
+            #     f"select mnmFillPrice,mnmSegment, mnmTradingSymbol,mnmTransactionType,mnmAccountId,mnmUser , mnmFillSize, mnmSymbolName, mnmExpiryDate, mnmOptionType, mnmStrikePrice, mnmAvgPrice, mnmExecutingBroker from TradeHist where (mnmSymbolName = 'BSXOPT' or mnmSymbolName = 'BSE') and mnmExchangeTime between \'{from_time}\' and \'{to_time}\'")
             sql_query = (
-                f"select mnmFillPrice,mnmSegment, mnmTradingSymbol,mnmTransactionType,mnmAccountId,mnmUser , mnmFillSize, mnmSymbolName, mnmExpiryDate, mnmOptionType, mnmStrikePrice, mnmAvgPrice, mnmExecutingBroker from TradeHist where (mnmSymbolName = 'BSXOPT' or mnmSymbolName = 'BSE') and mnmExchangeTime between \'{from_time}\' and \'{to_time}\'")
+                f"select mnmFillPrice,mnmSegment, mnmTradingSymbol,mnmTransactionType,mnmAccountId,mnmUser , mnmFillSize, mnmSymbolName, mnmExpiryDate, mnmOptionType, mnmStrikePrice, mnmAvgPrice, mnmExecutingBroker from [OMNE_ARD_PRD].[dbo].[TradeHist] where mnmExchSeg = 'bse_fo' and mnmAccountId = 'AA100' and mnmExchangeTime between \'{from_time}\' and \'{to_time}\'")
+            sql_query2 = (
+                f"select mnmFillPrice,mnmSegment, mnmTradingSymbol,mnmTransactionType,mnmAccountId,mnmUser , mnmFillSize, mnmSymbolName, mnmExpiryDate, mnmOptionType, mnmStrikePrice, mnmAvgPrice, mnmExecutingBroker from [OMNE_ARD_PRD_HNI].[dbo].[TradeHist] where mnmExchSeg = 'bse_fo' and mnmAccountId = 'AA100' and mnmExchangeTime between \'{from_time}\' and \'{to_time}\'")
         try:
             sql_engine_str = (
                 f"DRIVER={{ODBC Driver 17 for SQL Server}};"
@@ -136,13 +147,16 @@ def read_data_db(nnf=False, for_table='ENetMIS', from_time:str='', to_time:str='
             )
             with pyodbc.connect(sql_engine_str) as sql_conn:
                 df_bse = pd.read_sql_query(sql_query, sql_conn)
-            logger.info(f'data fetched for bse: {df_bse.shape}')
-            return df_bse
+                df_bse_hni = pd.read_sql_query(sql_query2,sql_conn)
+            logger.info(f'data fetched for bse: {df_bse.shape, df_bse_hni.shape}')
+            final_bse_df = pd.concat([df_bse,df_bse_hni], ignore_index=True)
+            return final_bse_df
         except (pyodbc.Error, psycopg2.Error) as e:
             logger.info(f'Error in fetching data: {e}')
     elif not nnf and for_table!='ENetMIS':
-        engine = create_engine(engine_str)
-        df = pd.read_sql_table(for_table, con=engine)
+        # engine = create_engine(engine_str)
+        with engine.begin() as conn:
+            df = pd.read_sql_table(for_table, con=conn)
         logger.info(f"Data fetched from {for_table} table. Shape:{df.shape}")
         return df
 
@@ -248,7 +262,7 @@ def read_file(filepath):
 
 def write_notis_postgredb(df, table_name, raw=False, truncate_required=False):
     start_time = time.time()
-    engine = create_engine(engine_str)
+    # engine = create_engine(engine_str)
 
     if truncate_required:
         truncate_tables(table_name)
@@ -275,7 +289,8 @@ def write_notis_postgredb(df, table_name, raw=False, truncate_required=False):
     chunk_size = 1000
     for i in range(0, total_rows, chunk_size):
         chunk = df.iloc[i:i + chunk_size]
-        chunk.to_sql(table_name, engine, index=False, if_exists='append', method='multi')
+        with engine.begin() as conn:
+            chunk.to_sql(table_name, conn, index=False, if_exists='append', method='multi')
         pbar.update(min(i + chunk_size, total_rows))
 
     pbar.finish()
@@ -408,7 +423,7 @@ def download_bhavcopy():
         logger.info(f'Error: {e}')
 
 def truncate_tables(tablename):
-    engine = create_engine(engine_str)
+    # engine = create_engine(engine_str)
     with engine.begin() as conn:
         res = conn.execute(text(f'select count(*) from "{tablename}"'))
         row_count = res.scalar()

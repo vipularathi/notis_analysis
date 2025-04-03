@@ -8,17 +8,10 @@ from openpyxl.utils.dataframe import dataframe_to_rows
 from sqlalchemy import create_engine, text, insert
 
 from db_config import engine_str,n_tbl_notis_trade_book,n_tbl_notis_raw_data,n_tbl_bse_trade_data,n_tbl_notis_eod_net_pos_cp_noncp,n_tbl_notis_desk_wise_net_position ,n_tbl_notis_nnf_data, n_tbl_notis_nnf_wise_net_position
-from common import get_date_from_non_jiffy, get_date_from_jiffy, today, yesterday, root_dir, logger, read_data_db, write_notis_postgredb
+from common import get_date_from_non_jiffy, get_date_from_jiffy, today, yesterday, root_dir, logger, read_data_db, write_notis_postgredb, truncate_tables
 from nse_utility import NSEUtility
 warnings.filterwarnings("ignore")
 
-# today = datetime(year=2025,month=3,day=28).date()
-# n_tbl_test_mod = f'test_mod_{today}'
-# n_tbl_test_raw = f'test_raw_{today}'
-# n_tbl_test_cp_noncp = f'test_cp_noncp_{today}'
-# n_tbl_test_net_pos_desk = f'test_net_pos_desk_{today}'
-# n_tbl_test_net_pos_nnf = f'test_net_pos_nnf_{today}'
-# n_tbl_test_bse = f'test_bse_{today}'
 n_tbl_test_mod = n_tbl_notis_trade_book
 n_tbl_test_raw = n_tbl_notis_raw_data
 n_tbl_test_cp_noncp = n_tbl_notis_eod_net_pos_cp_noncp
@@ -27,69 +20,6 @@ n_tbl_test_net_pos_nnf = n_tbl_notis_nnf_wise_net_position
 n_tbl_test_bse = n_tbl_bse_trade_data
 main_mod_df = pd.DataFrame()
 main_mod_df_bse = pd.DataFrame()
-
-# def read_data_db(nnf=False, for_table='ENetMIS', from_time:str='', to_time:str=''):
-#     if not nnf and for_table == 'ENetMIS':
-#         logger.info(f'fetching raw data from {from_time} to {to_time}')
-#         # Sql connection parameters
-#         sql_server = "rms.ar.db"
-#         sql_database = "ENetMIS"
-#         sql_username = "notice_user"
-#         sql_password = "Notice@2024"
-#         # sql_query = "SELECT * FROM [ENetMIS].[dbo].[NSE_FO_AA100_view]"
-#         sql_query = f"SELECT * FROM [ENetMIS].[dbo].[NSE_FO_AA100_view] WHERE CreateDate BETWEEN '{from_time}' AND '{to_time}';"
-#
-#         try:
-#             sql_connection_string = (
-#                 f"DRIVER={{ODBC Driver 17 for SQL Server}};"
-#                 f"SERVER={sql_server};"
-#                 f"DATABASE={sql_database};"
-#                 f"UID={sql_username};"
-#                 f"PWD={sql_password}"
-#             )
-#             with pyodbc.connect(sql_connection_string) as sql_conn:
-#                 df = pd.read_sql_query(sql_query, sql_conn)
-#             logger.info(f"Data fetched from SQL Server. Shape:{df.shape}")
-#             return df
-#
-#         except (pyodbc.Error, psycopg2.Error) as e:
-#             logger.info("Error occurred:", e)
-#
-#     elif not nnf and for_table == 'TradeHist':
-#         logger.info(f'fetching BSE trade data from {from_time} to {to_time}')
-#         sql_server = '172.30.100.41'
-#         sql_port = '1450'
-#         sql_db = 'OMNE_ARD_PRD'
-#         sql_userid = 'Pos_User'
-#         sql_paswd = 'Pass@Word1'
-#         sql_query = (
-#             f"select mnmFillPrice,mnmSegment, mnmTradingSymbol,mnmTransactionType,mnmAccountId,mnmUser , mnmFillSize, mnmSymbolName, mnmExpiryDate, mnmOptionType, mnmStrikePrice, mnmAvgPrice, mnmExecutingBroker from TradeHist where (mnmSymbolName = 'BSXOPT' or mnmSymbolName = 'BSE') and mnmExchangeTime between \'{from_time}\' and \'{to_time}\'")
-#         try:
-#             sql_engine_str = (
-#                 f"DRIVER={{ODBC Driver 17 for SQL Server}};"
-#                 f"SERVER={sql_server},{sql_port};"
-#                 f"DATABASE={sql_db};"
-#                 f"UID={sql_userid};"
-#                 f"PWD={sql_paswd};"
-#             )
-#             with pyodbc.connect(sql_engine_str) as sql_conn:
-#                 df_bse = pd.read_sql_query(sql_query, sql_conn)
-#             logger.info(f'data fetched for bse: {df_bse.shape}')
-#             return df_bse
-#         except (pyodbc.Error, psycopg2.Error) as e:
-#             logger.info(f'Error in fetching data: {e}')
-#
-#     elif nnf and for_table != 'ENetMIS':
-#         engine = create_engine(engine_str)
-#         df = pd.read_sql_table(n_tbl_notis_nnf_data, con=engine)
-#         logger.info(f"Data fetched from {for_table} table. Shape:{df.shape}")
-#         return df
-#
-#     elif not nnf and for_table!='ENetMIS':
-#         engine = create_engine(engine_str)
-#         df = pd.read_sql_table(for_table, con=engine)
-#         logger.info(f"Data fetched from {for_table} table. Shape:{df.shape}")
-#         return df
 
 def get_bse_trade_data(from_time, to_time):
     global main_mod_df_bse
@@ -168,22 +98,46 @@ def main(from_time, to_time):
     logger.info(f'length of main_mod-df before concat is {len(main_mod_df)}')
     main_mod_df = pd.concat([main_mod_df, modified_df], ignore_index=True)
     logger.info(f'length of main_mod-df after concat is {len(main_mod_df)}')
-    main_mod_df['expDt'] = pd.to_datetime(main_mod_df['expDt']).dt.date
+    # main_mod_df['expDt'] = pd.to_datetime(main_mod_df['expDt']).dt.date
+    # pivot_df = main_mod_df.pivot_table(
+    #     index=['MainGroup', 'SubGroup', 'broker', 'ctclid', 'sym', 'expDt', 'strPrc', 'optType'],
+    #     columns=['bsFlg'],
+    #     values=['trdQty', 'trdPrc'],
+    #     aggfunc={'trdQty': 'sum', 'trdPrc': 'mean'},
+    #     fill_value=0
+    # )
+    # if len(main_mod_df.bsFlg.unique()) == 1:
+    #     if main_mod_df.bsFlg.unique().tolist()[0] == 'B':
+    #         pivot_df['SellAvgPrc']=0;pivot_df['SellQty']=0
+    #     elif main_mod_df.bsFlg.unique().tolist()[0] == 'S':
+    #         pivot_df['BuyAvgPrc']=0;pivot_df['BuyQty']=0
+    # elif len(main_mod_df) == 0 or len(pivot_df) == 0:
+    #     pivot_df.columns = ['_'.join(col).strip() for col in pivot_df.columns.values]
+    # pivot_df.columns = ['BuyAvgPrc','SellAvgPrc','BuyQty','SellQty']
+    # pivot_df.reset_index(inplace=True)
+    main_mod_df['trdQtyPrc'] = main_mod_df['trdQty'] * main_mod_df['trdPrc']
     pivot_df = main_mod_df.pivot_table(
         index=['MainGroup', 'SubGroup', 'broker', 'ctclid', 'sym', 'expDt', 'strPrc', 'optType'],
         columns=['bsFlg'],
-        values=['trdQty', 'trdPrc'],
-        aggfunc={'trdQty': 'sum', 'trdPrc': 'mean'},
+        values=['trdQty', 'trdQtyPrc'],
+        aggfunc={'trdQty': 'sum', 'trdQtyPrc': 'sum'},
         fill_value=0
     )
     if len(main_mod_df.bsFlg.unique()) == 1:
         if main_mod_df.bsFlg.unique().tolist()[0] == 'B':
-            pivot_df['SellAvgPrc']=0;pivot_df['SellQty']=0
+            pivot_df['SellTrdQtyPrc'] = 0;
+            pivot_df['SellQty'] = 0
         elif main_mod_df.bsFlg.unique().tolist()[0] == 'S':
-            pivot_df['BuyAvgPrc']=0;pivot_df['BuyQty']=0
+            pivot_df['BuyTrdQtyPrc'] = 0;
+            pivot_df['BuyQty'] = 0
     elif len(main_mod_df) == 0 or len(pivot_df) == 0:
         pivot_df.columns = ['_'.join(col).strip() for col in pivot_df.columns.values]
-    pivot_df.columns = ['BuyAvgPrc','SellAvgPrc','BuyQty','SellQty']
+    pivot_df.columns = ['BuyQty', 'SellQty', 'BuyTrdQtyPrc', 'SellTrdQtyPrc']
+    pivot_df['BuyAvgPrc'] = pivot_df.apply(lambda row: row['BuyTrdQtyPrc'] / row['BuyQty'] if row['BuyQty'] > 0 else 0,
+                                           axis=1)
+    pivot_df['SellAvgPrc'] = pivot_df.apply(
+        lambda row: row['SellTrdQtyPrc'] / row['SellQty'] if row['SellQty'] > 0 else 0, axis=1)
+    pivot_df.drop(columns=['BuyTrdQtyPrc', 'SellTrdQtyPrc'], inplace=True)
     pivot_df.reset_index(inplace=True)
     pivot_df.rename(columns={'MainGroup': 'mainGroup', 'SubGroup': 'subGroup', 'sym': 'symbol', 'expDt': 'expiryDate',
                              'strPrc': 'strikePrice', 'optType': 'optionType', 'BuyAvgPrc': 'buyAvgPrice',
@@ -196,16 +150,18 @@ def main(from_time, to_time):
     write_notis_postgredb(desk_db_df, table_name=n_tbl_test_net_pos_desk, truncate_required=True)
     nnf_db_df = NSEUtility.calc_nnfwise_net_pos(pivot_df)
     write_notis_postgredb(nnf_db_df, table_name=n_tbl_test_net_pos_nnf, truncate_required=True)
-    # df_db_bse = get_bse_trade_data(from_time=from_time[:-4],to_time=to_time[:-4])
-    # write_notis_postgredb1(df_db_bse, table_name=n_tbl_test_bse)
 
 if __name__ == '__main__':
+    recover = False
     stt = datetime.now().replace(hour=9, minute=15)
     ett = datetime.now().replace(hour=15, minute=35)
     # backtest_date = (datetime.now()-timedelta(days=1))
     # stt = backtest_date.replace(hour=9, minute=15)
     # ett = backtest_date.replace(hour=15, minute=35)
+    actual_start_time = datetime.now()
     logger.info(f'test started at {datetime.now()}')
+    if actual_start_time > stt and actual_start_time < ett:
+        recover = True
     while datetime.now() < stt:
         time.sleep(1)
     while datetime.now() < ett:
@@ -215,17 +171,38 @@ if __name__ == '__main__':
         # logger.info('\n')
         # main(from_time=now.replace(second=0, microsecond=0).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3], to_time=next_min.strftime("%Y-%m-%d %H:%M:%S.%f")[:-3])
         # time.sleep((next_min - now).total_seconds() + 30)
+        # if now.second == 1:
+        #     # now=now.replace(day=28)
+        #     print('in if')
+        #     logger.info('\n')
+        #     logger.info(f"now time => {now.strftime('%Y-%m-%d %H:%M:%S')}")
+        #     main((now - timedelta(minutes=1)).replace(second=0).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3],
+        #                   now.replace(second=0).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3])
+        #     get_bse_trade_data((now - timedelta(minutes=1)).replace(second=0).strftime('%d-%b-%Y %H:%M:%S'), now.replace(
+        #         second=0).strftime('%d-%b-%Y %H:%M:%S'))
+        # # else:
+        # #     print('in else')
+        # #     next_time = (now + timedelta(minutes=1)).replace(second=1, microsecond=0)
+        # #     time.sleep((next_time - now).total_seconds())
         if now.second == 1:
-            # now=now.replace(day=28)
             print('in if')
-            logger.info('\n')
-            logger.info(f"now time => {now.strftime('%Y-%m-%d %H:%M:%S')}")
-            main((now - timedelta(minutes=1)).replace(second=0).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3],
-                          now.replace(second=0).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3])
-            get_bse_trade_data((now - timedelta(minutes=1)).replace(second=0).strftime('%d-%b-%Y %H:%M:%S'), now.replace(
-                second=0).strftime('%d-%b-%Y %H:%M:%S'))
+            if recover:
+                print('in recover')
+                table_list = [n_tbl_test_mod, n_tbl_test_raw, n_tbl_test_cp_noncp, n_tbl_test_net_pos_desk,
+                              n_tbl_test_net_pos_nnf, n_tbl_test_bse]
+                for each in table_list:
+                    truncate_tables(each)
+                main_from_time = stt.replace(second=0).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
+                main_to_time = now.replace(second=0).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
+                bse_from_time = stt.replace(second=0).strftime('%d-%b-%Y %H:%M:%S')
+                bse_to_time = now.replace(second=0).strftime('%d-%b-%Y %H:%M:%S')
+                recover = False
+            else:
+                main_from_time = (now - timedelta(minutes=1)).replace(second=0).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
+                main_to_time = now.replace(second=0).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
+                bse_from_time = (now - timedelta(minutes=1)).replace(second=0).strftime('%d-%b-%Y %H:%M:%S')
+                bse_to_time = now.replace(second=0).strftime('%d-%b-%Y %H:%M:%S')
+            logger.info(f"\nnow time => {now.strftime('%Y-%m-%d %H:%M:%S')}")
+            main(main_from_time, main_to_time)
+            get_bse_trade_data(bse_from_time, bse_to_time)
             time.sleep(1)
-        else:
-            print('in else')
-            next_time = (now + timedelta(minutes=1)).replace(second=1, microsecond=0)
-            time.sleep((next_time - now).total_seconds())

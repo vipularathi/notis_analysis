@@ -1208,7 +1208,7 @@ e=0
 #         print('\n')
 #         print(now.strftime('%Y-%m-%d %H:%M:%S'))
 #         time.sleep((next_call - now).total_seconds())
-from temp import write_notis_postgredb1
+from notis_main_per_minute import write_notis_postgredb1
 import tkinter as tk
 from tkinter import messagebox
 import pyttsx3
