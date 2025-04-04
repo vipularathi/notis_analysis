@@ -262,12 +262,14 @@ def read_file(filepath):
 
 def write_notis_postgredb(df, table_name, raw=False, truncate_required=False):
     start_time = time.time()
-    # engine = create_engine(engine_str)
-
     if truncate_required:
         truncate_tables(table_name)
     logger.info(f'Writing {"Raw" if raw else "Modified"} data to database...')
     total_rows = len(df)
+    if not raw:
+        for col in df.columns:
+            if type(df[col][0]) == type(pd.to_datetime('2025-04-04').date()):
+                df[col] = pd.to_datetime(df[col], dayfirst=True, format='mixed').dt.strftime('%d-%m-%Y')
     pbar = progressbar.ProgressBar(max_value=total_rows, widgets=[
         progressbar.Percentage(), ' ',
         progressbar.Bar(marker='=', left='[', right=']'),

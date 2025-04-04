@@ -93,7 +93,7 @@ def download_tables():
     # today = datetime(year=2025, month=1, day=10).date().strftime('%Y_%m_%d').upper()
     for table in table_list:
         df = read_data_db(for_table=table)
-        df.to_csv(os.path.join(table_dir, f"{table}_{today.strftime('%Y-%m-%d').upper()}.csv"), index=False)
+        df.to_csv(os.path.join(table_dir, f"{table}.csv"), index=False)
         print(f"{table} data fetched and written at path: {os.path.join(table_dir, f'{table}_{today}.csv')}")
 
 # def truncate_tables():

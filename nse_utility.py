@@ -32,7 +32,7 @@ class NSEUtility:
         # --------------------------------------------------------------------------------------------------------------------------------
         pbar = progressbar.ProgressBar(max_value=100, widgets=[progressbar.Percentage(), ' ', progressbar.Bar(marker='=', left='[', right=']'), progressbar.ETA()])
         logger.info('Starting file modification...')
-        pbar.update(0)
+        # pbar.update(0)
         df.rename(columns={
             'Column1': 'seqNo', 'Column2': 'mkt', 'Column3': 'trdNo',
             'Column4': 'trdTm', 'Column5': 'Tkn', 'Column6': 'trdQty',
@@ -47,6 +47,15 @@ class NSEUtility:
             'Column31': 'echoback', 'Column32': 'Fill1', 'Column33': 'Fill2',
             'Column34': 'Fill3', 'Column35': 'Fill4', 'Column36': 'Fill5', 'Column37': 'Fill6'
         }, inplace=True)
+        df['ctclid'] = df['ctclid'].astype('float64')
+        df_nnf['NNFID'] = df_nnf['NNFID'].astype('float64')
+        # proceed only if all ctclid from notis file is present in nnf file or not
+        missing_ctclid = set(df['ctclid'].unique()) - set(df_nnf['NNFID'].unique())
+        if missing_ctclid:
+            logger.info(f"Missing ctclid(s) from NNF file: {missing_ctclid}")
+            # raise ValueError(f'The ctclid values are not matching the NNFID values - {missing_ctclid}')
+        else:
+            logger.info('All ctclid values are present in NNF file.\n')
         pbar.update(20)
 
         df['ordTm'] = df['ordTm'].apply(lambda x: get_date_from_non_jiffy(int(x)))
@@ -60,7 +69,7 @@ class NSEUtility:
         df.ordTm = df.ordTm.astype('datetime64[ns]')
         df.ordTm = df.ordTm.dt.strftime('%d-%m-%Y %H:%M:%S')
         df.expDt = df.expDt.astype('datetime64[ns]')
-        df.expDt = df.expDt.dt.strftime('%d-%m-%Y')
+        df.expDt = df.expDt.dt.date
         df.trdTm = df.trdTm.astype('datetime64[ns]')
         df.trdTm = df.trdTm.dt.strftime('%d-%m-%Y %H:%M:%S')
         # --------------------------------------------------------------------------------------------------------------------------------
@@ -71,15 +80,15 @@ class NSEUtility:
         df.rename(columns={'remarks': 'broker'}, inplace=True)
         pbar.update(95)
 
-        df['ctclid'] = df['ctclid'].astype('float64')
-        df_nnf['NNFID'] = df_nnf['NNFID'].astype('float64')
-        # proceed only if all ctclid from notis file is present in nnf file or not
-        missing_ctclid = set(df['ctclid'].unique()) - set(df_nnf['NNFID'].unique())
-        if missing_ctclid:
-            logger.info(f"Missing ctclid(s) from NNF file: {missing_ctclid}")
-            # raise ValueError(f'The ctclid values are not matching the NNFID values - {missing_ctclid}')
-        else:
-            logger.info('All ctclid values are present in NNF file.\n')
+        # df['ctclid'] = df['ctclid'].astype('float64')
+        # df_nnf['NNFID'] = df_nnf['NNFID'].astype('float64')
+        # # proceed only if all ctclid from notis file is present in nnf file or not
+        # missing_ctclid = set(df['ctclid'].unique()) - set(df_nnf['NNFID'].unique())
+        # if missing_ctclid:
+        #     logger.info(f"Missing ctclid(s) from NNF file: {missing_ctclid}")
+        #     # raise ValueError(f'The ctclid values are not matching the NNFID values - {missing_ctclid}')
+        # else:
+        #     logger.info('All ctclid values are present in NNF file.\n')
         merged_df = pd.merge(df, df_nnf, left_on='ctclid', right_on='NNFID', how='left')
         merged_df.drop(columns=['NNFID'], axis=1, inplace=True)
         pbar.update(100)
@@ -99,16 +108,21 @@ class NSEUtility:
         eod_df.drop(columns=['NetQuantity','buyQty','buyAvgPrice','sellQty','sellAvgPrice','IntradayVolume','ClosingPrice'], inplace=True)
         eod_df.rename(columns={'FinalNetQty':'NetQuantity','FinalSettlementPrice':'ClosingPrice'}, inplace=True)
         eod_df = eod_df.add_prefix('Eod')
-        eod_df.EodExpiry = eod_df.EodExpiry.astype('datetime64[ns]')
-        eod_df.EodExpiry = eod_df.EodExpiry.dt.date
+        # eod_df.EodExpiry = eod_df.EodExpiry.astype('datetime64[ns]')
+        # eod_df.EodExpiry = eod_df.EodExpiry.dt.date
+        eod_df['EodExpiry'] = pd.to_datetime(eod_df['EodExpiry'], dayfirst=True, format='mixed')
+        eod_df['EodExpiry'] = eod_df['EodExpiry'].dt.date
         eod_df = eod_df.query("EodExpiry >= @today and EodNetQuantity != 0")
 
         grouped_eod = eod_df.groupby(by=['EodBroker','EodUnderlying','EodExpiry','EodStrike','EodOptionType'], as_index=False).agg({'EodNetQuantity':'sum','EodClosingPrice':'mean'})
+        grouped_eod = grouped_eod.query("EodNetQuantity != 0")
         grouped_eod = grouped_eod.drop_duplicates()
 
         desk_db_df.loc[desk_db_df['optionType'] == 'XX', 'strikePrice'] = 0
         desk_db_df.strikePrice = desk_db_df.strikePrice.apply(lambda x: x/100 if x>0 else x)
         desk_db_df.strikePrice = desk_db_df.strikePrice.astype('int64')
+        desk_db_df.expiryDate = desk_db_df.expiryDate.astype('datetime64[ns]')
+        desk_db_df.expiryDate = desk_db_df.expiryDate.dt.date
         # desk_db_df['broker'] = desk_db_df['brokerID'].apply(lambda x: 'CP' if x.startswith('Y') else 'non CP')
 
         grouped_desk_db_df = desk_db_df.groupby(by=['broker','symbol', 'expiryDate', 'strikePrice', 'optionType']).agg({'buyAvgQty':'sum','buyAvgPrice':'mean','sellAvgQty':'sum','sellAvgPrice':'mean'}).reset_index()
@@ -154,7 +168,6 @@ class NSEUtility:
         merged_bhav_df.buyAvgPrice = merged_bhav_df.buyAvgPrice.astype('int64')
         merged_bhav_df.sellAvgPrice = merged_bhav_df.sellAvgPrice.astype('int64')
         merged_bhav_df.BhavClosingprice = merged_bhav_df.BhavClosingprice.astype('int64')
-        merged_bhav_df.EodExpiry = merged_bhav_df.EodExpiry.astype('str')
         merged_bhav_df.rename(columns = {'BhavClosingprice':'FinalSettlementPrice'}, inplace = True)
         logger.info(f'cp noncp length at {datetime.now()} is {merged_bhav_df.shape}')
         return merged_bhav_df
