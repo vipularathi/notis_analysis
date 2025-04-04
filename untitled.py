@@ -1,7 +1,6 @@
 import numpy as np
 import pandas as pd
 import os
-from main import read_notis_file
 import time
 from datetime import datetime, timedelta, timezone, date
 from openpyxl import Workbook, load_workbook
@@ -20,14 +19,15 @@ from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse, FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
-from db_config import n_tbl_notis_trade_book, s_tbl_notis_trade_book, n_tbl_notis_raw_data, s_tbl_notis_raw_data, n_tbl_notis_nnf_data, s_tbl_notis_nnf_data
-from main import modify_file
 import openpyxl
 import io
 import gzip
 import progressbar
 import csv
 import sys
+import re
+import pyodbc
+import psycopg2
 
 # today = datetime(year=2025, month=1, day=24).date()
 # yesterday = datetime(year=2025, month=1, day=23).date()
@@ -52,6 +52,7 @@ eod_output_dir = os.path.join(root_dir, 'eod_data')
 table_dir = os.path.join(root_dir, 'table_data')
 bhav_path = os.path.join(root_dir, 'bhavcopy')
 test_dir = os.path.join(root_dir, 'testing')
+bse_dir = os.path.join(root_dir, 'bse_data')
 eod_net_pos_input_dir = os.path.join(root_dir, 'test_net_position_original')
 eod_net_pos_output_dir = os.path.join(root_dir, 'test_net_position_code')
 zipped_dir=os.path.join(root_dir, 'zipped_files')
@@ -598,7 +599,7 @@ y=0
 #             pbar.finish()
 #     print('done')
 t=0
-engine=create_engine(engine_str)
+# engine=create_engine(engine_str)
 # def test_modif(for_date:date):
 #     for_dt = pd.to_datetime(for_date).date()
 #     tablename = f'NOTIS_TRADE_BOOK' if for_dt == today else f'NOTIS_TRADE_BOOK_{for_dt}'
@@ -869,52 +870,451 @@ u=0
 # # export_db_to_xlsx_2(tablename, zip_path2)
 # # export_db_to_xlsx_3(tablename, zip_path3)
 u=0
-tablename = 'NOTIS_TRADE_BOOK_2025-03-04'
-zip_path4 = os.path.join(zipped_dir, f'zipped_{tablename}_test_2.xlsx.gz')
-def get_db():
-    engine=create_engine(engine_str)
-    sessionLocal = sessionmaker(autoflush=False, autocommit=False, bind=engine)
-    db = sessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
-def export_test_1(tablename, zip_path, db):
-    if not os.path.exists(zip_path):
-        stt=datetime.now()
-        total_rows = db.execute(text(rf'select count(*) from "{tablename}"')).scalar()
-        page_size = 5_00_000
-        num_pages = total_rows//page_size + (1 if (total_rows%page_size) else 0)
-        buffer = io.BytesIO()
-        wb = xlsxwriter.Workbook(buffer,{'in_memory':True})
-        # pbar = progressbar.ProgressBar(max_value=total_rows + 1, widgets=[progressbar.Percentage(),'', progressbar.Bar(marker='=', left='[',right=']'), progressbar.ETA()])
-        for page in range(num_pages):
-            query = f'select * from "{tablename}" limit {page_size} offset {(page)*page_size}'
-            print(query)
-            pbar = progressbar.ProgressBar(max_value=total_rows + 1, widgets=[progressbar.Percentage(), '',
-                                                                              progressbar.Bar(marker='=', left='[',
-                                                                                              right=']'),
-                                                                              progressbar.ETA()])
-            result = db.execute(query)
-            ws = wb.add_worksheet(f'Sheet{page+1}')
-            for col, header in enumerate(result.keys()):
-                ws.write(0,col,header)
-            for rn,row in enumerate(result, start=1):
-                for col, cell in enumerate(row):
-                    ws.write(rn, col, cell)
-                pbar.update(rn)
-            pbar.finish()
-            p = 0
-        wb.close()
-        print('fetching data from buffer')
-        buffer.seek(0)
-        print('Writing to xlsx file and zipping . . ')
-        with gzip.open(zip_path, 'wb') as f:
-            f.write(buffer.getvalue())
-        ett=datetime.now()
-        print(f'total time taken for zip_path4:{(ett-stt).total_seconds()}')
-
-
-db=next(get_db())
-export_test_1(tablename, zip_path4, db)
+# tablename = 'NOTIS_TRADE_BOOK_2025-03-04'
+# zip_path4 = os.path.join(zipped_dir, f'zipped_{tablename}_test_2.xlsx.gz')
+# def get_db():
+#     engine=create_engine(engine_str)
+#     sessionLocal = sessionmaker(autoflush=False, autocommit=False, bind=engine)
+#     db = sessionLocal()
+#     try:
+#         yield db
+#     finally:
+#         db.close()
+# def export_test_1(tablename, zip_path, db):
+#     if not os.path.exists(zip_path):
+#         stt=datetime.now()
+#         total_rows = db.execute(text(rf'select count(*) from "{tablename}"')).scalar()
+#         page_size = 5_00_000
+#         num_pages = total_rows//page_size + (1 if (total_rows%page_size) else 0)
+#         buffer = io.BytesIO()
+#         wb = xlsxwriter.Workbook(buffer,{'in_memory':True})
+#         # pbar = progressbar.ProgressBar(max_value=total_rows + 1, widgets=[progressbar.Percentage(),'', progressbar.Bar(marker='=', left='[',right=']'), progressbar.ETA()])
+#         for page in range(num_pages):
+#             query = f'select * from "{tablename}" limit {page_size} offset {(page)*page_size}'
+#             print(query)
+#             pbar = progressbar.ProgressBar(max_value=total_rows + 1, widgets=[progressbar.Percentage(), '',
+#                                                                               progressbar.Bar(marker='=', left='[',
+#                                                                                               right=']'),
+#                                                                               progressbar.ETA()])
+#             result = db.execute(query)
+#             ws = wb.add_worksheet(f'Sheet{page+1}')
+#             for col, header in enumerate(result.keys()):
+#                 ws.write(0,col,header)
+#             for rn,row in enumerate(result, start=1):
+#                 for col, cell in enumerate(row):
+#                     ws.write(rn, col, cell)
+#                 pbar.update(rn)
+#             pbar.finish()
+#             p = 0
+#         wb.close()
+#         print('fetching data from buffer')
+#         buffer.seek(0)
+#         print('Writing to xlsx file and zipping . . ')
+#         with gzip.open(zip_path, 'wb') as f:
+#             f.write(buffer.getvalue())
+#         ett=datetime.now()
+#         print(f'total time taken for zip_path4:{(ett-stt).total_seconds()}')
+#
+#
+# db=next(get_db())
+# export_test_1(tablename, zip_path4, db)
 y=0
+# today=datetime(year=2025,month=3,day=11)
+# file_pattern = rf'EOD Position[ _]{today.day}[-_]{today.strftime("%b").capitalize()}[_-]{today.year}' #sample=EOD Position 28-Jan-2025 or EOD Position_11_Mar_2025
+# matched_files = [f for f in os.listdir(test_dir) if re.match(file_pattern,f)]
+# # matched_files = [f for f in os.listdir(rf"C:\Users\vipulanand\Downloads") if re.match(file_pattern,f)]
+i=0
+# df = pd.read_excel(rf"D:\notis_analysis\Final_NNF_ID.xlsx", index_col=False)
+# df.columns = df.columns.str.replace(r'\s+','',regex=True)
+# df.drop(columns=df.columns[df.columns.str.startswith('Un')], inplace=True)
+# df.dropna(how='all', inplace=True)
+# terminal_list = df.TerminalID.unique().tolist()
+# o=0
+# sql_server = '172.30.100.41'
+# sql_port = '1450'
+# sql_db = 'OMNE_ARD_PRD'
+# sql_userid = 'Pos_User'
+# sql_paswd = 'Pass@Word1'
+# sql_paswd_encoded = quote(sql_paswd)
+# # sql_query = "select * from [OMNE_ARD_PRD].[dbo].[TradeHist]"
+# # sql_query = ("select mnmFillPrice,mnmSegment, mnmTradingSymbol,mnmTransactionType,mnmAccountId,mnmUser,mnmFillSize, mnmSymbolName, mnmExpiryDate, mnmOptionType, mnmStrikePrice, mnmAvgPrice"
+# #              "from TradeHist "
+# #              "where mnmAccountId='AA100' and mnmExchange='BSE'")
+# sql_query = ("select mnmFillPrice,mnmSegment, mnmTradingSymbol,mnmTransactionType,mnmAccountId,mnmUser , mnmFillSize, mnmSymbolName, mnmExpiryDate, mnmOptionType, mnmStrikePrice, mnmAvgPrice from TradeHist where mnmAccountId='AA100' and mnmExchange='BSE'")
+# try:
+#     sql_engine_str = (
+#         f"DRIVER={{ODBC Driver 17 for SQL Server}};"
+#         f"SERVER={sql_server},{sql_port};"
+#         f"DATABASE={sql_db};"
+#         f"UID={sql_userid};"
+#         f"PWD={sql_paswd};"
+#     )
+#     with pyodbc.connect(sql_engine_str) as sql_conn:
+#         df_bse=pd.read_sql_query(sql_query,sql_conn)
+#     print(f'data fetched for bse: {df.shape}')
+# except (pyodbc.Error, psycopg2.Error) as e:
+#     print(f'Error in fetching data: {e}')
+# # df_bse = read_file(os.path.join(bse_dir,'testbse_18Mar2025.xlsx'))
+# df_bse.columns = [re.sub(r'mnm|\s','',each) for each in df_bse.columns]
+# df_bse.ExpiryDate = df_bse.ExpiryDate.apply(lambda x:pd.to_datetime(get_date_from_non_jiffy(int(x))).date())
+# to_int_list = ['FillPrice', 'FillSize','StrikePrice']
+# for each in to_int_list:
+#     df_bse[each] = df_bse[each].astype(np.int64)
+# df_bse['AvgPrice'] = df_bse['AvgPrice'].astype(float).astype(np.int64)
+# df_bse['StrikePrice'] = (df_bse['StrikePrice']/100).astype(np.int64)
+# df_bse['Symbol'] = df_bse['TradingSymbol'].apply(lambda x:'SENSEX' if x.upper().startswith('SEN') else x)
+# df_bse.rename(columns={'User':'TerminalID'}, inplace=True)
+# p=0
+# pivot_df = df_bse.pivot_table(
+#     index=['TerminalID','Symbol','ExpiryDate','OptionType','StrikePrice'],
+#     columns=['TransactionType'],
+#     values=['FillSize','AvgPrice'],
+#     aggfunc={'FillSize':'sum','AvgPrice':'mean'},
+#     fill_value=0
+# )
+# pivot_df.columns = ['BuyPrc','SellPrc','BuyVol','SellVol']
+# pivot_df.reset_index(inplace=True)
+# pivot_df['BSEIntradayVol'] = pivot_df.BuyVol - pivot_df.SellVol
+o=0
+# mod_df = read_file(rf"D:\notis_analysis\modified_data\NOTIS_TRADE_DATA_12MAR2025.csv")
+# # to make deskwise, useridwise and nnfwise tables
+# p=0
+# # to_use = trdqty,trdprc,bsflg,broker,sym,expdt,strprc,opttype,terminalid,subgroup,maingroup
+# list_to_int = ['trdQty','strPrc']
+# for each in list_to_int:
+#     mod_df[each] = mod_df[each].astype(np.int64)
+# mod_df['trdPrc'] = mod_df['trdPrc'].astype(np.float64)
+# mod_df['expDt'] = pd.to_datetime(mod_df['expDt']).dt.date
+# o=0
+# pivot_df = mod_df.pivot_table(
+#     index=['MainGroup','SubGroup','broker','sym','expDt','strPrc','optType'],
+#     columns=['bsFlg'],
+#     values=['trdQty','trdPrc'],
+#     aggfunc={'trdQty':'sum','trdPrc':'mean'},
+#     fill_value=0
+# )
+# pivot_df.columns = ['BuyAvgPrc','SellAvgPrc','BuyQty','SellQty']
+# pivot_df.reset_index(inplace=True)
+# pivot_df.rename(columns={'MainGroup':'mainGroup','SubGroup':'subGroup','sym':'symbol','expDt':'expiryDate','strPrc':'strikePrice','optType':'optionType','BuyAvgPrc':'buyAvgPrice',	'SellAvgPrc':'sellAvgPrice','BuyQty':'buyAvgQty','SellQty':'sellAvgQty'})
+# pivot_df.volume = pivot_df.buyAvgQty - pivot_df.sellAvgQty
+p=0
+# # stt = datetime.combine(datetime.today,datetime.datetime.time(9,15))
+# stt=datetime.now().replace(hour=9,minute=15)
+# # ett=datetime.combine(datetime.today,datetime.datetime.time(15,30))
+# ett=datetime.now().replace(hour=15,minute=30)
+# while datetime.now()<stt:
+#     time.sleep(1)
+# while datetime.now()<ett:
+#     now=datetime.now()
+#     print('\nnow strf 0000 is ',now.strftime('%Y-%m-%d %H:%M')+':00.000')
+#     print('complete strf ',now.strftime('%Y-%m-%d %H:%M:%S.%f'),'\n','truncated strf',now.strftime('%Y-%m-%d %H:%M:%S.%f')[:-3])
+#     next_min = (now+timedelta(minutes=1)).replace(second=0,microsecond=0)
+#     print('next min ',next_min,'\n')
+#     time.sleep((next_min-now).total_seconds()+30)
+q=0
+# import re
+# import pandas as pd
+# import numpy as np
+# from datetime import datetime, timedelta, timezone
+# import os
+# from dateutil.relativedelta import relativedelta
+# import progressbar
+# from openpyxl import load_workbook, Workbook
+# from openpyxl.utils.dataframe import dataframe_to_rows
+# import pyodbc
+# from sqlalchemy import create_engine, text, insert
+# import psycopg2
+# import time
+# import warnings
+# from db_config import engine_str, n_tbl_notis_nnf_data
+# from common import get_date_from_non_jiffy, get_date_from_jiffy, today, yesterday, root_dir
+#
+# warnings.filterwarnings("ignore")
+#
+# def read_data_db(nnf=False, for_table='ENetMIS', from_time:str='', to_time:str=''):
+#     if not nnf and for_table == 'ENetMIS':
+#         print(f'fetching raw data from {from_time} to {to_time}')
+#         # Sql connection parameters
+#         sql_server = "rms.ar.db"
+#         sql_database = "ENetMIS"
+#         sql_username = "notice_user"
+#         sql_password = "Notice@2024"
+#         # sql_query = "SELECT * FROM [ENetMIS].[dbo].[NSE_FO_AA100_view]"
+#         sql_query = f"SELECT * FROM [ENetMIS].[dbo].[NSE_FO_AA100_view] WHERE CreateDate BETWEEN '{from_time}' AND '{to_time}';"
+#
+#         try:
+#             sql_connection_string = (
+#                 f"DRIVER={{ODBC Driver 17 for SQL Server}};"
+#                 f"SERVER={sql_server};"
+#                 f"DATABASE={sql_database};"
+#                 f"UID={sql_username};"
+#                 f"PWD={sql_password}"
+#             )
+#             with pyodbc.connect(sql_connection_string) as sql_conn:
+#                 df = pd.read_sql_query(sql_query, sql_conn)
+#             print(f"Data fetched from SQL Server. Shape:{df.shape}")
+#             return df
+#
+#         except (pyodbc.Error, psycopg2.Error) as e:
+#             print("Error occurred:", e)
+#
+#     elif nnf and for_table != 'ENetMIS':
+#         engine = create_engine(engine_str)
+#         df = pd.read_sql_table(n_tbl_notis_nnf_data, con=engine)
+#         print(f"Data fetched from {for_table} table. Shape:{df.shape}")
+#         return df
+#
+#     elif not nnf and for_table!='ENetMIS':
+#         engine = create_engine(engine_str)
+#         df = pd.read_sql_table(for_table, con=engine)
+#         print(f"Data fetched from {for_table} table. Shape:{df.shape}")
+#         return df
+#
+# def main(from_time:str='', to_time:str=''):
+#     print(f'\n\ntrade data fetched for {datetime.now().time()}')
+#     # # today = datetime(year=2025, month=3, day=7).date()
+#     # df_db = read_data_db(from_time=from_time,to_time=to_time)
+#     # print(f'length fetched at {from_time} ',len(df_db))
+#     # write_notis_postgredb1(df_db, table_name=n_tbl_test_raw, raw=True)
+#     # # df_db = read_data_db(for_table=f'notis_raw_data_{today.strftime("%Y-%m-%d")}')
+#     # # write_notis_postgredb(df_db, table_name=n_tbl_notis_raw_data, raw=True)
+#     # # modify_filepath = os.path.join(modified_dir, f'NOTIS_TRADE_DATA_{today.strftime("%d%b%Y").upper()}.csv')
+#     # nnf_file_path = os.path.join(root_dir, "Final_NNF_ID.xlsx")
+#     # # if not os.path.exists(nnf_file_path):
+#     # #     raise FileNotFoundError("NNF File not found. Please add the NNF file and try again.")
+#     #
+#     # # readable_mod_time = datetime.fromtimestamp(os.path.getmtime(nnf_file_path))
+#     # # if readable_mod_time.date() == today: # Check if the NNF file is modified today or not
+#     # #     print(f'New NNF Data found, modifying the nnf data in db . . .')
+#     # #     df_nnf = pd.read_excel(nnf_file_path, index_col=False)
+#     # #     df_nnf = df_nnf.loc[:, ~df_nnf.columns.str.startswith('Un')]
+#     # #     df_nnf.columns = df_nnf.columns.str.replace(' ', '', regex=True)
+#     # #     df_nnf.dropna(how='all', inplace=True)
+#     # #     df_nnf = df_nnf.drop_duplicates()
+#     # #     write_notis_postgredb(df_nnf, n_tbl_notis_nnf_data, raw=False)
+#     # # else:
+#     # df_nnf = read_data_db(nnf=True, for_table = n_tbl_notis_nnf_data)
+#     # df_nnf = df_nnf.drop_duplicates()
+#     #
+#     # modified_df = modify_file1(df_db, df_nnf)
+#     # write_notis_postgredb1(modified_df, table_name=n_tbl_test_mod, raw=False)
+#     modified_df = read_data_db(for_table='test_mod_2025-03-21')
+#     desk_db_df = read_data_db(for_table='NOTIS_DESK_WISE_NET_POSITION_2025-03-20')
+#     modified_df['expDt'] = pd.to_datetime(modified_df['expDt']).dt.date
+#     pivot_df = modified_df.pivot_table(
+#         index=['MainGroup','SubGroup','broker','sym','expDt','strPrc','optType'],
+#         columns=['bsFlg'],
+#         values=['trdQty','trdPrc'],
+#         aggfunc={'trdQty':'sum','trdPrc':'mean'},
+#         fill_value=0
+#     )
+#     if modified_df.bsFlg.unique().tolist()[0] == 'B':
+#         pivot_df['SellAvgPrc']=0;pivot_df['SellQty']=0
+#     elif modified_df.bsFlg.unique().tolist()[0] == 'S':
+#         pivot_df['BuyAvgPrc']=0;pivot_df['BuyQty']=0
+#     else:
+#         pivot_df.columns = ['BuyAvgPrc','SellAvgPrc','BuyQty','SellQty']
+#     pivot_df.reset_index(inplace=True)
+#     pivot_df.rename(columns={'MainGroup':'mainGroup','SubGroup':'subGroup','sym':'symbol','expDt':'expiryDate','strPrc':'strikePrice','optType':'optionType','BuyAvgPrc':'buyAvgPrice',	'SellAvgPrc':'sellAvgPrice','BuyQty':'buyAvgQty','SellQty':'sellAvgQty'}, inplace=True)
+#     pivot_df.volume = pivot_df.buyAvgQty - pivot_df.sellAvgQty
+#     w=0
+#     # write_notis_data(modified_df, modify_filepath)
+#     # write_notis_data(modified_df, rf'C:\Users\vipulanand\Documents\Anand Rathi Financial Services Ltd (Synced)\OneDrive - Anand Rathi Financial Services Ltd\notis_files\NOTIS_TRADE_DATA_{today.strftime("%d%b%Y").upper()}.csv')
+#     # print('file saved in modified_data folder')
+#     # download_bhavcopy()
+#     # print(f'Today\'s bhavcopy downloaded and stored at {bhav_dir}')
+#     # print(f'Updating cp-noncp eod table...')
+#     # stt = datetime.now()
+#     # calc_eod_cp_noncp1()
+#     # ett = datetime.now()
+#     # print(f'Eod(cp-noncp) updation completed. Total time taken: {(ett - stt).seconds} seconds')
+#
+# if __name__ == '__main__':
+#     main()
+i=0
+# start_time = datetime.strptime("2025-03-24 09:15", "%Y-%m-%d %H:%M")
+# end_time = datetime.strptime("2025-03-24 15:30", "%Y-%m-%d %H:%M")
+# def read_data_db(nnf=False, for_table='ENetMIS', from_time:str='', to_time:str=''):
+#     if not nnf and for_table == 'ENetMIS':
+#         print(f'fetching raw data from {from_time} to {to_time}')
+#         # Sql connection parameters
+#         sql_server = "rms.ar.db"
+#         sql_database = "ENetMIS"
+#         sql_username = "notice_user"
+#         sql_password = "Notice@2024"
+#         sql_query = f"SELECT * FROM [ENetMIS].[dbo].[NSE_FO_AA100_view] WHERE CreateDate BETWEEN '{from_time}' AND '{to_time}';"
+#
+#         try:
+#             sql_connection_string = (
+#                 f"DRIVER={{ODBC Driver 17 for SQL Server}};"
+#                 f"SERVER={sql_server};"
+#                 f"DATABASE={sql_database};"
+#                 f"UID={sql_username};"
+#                 f"PWD={sql_password}"
+#             )
+#             with pyodbc.connect(sql_connection_string) as sql_conn:
+#                 df = pd.read_sql_query(sql_query, sql_conn)
+#             print(f"Data fetched from SQL Server. Shape:{df.shape}")
+#             return len(df)
+#
+#         except (pyodbc.Error, psycopg2.Error) as e:
+#             print("Error occurred:", e)
+#
+#     elif nnf and for_table != 'ENetMIS':
+#         engine = create_engine(engine_str)
+#         df = pd.read_sql_table(n_tbl_notis_nnf_data, con=engine)
+#         print(f"Data fetched from {for_table} table. Shape:{df.shape}")
+#         return df
+#
+#     elif not nnf and for_table!='ENetMIS':
+#         engine = create_engine(engine_str)
+#         # df = pd.read_sql_table(for_table, con=engine)
+#         # print(f"Data fetched from {for_table} table. Shape:{df.shape}")
+#         # return df
+#         with engine.begin() as conn:
+#             res = conn.execute(text(f'select count(*) from "{for_table}" where "CreateDate" BETWEEN \'{from_time}\' AND \'{to_time}\''))
+#             row_count = res.scalar()
+#         return row_count
+# # Generate every minute time from start_time to end_time
+# current_time = start_time
+# mismatch_list = []
+# while current_time <= end_time:
+#     print('\n',current_time.strftime("%H:%M"))
+#     from_time = current_time.replace(second=0,microsecond=0).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
+#     to_time = (current_time + timedelta(minutes=1)).replace(second=0, microsecond=0).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
+#     pg_db = 'test_mod_2025-03-24'
+#     sql_len = read_data_db(from_time=from_time, to_time=to_time)
+#     pg_len = read_data_db(for_table=pg_db, from_time=from_time, to_time=to_time)
+#     if sql_len != pg_len:
+#         mismatch_list.append((current_time.strftime("%Y-%m-%d %H:%M:%S"), sql_len, pg_len))
+#     print(f'SQL Server: {sql_len}, PostgreSQL: {pg_len}')
+#     current_time += timedelta(minutes=1)
+# print(f'mismatch list is \n {mismatch_list}')
+e=0
+# def test_func():
+#     stt = datetime.now().replace(hour=9, minute=15)
+#     ett = datetime.now().replace(hour=15, minute=35)
+#     print(f'test started at {datetime.now()}')
+#
+#     while datetime.now() < stt:
+#         time.sleep(1)
+#
+#     while datetime.now() < ett:
+#         now = datetime.now()
+#         next_call = (now + timedelta(minutes=1)).replace(second=30, microsecond=0)
+#         if now.second >= 30:
+#             next_call += timedelta(minutes=1)
+#
+#         print('\n')
+#         print(now.strftime('%Y-%m-%d %H:%M:%S'))
+#         time.sleep((next_call - now).total_seconds())
+from notis_main_per_minute import write_notis_postgredb1
+import tkinter as tk
+from tkinter import messagebox
+import pyttsx3
+def speak_message(message):
+    engine = pyttsx3.init()
+    engine.say(message)
+    engine.runAndWait()
+def show_alert(error_msg):
+    root=tk.Tk()
+    root.withdraw()
+    messagebox.showerror("Error", error_msg)
+def get_bse_trade(from_time, to_time):
+    print(f'fetching bse trade from {from_time} to {to_time}')
+    sql_server = '172.30.100.41'
+    sql_port = '1450'
+    sql_db = 'OMNE_ARD_PRD'
+    sql_userid = 'Pos_User'
+    sql_paswd = 'Pass@Word1'
+    sql_paswd_encoded = quote(sql_paswd)
+    # sql_query = "select * from [OMNE_ARD_PRD].[dbo].[TradeHist]"
+    # sql_query = ("select mnmFillPrice,mnmSegment, mnmTradingSymbol,mnmTransactionType,mnmAccountId,mnmUser,mnmFillSize, mnmSymbolName, mnmExpiryDate, mnmOptionType, mnmStrikePrice, mnmAvgPrice"
+    #              "from TradeHist "
+    #              "where mnmAccountId='AA100' and mnmExchange='BSE'")
+    # sql_query = ("select mnmFillPrice,mnmSegment, mnmTradingSymbol,mnmTransactionType,mnmAccountId,mnmUser , mnmFillSize, mnmSymbolName, mnmExpiryDate, mnmOptionType, mnmStrikePrice, mnmAvgPrice, mnmExecutingBroker from TradeHist where mnmAccountId='AA100' and mnmExchange='BSE'")
+    sql_query = (f"select mnmFillPrice,mnmSegment, mnmTradingSymbol,mnmTransactionType,mnmAccountId,mnmUser , mnmFillSize, mnmSymbolName, mnmExpiryDate, mnmOptionType, mnmStrikePrice, mnmAvgPrice, mnmExecutingBroker from TradeHist where (mnmSymbolName = 'BSXOPT' or mnmSymbolName = 'BSE') and mnmExchangeTime between \'{from_time}\' and \'{to_time}\'")
+    # sql_query = (f"select mnmFillPrice,mnmSegment, mnmTradingSymbol,mnmTransactionType,mnmAccountId,mnmUser , mnmFillSize, mnmSymbolName, mnmExpiryDate, mnmOptionType, mnmStrikePrice, mnmAvgPrice, mnmExecutingBroker from TradeHist where (mnmSymbolName = 'BSXOPT' or mnmSymbolName = 'BSE') and mnmExchangeTime between '25-Mar-2025 14:04:00' and '25-Mar-2025 14:05:00'")
+    try:
+        sql_engine_str = (
+            f"DRIVER={{ODBC Driver 17 for SQL Server}};"
+            f"SERVER={sql_server},{sql_port};"
+            f"DATABASE={sql_db};"
+            f"UID={sql_userid};"
+            f"PWD={sql_paswd};"
+        )
+        with pyodbc.connect(sql_engine_str) as sql_conn:
+            df_bse=pd.read_sql_query(sql_query,sql_conn)
+        print(f'data fetched for bse: {df_bse.shape}')
+    # except (pyodbc.Error, psycopg2.Error) as e:
+    #     print(f'Error in fetching data: {e}')
+        df_bse = df_bse.query("mnmTransactionType != 'L'")
+        if df_bse.empty:
+            print(f'No data for {from_time} hence skipping')
+            return
+        df_bse.replace('', 0, inplace=True)
+        # df_bse = read_file(os.path.join(bse_dir,'test_bse172025_1.xlsx'))
+        df_bse.columns = [re.sub(r'mnm|\s','',each) for each in df_bse.columns]
+        # df_bse.ExpiryDate = df_bse.ExpiryDate.apply(lambda x:pd.to_datetime(int(x), unit='s').date() if x !='' else x)
+        df_bse.ExpiryDate = df_bse.ExpiryDate.apply(lambda x:pd.to_datetime(int(x), unit='s').date())
+        # df_bse.replace('', 0, inplace=True)
+        to_int_list = ['FillPrice', 'FillSize','StrikePrice']
+        for each in to_int_list:
+            df_bse[each] = df_bse[each].astype(np.int64)
+        df_bse['AvgPrice'] = df_bse['AvgPrice'].astype(float).astype(np.int64)
+        df_bse['StrikePrice'] = (df_bse['StrikePrice']/100).astype(np.int64)
+        df_bse['Symbol'] = df_bse['TradingSymbol'].apply(lambda x:'SENSEX' if x.upper().startswith('SEN') else x)
+        df_bse.rename(columns={'User':'TerminalID'}, inplace=True)
+        pivot_df = df_bse.pivot_table(
+            index=['TerminalID','Symbol','TradingSymbol','ExpiryDate','OptionType','StrikePrice','ExecutingBroker'],
+            columns=['TransactionType'],
+            values=['FillSize','AvgPrice'],
+            aggfunc={'FillSize':'sum','AvgPrice':'mean'},
+            fill_value=0
+        )
+        if len(df_bse.TransactionType.unique()) == 1:
+            if df_bse.TransactionType.unique().tolist()[0] == 'B':
+                pivot_df['SellAvgPrc']=0;pivot_df['SellQty']=0
+            elif df_bse.TransactionType.unique().tolist()[0] == 'S':
+                pivot_df['BuyAvgPrc']=0;pivot_df['BuyQty']=0
+        elif len(df_bse) == 0 or len(pivot_df) == 0:
+            pivot_df.columns = ['_'.join(col).strip() for col in pivot_df.columns.values]
+        pivot_df.columns = ['BuyPrc','SellPrc','BuyVol','SellVol']
+        pivot_df.reset_index(inplace=True)
+        pivot_df['BSEIntradayVol'] = pivot_df.BuyVol - pivot_df.SellVol
+        pivot_df.ExpiryDate = pivot_df.ExpiryDate.astype(str)
+        pivot_df['ExpiryDate'] = [re.sub(r'1970.*','',each) for each in pivot_df['ExpiryDate']]
+        to_int_list = ['BuyPrc','SellPrc','BuyVol','SellVol']
+        for col in to_int_list:
+            pivot_df[col] = pivot_df[col].astype(np.int64)
+        print(f'pivot shape: {pivot_df.shape}')
+        # pivot_df.replace(0,'', inplace=True)
+        # write_notis_data(pivot_df,os.path.join(bse_dir,f'BSE_TRADE_DATA_{today.strftime("%Y-%m-%d")}.xlsx'))
+        # # write_notis_data(pivot_df,os.path.join(bse_dir,f'BSE_TRADE_DATA_{datetime(year=2025,month=3,day=17).strftime("%Y-%m-%d")}.xlsx'))
+        write_notis_postgredb1(pivot_df,table_name=f'test_bse_{today.strftime("%Y-%m-%d")}')
+    except Exception as e:
+        print(f"Exception occured in BSE: {e}")
+        show_alert(error_msg=e)
+        speak_message(message=e)
+
+stt = datetime.now().replace(hour=9, minute=15)
+ett = datetime.now().replace(hour=15, minute=35)
+print(f'test started at {datetime.now()}')
+
+while datetime.now() < stt:
+    time.sleep(1)
+
+while datetime.now() < ett:
+    now = datetime.now()
+    if now.second == 1:
+        print('\n')
+        print('now time => ',now.strftime('%Y-%m-%d %H:%M:%S'))
+        get_bse_trade((now - timedelta(minutes=1)).replace(second=0).strftime('%d-%b-%Y %H:%M:%S'),now.replace(second=0).strftime('%d-%b-%Y %H:%M:%S'))
+        time.sleep(1)  # Sleep for 1 second to avoid multiple prints within the same second
+    else:
+        # Calculate the time to sleep until the next 30th second
+        next_30th_second = (now + timedelta(minutes=1)).replace(second=1,microsecond=0)
+        time.sleep((next_30th_second - now).total_seconds())
+# test_func()
+# now = datetime.now()
+# get_bse_trade(now.replace(second=0).strftime('%d-%b-%Y %H:%M:%S'), (now + timedelta(minutes=1)).replace(second=0).strftime('%d-%b-%Y %H:%M:%S'))
