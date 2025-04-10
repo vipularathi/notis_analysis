@@ -1208,113 +1208,120 @@ e=0
 #         print('\n')
 #         print(now.strftime('%Y-%m-%d %H:%M:%S'))
 #         time.sleep((next_call - now).total_seconds())
-from notis_main_per_minute import write_notis_postgredb1
-import tkinter as tk
-from tkinter import messagebox
-import pyttsx3
-def speak_message(message):
-    engine = pyttsx3.init()
-    engine.say(message)
-    engine.runAndWait()
-def show_alert(error_msg):
-    root=tk.Tk()
-    root.withdraw()
-    messagebox.showerror("Error", error_msg)
-def get_bse_trade(from_time, to_time):
-    print(f'fetching bse trade from {from_time} to {to_time}')
-    sql_server = '172.30.100.41'
-    sql_port = '1450'
-    sql_db = 'OMNE_ARD_PRD'
-    sql_userid = 'Pos_User'
-    sql_paswd = 'Pass@Word1'
-    sql_paswd_encoded = quote(sql_paswd)
-    # sql_query = "select * from [OMNE_ARD_PRD].[dbo].[TradeHist]"
-    # sql_query = ("select mnmFillPrice,mnmSegment, mnmTradingSymbol,mnmTransactionType,mnmAccountId,mnmUser,mnmFillSize, mnmSymbolName, mnmExpiryDate, mnmOptionType, mnmStrikePrice, mnmAvgPrice"
-    #              "from TradeHist "
-    #              "where mnmAccountId='AA100' and mnmExchange='BSE'")
-    # sql_query = ("select mnmFillPrice,mnmSegment, mnmTradingSymbol,mnmTransactionType,mnmAccountId,mnmUser , mnmFillSize, mnmSymbolName, mnmExpiryDate, mnmOptionType, mnmStrikePrice, mnmAvgPrice, mnmExecutingBroker from TradeHist where mnmAccountId='AA100' and mnmExchange='BSE'")
-    sql_query = (f"select mnmFillPrice,mnmSegment, mnmTradingSymbol,mnmTransactionType,mnmAccountId,mnmUser , mnmFillSize, mnmSymbolName, mnmExpiryDate, mnmOptionType, mnmStrikePrice, mnmAvgPrice, mnmExecutingBroker from TradeHist where (mnmSymbolName = 'BSXOPT' or mnmSymbolName = 'BSE') and mnmExchangeTime between \'{from_time}\' and \'{to_time}\'")
-    # sql_query = (f"select mnmFillPrice,mnmSegment, mnmTradingSymbol,mnmTransactionType,mnmAccountId,mnmUser , mnmFillSize, mnmSymbolName, mnmExpiryDate, mnmOptionType, mnmStrikePrice, mnmAvgPrice, mnmExecutingBroker from TradeHist where (mnmSymbolName = 'BSXOPT' or mnmSymbolName = 'BSE') and mnmExchangeTime between '25-Mar-2025 14:04:00' and '25-Mar-2025 14:05:00'")
-    try:
-        sql_engine_str = (
-            f"DRIVER={{ODBC Driver 17 for SQL Server}};"
-            f"SERVER={sql_server},{sql_port};"
-            f"DATABASE={sql_db};"
-            f"UID={sql_userid};"
-            f"PWD={sql_paswd};"
-        )
-        with pyodbc.connect(sql_engine_str) as sql_conn:
-            df_bse=pd.read_sql_query(sql_query,sql_conn)
-        print(f'data fetched for bse: {df_bse.shape}')
-    # except (pyodbc.Error, psycopg2.Error) as e:
-    #     print(f'Error in fetching data: {e}')
-        df_bse = df_bse.query("mnmTransactionType != 'L'")
-        if df_bse.empty:
-            print(f'No data for {from_time} hence skipping')
-            return
-        df_bse.replace('', 0, inplace=True)
-        # df_bse = read_file(os.path.join(bse_dir,'test_bse172025_1.xlsx'))
-        df_bse.columns = [re.sub(r'mnm|\s','',each) for each in df_bse.columns]
-        # df_bse.ExpiryDate = df_bse.ExpiryDate.apply(lambda x:pd.to_datetime(int(x), unit='s').date() if x !='' else x)
-        df_bse.ExpiryDate = df_bse.ExpiryDate.apply(lambda x:pd.to_datetime(int(x), unit='s').date())
-        # df_bse.replace('', 0, inplace=True)
-        to_int_list = ['FillPrice', 'FillSize','StrikePrice']
-        for each in to_int_list:
-            df_bse[each] = df_bse[each].astype(np.int64)
-        df_bse['AvgPrice'] = df_bse['AvgPrice'].astype(float).astype(np.int64)
-        df_bse['StrikePrice'] = (df_bse['StrikePrice']/100).astype(np.int64)
-        df_bse['Symbol'] = df_bse['TradingSymbol'].apply(lambda x:'SENSEX' if x.upper().startswith('SEN') else x)
-        df_bse.rename(columns={'User':'TerminalID'}, inplace=True)
-        pivot_df = df_bse.pivot_table(
-            index=['TerminalID','Symbol','TradingSymbol','ExpiryDate','OptionType','StrikePrice','ExecutingBroker'],
-            columns=['TransactionType'],
-            values=['FillSize','AvgPrice'],
-            aggfunc={'FillSize':'sum','AvgPrice':'mean'},
-            fill_value=0
-        )
-        if len(df_bse.TransactionType.unique()) == 1:
-            if df_bse.TransactionType.unique().tolist()[0] == 'B':
-                pivot_df['SellAvgPrc']=0;pivot_df['SellQty']=0
-            elif df_bse.TransactionType.unique().tolist()[0] == 'S':
-                pivot_df['BuyAvgPrc']=0;pivot_df['BuyQty']=0
-        elif len(df_bse) == 0 or len(pivot_df) == 0:
-            pivot_df.columns = ['_'.join(col).strip() for col in pivot_df.columns.values]
-        pivot_df.columns = ['BuyPrc','SellPrc','BuyVol','SellVol']
-        pivot_df.reset_index(inplace=True)
-        pivot_df['BSEIntradayVol'] = pivot_df.BuyVol - pivot_df.SellVol
-        pivot_df.ExpiryDate = pivot_df.ExpiryDate.astype(str)
-        pivot_df['ExpiryDate'] = [re.sub(r'1970.*','',each) for each in pivot_df['ExpiryDate']]
-        to_int_list = ['BuyPrc','SellPrc','BuyVol','SellVol']
-        for col in to_int_list:
-            pivot_df[col] = pivot_df[col].astype(np.int64)
-        print(f'pivot shape: {pivot_df.shape}')
-        # pivot_df.replace(0,'', inplace=True)
-        # write_notis_data(pivot_df,os.path.join(bse_dir,f'BSE_TRADE_DATA_{today.strftime("%Y-%m-%d")}.xlsx'))
-        # # write_notis_data(pivot_df,os.path.join(bse_dir,f'BSE_TRADE_DATA_{datetime(year=2025,month=3,day=17).strftime("%Y-%m-%d")}.xlsx'))
-        write_notis_postgredb1(pivot_df,table_name=f'test_bse_{today.strftime("%Y-%m-%d")}')
-    except Exception as e:
-        print(f"Exception occured in BSE: {e}")
-        show_alert(error_msg=e)
-        speak_message(message=e)
-
-stt = datetime.now().replace(hour=9, minute=15)
-ett = datetime.now().replace(hour=15, minute=35)
-print(f'test started at {datetime.now()}')
-
-while datetime.now() < stt:
-    time.sleep(1)
-
-while datetime.now() < ett:
-    now = datetime.now()
-    if now.second == 1:
-        print('\n')
-        print('now time => ',now.strftime('%Y-%m-%d %H:%M:%S'))
-        get_bse_trade((now - timedelta(minutes=1)).replace(second=0).strftime('%d-%b-%Y %H:%M:%S'),now.replace(second=0).strftime('%d-%b-%Y %H:%M:%S'))
-        time.sleep(1)  # Sleep for 1 second to avoid multiple prints within the same second
-    else:
-        # Calculate the time to sleep until the next 30th second
-        next_30th_second = (now + timedelta(minutes=1)).replace(second=1,microsecond=0)
-        time.sleep((next_30th_second - now).total_seconds())
-# test_func()
-# now = datetime.now()
-# get_bse_trade(now.replace(second=0).strftime('%d-%b-%Y %H:%M:%S'), (now + timedelta(minutes=1)).replace(second=0).strftime('%d-%b-%Y %H:%M:%S'))
+p=0
+# from notis_main_per_minute import write_notis_postgredb1
+# import tkinter as tk
+# from tkinter import messagebox
+# import pyttsx3
+# def speak_message(message):
+#     engine = pyttsx3.init()
+#     engine.say(message)
+#     engine.runAndWait()
+# def show_alert(error_msg):
+#     root=tk.Tk()
+#     root.withdraw()
+#     messagebox.showerror("Error", error_msg)
+# def get_bse_trade(from_time, to_time):
+#     print(f'fetching bse trade from {from_time} to {to_time}')
+#     sql_server = '172.30.100.41'
+#     sql_port = '1450'
+#     sql_db = 'OMNE_ARD_PRD'
+#     sql_userid = 'Pos_User'
+#     sql_paswd = 'Pass@Word1'
+#     sql_paswd_encoded = quote(sql_paswd)
+#     # sql_query = "select * from [OMNE_ARD_PRD].[dbo].[TradeHist]"
+#     # sql_query = ("select mnmFillPrice,mnmSegment, mnmTradingSymbol,mnmTransactionType,mnmAccountId,mnmUser,mnmFillSize, mnmSymbolName, mnmExpiryDate, mnmOptionType, mnmStrikePrice, mnmAvgPrice"
+#     #              "from TradeHist "
+#     #              "where mnmAccountId='AA100' and mnmExchange='BSE'")
+#     # sql_query = ("select mnmFillPrice,mnmSegment, mnmTradingSymbol,mnmTransactionType,mnmAccountId,mnmUser , mnmFillSize, mnmSymbolName, mnmExpiryDate, mnmOptionType, mnmStrikePrice, mnmAvgPrice, mnmExecutingBroker from TradeHist where mnmAccountId='AA100' and mnmExchange='BSE'")
+#     sql_query = (f"select mnmFillPrice,mnmSegment, mnmTradingSymbol,mnmTransactionType,mnmAccountId,mnmUser , mnmFillSize, mnmSymbolName, mnmExpiryDate, mnmOptionType, mnmStrikePrice, mnmAvgPrice, mnmExecutingBroker from TradeHist where (mnmSymbolName = 'BSXOPT' or mnmSymbolName = 'BSE') and mnmExchangeTime between \'{from_time}\' and \'{to_time}\'")
+#     # sql_query = (f"select mnmFillPrice,mnmSegment, mnmTradingSymbol,mnmTransactionType,mnmAccountId,mnmUser , mnmFillSize, mnmSymbolName, mnmExpiryDate, mnmOptionType, mnmStrikePrice, mnmAvgPrice, mnmExecutingBroker from TradeHist where (mnmSymbolName = 'BSXOPT' or mnmSymbolName = 'BSE') and mnmExchangeTime between '25-Mar-2025 14:04:00' and '25-Mar-2025 14:05:00'")
+#     try:
+#         sql_engine_str = (
+#             f"DRIVER={{ODBC Driver 17 for SQL Server}};"
+#             f"SERVER={sql_server},{sql_port};"
+#             f"DATABASE={sql_db};"
+#             f"UID={sql_userid};"
+#             f"PWD={sql_paswd};"
+#         )
+#         with pyodbc.connect(sql_engine_str) as sql_conn:
+#             df_bse=pd.read_sql_query(sql_query,sql_conn)
+#         print(f'data fetched for bse: {df_bse.shape}')
+#     # except (pyodbc.Error, psycopg2.Error) as e:
+#     #     print(f'Error in fetching data: {e}')
+#         df_bse = df_bse.query("mnmTransactionType != 'L'")
+#         if df_bse.empty:
+#             print(f'No data for {from_time} hence skipping')
+#             return
+#         df_bse.replace('', 0, inplace=True)
+#         # df_bse = read_file(os.path.join(bse_dir,'test_bse172025_1.xlsx'))
+#         df_bse.columns = [re.sub(r'mnm|\s','',each) for each in df_bse.columns]
+#         # df_bse.ExpiryDate = df_bse.ExpiryDate.apply(lambda x:pd.to_datetime(int(x), unit='s').date() if x !='' else x)
+#         df_bse.ExpiryDate = df_bse.ExpiryDate.apply(lambda x:pd.to_datetime(int(x), unit='s').date())
+#         # df_bse.replace('', 0, inplace=True)
+#         to_int_list = ['FillPrice', 'FillSize','StrikePrice']
+#         for each in to_int_list:
+#             df_bse[each] = df_bse[each].astype(np.int64)
+#         df_bse['AvgPrice'] = df_bse['AvgPrice'].astype(float).astype(np.int64)
+#         df_bse['StrikePrice'] = (df_bse['StrikePrice']/100).astype(np.int64)
+#         df_bse['Symbol'] = df_bse['TradingSymbol'].apply(lambda x:'SENSEX' if x.upper().startswith('SEN') else x)
+#         df_bse.rename(columns={'User':'TerminalID'}, inplace=True)
+#         pivot_df = df_bse.pivot_table(
+#             index=['TerminalID','Symbol','TradingSymbol','ExpiryDate','OptionType','StrikePrice','ExecutingBroker'],
+#             columns=['TransactionType'],
+#             values=['FillSize','AvgPrice'],
+#             aggfunc={'FillSize':'sum','AvgPrice':'mean'},
+#             fill_value=0
+#         )
+#         if len(df_bse.TransactionType.unique()) == 1:
+#             if df_bse.TransactionType.unique().tolist()[0] == 'B':
+#                 pivot_df['SellAvgPrc']=0;pivot_df['SellQty']=0
+#             elif df_bse.TransactionType.unique().tolist()[0] == 'S':
+#                 pivot_df['BuyAvgPrc']=0;pivot_df['BuyQty']=0
+#         elif len(df_bse) == 0 or len(pivot_df) == 0:
+#             pivot_df.columns = ['_'.join(col).strip() for col in pivot_df.columns.values]
+#         pivot_df.columns = ['BuyPrc','SellPrc','BuyVol','SellVol']
+#         pivot_df.reset_index(inplace=True)
+#         pivot_df['BSEIntradayVol'] = pivot_df.BuyVol - pivot_df.SellVol
+#         pivot_df.ExpiryDate = pivot_df.ExpiryDate.astype(str)
+#         pivot_df['ExpiryDate'] = [re.sub(r'1970.*','',each) for each in pivot_df['ExpiryDate']]
+#         to_int_list = ['BuyPrc','SellPrc','BuyVol','SellVol']
+#         for col in to_int_list:
+#             pivot_df[col] = pivot_df[col].astype(np.int64)
+#         print(f'pivot shape: {pivot_df.shape}')
+#         # pivot_df.replace(0,'', inplace=True)
+#         # write_notis_data(pivot_df,os.path.join(bse_dir,f'BSE_TRADE_DATA_{today.strftime("%Y-%m-%d")}.xlsx'))
+#         # # write_notis_data(pivot_df,os.path.join(bse_dir,f'BSE_TRADE_DATA_{datetime(year=2025,month=3,day=17).strftime("%Y-%m-%d")}.xlsx'))
+#         write_notis_postgredb1(pivot_df,table_name=f'test_bse_{today.strftime("%Y-%m-%d")}')
+#     except Exception as e:
+#         print(f"Exception occured in BSE: {e}")
+#         show_alert(error_msg=e)
+#         speak_message(message=e)
+#
+# stt = datetime.now().replace(hour=9, minute=15)
+# ett = datetime.now().replace(hour=15, minute=35)
+# print(f'test started at {datetime.now()}')
+#
+# while datetime.now() < stt:
+#     time.sleep(1)
+#
+# while datetime.now() < ett:
+#     now = datetime.now()
+#     if now.second == 1:
+#         print('\n')
+#         print('now time => ',now.strftime('%Y-%m-%d %H:%M:%S'))
+#         get_bse_trade((now - timedelta(minutes=1)).replace(second=0).strftime('%d-%b-%Y %H:%M:%S'),now.replace(second=0).strftime('%d-%b-%Y %H:%M:%S'))
+#         time.sleep(1)  # Sleep for 1 second to avoid multiple prints within the same second
+#     else:
+#         # Calculate the time to sleep until the next 30th second
+#         next_30th_second = (now + timedelta(minutes=1)).replace(second=1,microsecond=0)
+#         time.sleep((next_30th_second - now).total_seconds())
+# # test_func()
+# # now = datetime.now()
+# # get_bse_trade(now.replace(second=0).strftime('%d-%b-%Y %H:%M:%S'), (now + timedelta(minutes=1)).replace(second=0).strftime('%d-%b-%Y %H:%M:%S'))
+o=0
+eod_df = pd.read_csv(rf"D:\notis_analysis\table_data\NOTIS_EOD_NET_POS_CP_NONCP_2025-04-04_changed_1.csv", index_col=False)
+eod_df.EodExpiry = pd.to_datetime(eod_df.EodExpiry, dayfirst=True, format='mixed').dt.date
+p=0
+grouped_eod = eod_df.groupby(by=['EodBroker','EodUnderlying','EodExpiry','EodStrike','EodOptionType'])
+u=0

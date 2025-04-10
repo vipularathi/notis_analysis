@@ -269,7 +269,8 @@ def write_notis_postgredb(df, table_name, raw=False, truncate_required=False):
     if not raw:
         for col in df.columns:
             if type(df[col][0]) == type(pd.to_datetime('2025-04-04').date()):
-                df[col] = pd.to_datetime(df[col], dayfirst=True, format='mixed').dt.strftime('%d-%m-%Y')
+                print(f'common changing col- {col}')
+                df[col] = pd.to_datetime(df[col], dayfirst=True, format='mixed').dt.strftime('%d/%m/%Y')
     pbar = progressbar.ProgressBar(max_value=total_rows, widgets=[
         progressbar.Percentage(), ' ',
         progressbar.Bar(marker='=', left='[', right=']'),
@@ -296,7 +297,7 @@ def write_notis_postgredb(df, table_name, raw=False, truncate_required=False):
         pbar.update(min(i + chunk_size, total_rows))
 
     pbar.finish()
-    logger.info(f'{"Raw" if raw else "Modified"} Data successfully inserted into database')
+    logger.info(f'Data successfully inserted in table => {table_name}')
     end_time = time.time()
     logger.info(f'Total time taken: {end_time - start_time} seconds')
 

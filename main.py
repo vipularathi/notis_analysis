@@ -93,8 +93,9 @@ def download_tables():
     # today = datetime(year=2025, month=1, day=10).date().strftime('%Y_%m_%d').upper()
     for table in table_list:
         df = read_data_db(for_table=table)
-        df.to_csv(os.path.join(table_dir, f"{table}.csv"), index=False)
-        print(f"{table} data fetched and written at path: {os.path.join(table_dir, f'{table}_{today}.csv')}")
+        # df.to_csv(os.path.join(table_dir, f"{table}.xlsx"), index=False)
+        write_notis_data(df=df, filepath=os.path.join(table_dir,f'{table}.xlsx'))
+        print(f"{table} data fetched and written at path: {os.path.join(table_dir, f'{table}.xlsx')}")
 
 # def truncate_tables():
 #     table_name = ["notis_raw_data","NOTIS_TRADE_BOOK","NOTIS_DESK_WISE_NET_POSITION","NOTIS_NNF_WISE_NET_POSITION","NOTIS_USERID_WISE_NET_POSITION",f'NOTIS_EOD_NET_POS_CP_NONCP_{today.strftime("%Y-%m-%d")}']
@@ -202,6 +203,13 @@ if __name__ == '__main__':
     main()
     ett = time.time()
     print(f'total time taken for modifying, adding data in db and writing in local directory - {ett - stt} seconds')
+    print(f'fetching BSE trades...')
+    stt = datetime.now()
+    df_bse = BSEUtility.get_bse_trade_data()
+    write_notis_data(df_bse, os.path.join(bse_dir, f'BSE_TRADE_DATA_{today.strftime("%d%b%Y").upper()}.xlsx'))
+    write_notis_postgredb(df=df_bse, table_name=n_tbl_bse_trade_data, truncate_required=True)
+    ett = datetime.now()
+    print(f'BSE trade fetched. Total time taken: {(ett - stt).seconds} seconds')
     pbar = progressbar.ProgressBar(max_value=100, widgets=[progressbar.Percentage(), ' ', progressbar.Bar(marker='=', left='[', right=']'), progressbar.ETA()])
     pbar.update(1)
     for i in range(100):
@@ -209,10 +217,3 @@ if __name__ == '__main__':
         pbar.update(i + 1)
     pbar.finish()
     download_tables()
-    print(f'fetching BSE trades...')
-    stt = datetime.now()
-    df_bse = BSEUtility.get_bse_trade_data()
-    write_notis_data(df_bse, os.path.join(bse_dir,f'BSE_TRADE_DATA_{today.strftime("%d%b%Y").upper()}.xlsx'))
-    write_notis_postgredb(df=df_bse, table_name=n_tbl_bse_trade_data, truncate_required=True)
-    ett = datetime.now()
-    print(f'BSE trade fetched. Total time taken: {(ett - stt).seconds} seconds')
