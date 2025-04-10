@@ -23,7 +23,7 @@ test_dir = os.path.join(root_dir,'testing')
 # today = datetime(year=2025, month=3, day=7).date()
 
 # # -------------------------------------------------------------------------------------------------------------
-for_date = datetime(year=2025, month=3, day=27).date()
+for_date = datetime(year=2025, month=4, day=9).date()
 # table_list = ['NOTIS_EOD_NET_POS_CP_NONCP_2025-03-20','NOTIS_TRADE_BOOK_2025-02-28','NOTIS_DESK_WISE_NET_POSITION_2025-02-28', 'NOTIS_NNF_WISE_NET_POSITION_2025-02-28', 'NOTIS_USERID_WISE_NET_POSITION_2025-02-28']
 # table_list = [
 #     f'NOTIS_DESK_WISE_NET_POSITION_{for_date}',f'test_net_pos_desk_{for_date}',
@@ -33,14 +33,14 @@ for_date = datetime(year=2025, month=3, day=27).date()
 #     f'test_raw_{for_date}', f'notis_raw_data_{for_date}',
 #     f'test_bse_{for_date}', f'BSE_TRADE_DATA_{for_date}'
 # ]
-table_list = ['NOTIS_EOD_NET_POS_CP_NONCP_2025-03-28']
+table_list = [f"NOTIS_DESK_WISE_NET_POSITION_{for_date}",f"NOTIS_EOD_NET_POS_CP_NONCP_{for_date}",f"NOTIS_NNF_WISE_NET_POSITION_{for_date}"]
 # # today = datetime(year=2025, month=1, day=10).date().strftime('%Y_%m_%d').upper()
 # # today = datetime.now().date().strftime('%Y_%m_%d').upper()
 for table in table_list:
     df = read_data_db(for_table=table)
 #     # df = read_db(table)
 #     # df.to_excel(f'{table}_{today}.xlsx', index=False)
-    write_notis_data(df,os.path.join(test_dir, f'{table}.xlsx'))
+    write_notis_data(df,os.path.join(table_dir, f'{table}.xlsx'))
 #     # df.to_excel(os.path.join(test_dir, f'{table}.xlsx'), index=False)
 #     print(f'Data fetched from {table}:\n{df.head()}')
 #     # print(f"{table} data fetched and written at path: {os.path.join(table_dir, f'{table}_{today.strftime("%Y_%m_%d").upper()}.xlsx')}")

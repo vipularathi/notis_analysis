@@ -80,15 +80,6 @@ class NSEUtility:
         df.rename(columns={'remarks': 'broker'}, inplace=True)
         pbar.update(95)
 
-        # df['ctclid'] = df['ctclid'].astype('float64')
-        # df_nnf['NNFID'] = df_nnf['NNFID'].astype('float64')
-        # # proceed only if all ctclid from notis file is present in nnf file or not
-        # missing_ctclid = set(df['ctclid'].unique()) - set(df_nnf['NNFID'].unique())
-        # if missing_ctclid:
-        #     logger.info(f"Missing ctclid(s) from NNF file: {missing_ctclid}")
-        #     # raise ValueError(f'The ctclid values are not matching the NNFID values - {missing_ctclid}')
-        # else:
-        #     logger.info('All ctclid values are present in NNF file.\n')
         merged_df = pd.merge(df, df_nnf, left_on='ctclid', right_on='NNFID', how='left')
         merged_df.drop(columns=['NNFID'], axis=1, inplace=True)
         pbar.update(100)
@@ -110,8 +101,8 @@ class NSEUtility:
         eod_df = eod_df.add_prefix('Eod')
         # eod_df.EodExpiry = eod_df.EodExpiry.astype('datetime64[ns]')
         # eod_df.EodExpiry = eod_df.EodExpiry.dt.date
-        eod_df['EodExpiry'] = pd.to_datetime(eod_df['EodExpiry'], dayfirst=True, format='mixed')
-        eod_df['EodExpiry'] = eod_df['EodExpiry'].dt.date
+        eod_df['EodExpiry'] = pd.to_datetime(eod_df['EodExpiry'], dayfirst=True, format='mixed').dt.date
+        # eod_df['EodExpiry'] = eod_df['EodExpiry'].dt.date
         eod_df = eod_df.query("EodExpiry >= @today and EodNetQuantity != 0")
 
         grouped_eod = eod_df.groupby(by=['EodBroker','EodUnderlying','EodExpiry','EodStrike','EodOptionType'], as_index=False).agg({'EodNetQuantity':'sum','EodClosingPrice':'mean'})
@@ -170,16 +161,28 @@ class NSEUtility:
         merged_bhav_df.BhavClosingprice = merged_bhav_df.BhavClosingprice.astype('int64')
         merged_bhav_df.rename(columns = {'BhavClosingprice':'FinalSettlementPrice'}, inplace = True)
         logger.info(f'cp noncp length at {datetime.now()} is {merged_bhav_df.shape}')
+        # for col in merged_bhav_df.columns:
+        #     if type(merged_bhav_df[col][0]) == type(pd.to_datetime('2025-04-04').date()):
+        #         print(f'nse_utility changing col- {col}')
+        #         merged_bhav_df[col] = pd.to_datetime(merged_bhav_df[col], dayfirst=True, format='mixed').dt.strftime('%d/%m/%Y')
         return merged_bhav_df
 
     @staticmethod
     def calc_deskwise_net_pos(pivot_df):
         pivot_df.rename(columns ={'MainGroup':'mainGroup','SubGroup':'subGroup'}, inplace=True)
         desk_db_df = pivot_df.groupby(by=['mainGroup', 'subGroup', 'symbol', 'expiryDate', 'strikePrice', 'optionType']).agg({'buyAvgQty':'sum','buyAvgPrice':'mean','sellAvgQty':'sum','sellAvgPrice':'mean'}).reset_index()
+        # for col in desk_db_df.columns:
+        #     if type(desk_db_df[col][0]) == type(pd.to_datetime('2025-04-04').date()):
+        #         print(f'nse_utility changing col- {col}')
+        #         desk_db_df[col] = pd.to_datetime(desk_db_df[col], dayfirst=True, format='mixed').dt.strftime('%d/%m/%Y')
         return desk_db_df
 
     @staticmethod
     def calc_nnfwise_net_pos(pivot_df):
         nnf_db_df = pivot_df.groupby(by=['ctclid', 'symbol', 'expiryDate', 'strikePrice', 'optionType']).agg({'buyAvgQty':'sum','buyAvgPrice':'mean','sellAvgQty':'sum','sellAvgPrice':'mean'}).reset_index()
         nnf_db_df.rename(columns={'ctclid':'nnfID'}, inplace=True)
+        # for col in nnf_db_df.columns:
+        #     if type(nnf_db_df[col][0]) == type(pd.to_datetime('2025-04-04').date()):
+        #         print(f'nse_utility changing col- {col}')
+        #         nnf_db_df[col] = pd.to_datetime(nnf_db_df[col], dayfirst=True, format='mixed').dt.strftime('%d/%m/%Y')
         return nnf_db_df
