@@ -606,7 +606,7 @@ class ServiceApp:
                     SELECT mnmFillPrice, mnmSegment, mnmTradingSymbol, mnmTransactionType, mnmAccountId, mnmUser, mnmFillSize, mnmSymbolName, mnmExpiryDate, mnmOptionType, mnmStrikePrice, mnmAvgPrice, mnmExecutingBroker,
                            ROW_NUMBER() OVER (ORDER BY (SELECT NULL)) AS RowNum
                     FROM [OMNE_ARD_PRD].[dbo].[TradeHist]
-                    WHERE mnmExchSeg = 'bse_fo' and mnmAccountId = 'AA100'
+                    WHERE mnmExchSeg = 'bse_fo' and (mnmAccountId = 'AA100' or mnmAccountId = 'CPAA100')
                 )
                 SELECT mnmFillPrice, mnmSegment, mnmTradingSymbol, mnmTransactionType, mnmAccountId, mnmUser, mnmFillSize, mnmSymbolName, mnmExpiryDate, mnmOptionType, mnmStrikePrice, mnmAvgPrice, mnmExecutingBroker
                 FROM CTE
@@ -617,7 +617,7 @@ class ServiceApp:
                     SELECT mnmFillPrice, mnmSegment, mnmTradingSymbol, mnmTransactionType, mnmAccountId, mnmUser, mnmFillSize, mnmSymbolName, mnmExpiryDate, mnmOptionType, mnmStrikePrice, mnmAvgPrice, mnmExecutingBroker,
                            ROW_NUMBER() OVER (ORDER BY (SELECT NULL)) AS RowNum
                     FROM [OMNE_ARD_PRD_HNI].[dbo].[TradeHist]
-                    WHERE mnmExchSeg = 'bse_fo' and mnmAccountId = 'AA100'
+                    WHERE mnmExchSeg = 'bse_fo' and (mnmAccountId = 'AA100' or mnmAccountId = 'CPAA100')
                 )
                 SELECT mnmFillPrice, mnmSegment, mnmTradingSymbol, mnmTransactionType, mnmAccountId, mnmUser, mnmFillSize, mnmSymbolName, mnmExpiryDate, mnmOptionType, mnmStrikePrice, mnmAvgPrice, mnmExecutingBroker
                 FROM CTE
@@ -626,8 +626,8 @@ class ServiceApp:
             result1 = db.execute(query).fetchall()
             result2 = db.execute(query2).fetchall()
             result = result1 + result2
-            total_rows1 = db.execute(text(rf"""Select count(*) from [OMNE_ARD_PRD].[dbo].[TradeHist] WHERE mnmExchSeg = 'bse_fo' and mnmAccountId = 'AA100'""")).scalar()
-            total_rows2 = db.execute(text(rf"""Select count(*) from [OMNE_ARD_PRD_HNI].[dbo].[TradeHist] WHERE mnmExchSeg = 'bse_fo' and mnmAccountId = 'AA100'""")).scalar()
+            total_rows1 = db.execute(text(rf"""Select count(*) from [OMNE_ARD_PRD].[dbo].[TradeHist] WHERE mnmExchSeg = 'bse_fo' and (mnmAccountId = 'AA100' or mnmAccountId = 'CPAA100')""")).scalar()
+            total_rows2 = db.execute(text(rf"""Select count(*) from [OMNE_ARD_PRD_HNI].[dbo].[TradeHist] WHERE mnmExchSeg = 'bse_fo' and (mnmAccountId = 'AA100' or mnmAccountId = 'CPAA100')""")).scalar()
             total_rows = total_rows1 + total_rows2
         json_data = {
             'data': [{k: conv_str(v) for k, v in row._mapping.items()} for row in result],

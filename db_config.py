@@ -280,12 +280,12 @@ s_tbl_add_notis = Table(
     Column("mainGroup", String(50)),
     Column("subGroup", String(50)),
     Column("buyAvgPrice", Float, nullable=True),
-    Column("buyAvgQty", Integer, nullable=True),
+    Column("buyAvgQty", BigInteger, nullable=True),
     Column("sellAvgPrice", Float, nullable=True),
-    Column("sellAvgQty", Integer, nullable=True),
+    Column("sellAvgQty", BigInteger, nullable=True),
     Column("symbol", String(50)),
     Column("expiryDate", String(50)),
-    Column("strikePrice", Integer),
+    Column("strikePrice", BigInteger),
     Column("optionType", String(50))
 )
 
@@ -294,9 +294,9 @@ s_tbl_add_notis_nnf_wise_net_position = Table(
     n_tbl_notis_nnf_wise_net_position, metadata,
     Column("nnfID", BigInteger),
     Column("buyAvgPrice", Float, nullable=True),
-    Column("buyAvgQty", Integer, nullable=True),
+    Column("buyAvgQty", BigInteger, nullable=True),
     Column("sellAvgPrice", Float, nullable=True),
-    Column("sellAvgQty", Integer, nullable=True),
+    Column("sellAvgQty", BigInteger, nullable=True),
     Column("symbol", String(50)),
     Column("expiryDate", String(50)),
     Column("strikePrice", BigInteger),

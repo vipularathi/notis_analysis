@@ -112,8 +112,9 @@ class NSEUtility:
         desk_db_df.loc[desk_db_df['optionType'] == 'XX', 'strikePrice'] = 0
         desk_db_df.strikePrice = desk_db_df.strikePrice.apply(lambda x: x/100 if x>0 else x)
         desk_db_df.strikePrice = desk_db_df.strikePrice.astype('int64')
-        desk_db_df.expiryDate = desk_db_df.expiryDate.astype('datetime64[ns]')
-        desk_db_df.expiryDate = desk_db_df.expiryDate.dt.date
+        # desk_db_df.expiryDate = desk_db_df.expiryDate.astype('datetime64[ns]')
+        # desk_db_df.expiryDate = desk_db_df.expiryDate.dt.date
+        desk_db_df['expiryDate'] = pd.to_datetime(desk_db_df['expiryDate'], dayfirst=True, format='mixed').dt.date
         # desk_db_df['broker'] = desk_db_df['brokerID'].apply(lambda x: 'CP' if x.startswith('Y') else 'non CP')
 
         grouped_desk_db_df = desk_db_df.groupby(by=['broker','symbol', 'expiryDate', 'strikePrice', 'optionType']).agg({'buyAvgQty':'sum','buyAvgPrice':'mean','sellAvgQty':'sum','sellAvgPrice':'mean'}).reset_index()

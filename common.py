@@ -106,7 +106,6 @@ def read_data_db(nnf=False, for_table='ENetMIS', from_time:str='', to_time:str='
                 df = pd.read_sql_query(sql_query, sql_conn)
             logger.info(f"Data fetched from SQL Server. Shape:{df.shape}")
             return df
-
         except (pyodbc.Error, psycopg2.Error) as e:
             logger.info("Error occurred:", e)
     elif nnf and for_table != 'ENetMIS':
@@ -126,17 +125,35 @@ def read_data_db(nnf=False, for_table='ENetMIS', from_time:str='', to_time:str='
             # sql_query = (
             #     f"select mnmFillPrice,mnmSegment, mnmTradingSymbol,mnmTransactionType,mnmAccountId,mnmUser , mnmFillSize, mnmSymbolName, mnmExpiryDate, mnmOptionType, mnmStrikePrice, mnmAvgPrice, mnmExecutingBroker from TradeHist where (mnmSymbolName = 'BSXOPT' or mnmSymbolName = 'BSE')")
             sql_query = (
-                f"select mnmFillPrice,mnmSegment, mnmTradingSymbol,mnmTransactionType,mnmAccountId,mnmUser , mnmFillSize, mnmSymbolName, mnmExpiryDate, mnmOptionType, mnmStrikePrice, mnmAvgPrice, mnmExecutingBroker from [OMNE_ARD_PRD].[dbo].[TradeHist] where mnmExchSeg = 'bse_fo' and mnmAccountId = 'AA100'")
+                f"select mnmFillPrice,mnmSegment, mnmTradingSymbol,mnmTransactionType,mnmAccountId,mnmUser , mnmFillSize, "
+                f"mnmSymbolName, mnmExpiryDate, mnmOptionType, mnmStrikePrice, mnmAvgPrice, mnmExecutingBroker "
+                f"from [OMNE_ARD_PRD].[dbo].[TradeHist] "
+                f"where mnmExchSeg = 'bse_fo' "
+                f"and (mnmAccountId = 'AA100' or mnmAccountId = 'CPAA100')")
             sql_query2 = (
-                f"select mnmFillPrice,mnmSegment, mnmTradingSymbol,mnmTransactionType,mnmAccountId,mnmUser , mnmFillSize, mnmSymbolName, mnmExpiryDate, mnmOptionType, mnmStrikePrice, mnmAvgPrice, mnmExecutingBroker from [OMNE_ARD_PRD_HNI].[dbo].[TradeHist] where mnmExchSeg = 'bse_fo' and mnmAccountId = 'AA100'")
+                f"select mnmFillPrice,mnmSegment, mnmTradingSymbol,mnmTransactionType,mnmAccountId,mnmUser , mnmFillSize, "
+                f"mnmSymbolName, mnmExpiryDate, mnmOptionType, mnmStrikePrice, mnmAvgPrice, mnmExecutingBroker "
+                f"from [OMNE_ARD_PRD_HNI].[dbo].[TradeHist] "
+                f"where mnmExchSeg = 'bse_fo' "
+                f"and (mnmAccountId = 'AA100' or mnmAccountId = 'CPAA100')")
         else:
             logger.info(f'Fetching BSE trade data from {from_time} to {to_time}')
             # sql_query = (
             #     f"select mnmFillPrice,mnmSegment, mnmTradingSymbol,mnmTransactionType,mnmAccountId,mnmUser , mnmFillSize, mnmSymbolName, mnmExpiryDate, mnmOptionType, mnmStrikePrice, mnmAvgPrice, mnmExecutingBroker from TradeHist where (mnmSymbolName = 'BSXOPT' or mnmSymbolName = 'BSE') and mnmExchangeTime between \'{from_time}\' and \'{to_time}\'")
             sql_query = (
-                f"select mnmFillPrice,mnmSegment, mnmTradingSymbol,mnmTransactionType,mnmAccountId,mnmUser , mnmFillSize, mnmSymbolName, mnmExpiryDate, mnmOptionType, mnmStrikePrice, mnmAvgPrice, mnmExecutingBroker from [OMNE_ARD_PRD].[dbo].[TradeHist] where mnmExchSeg = 'bse_fo' and mnmAccountId = 'AA100' and mnmExchangeTime between \'{from_time}\' and \'{to_time}\'")
+                f"select mnmFillPrice,mnmSegment, mnmTradingSymbol,mnmTransactionType,mnmAccountId,mnmUser , mnmFillSize, "
+                f"mnmSymbolName, mnmExpiryDate, mnmOptionType, mnmStrikePrice, mnmAvgPrice, mnmExecutingBroker "
+                f"from [OMNE_ARD_PRD].[dbo].[TradeHist] "
+                f"where mnmExchSeg = 'bse_fo' "
+                f"and mnmExchangeTime between \'{from_time}\' and \'{to_time}\' "
+                f"and (mnmAccountId = 'AA100' or mnmAccountId = 'CPAA100')")
             sql_query2 = (
-                f"select mnmFillPrice,mnmSegment, mnmTradingSymbol,mnmTransactionType,mnmAccountId,mnmUser , mnmFillSize, mnmSymbolName, mnmExpiryDate, mnmOptionType, mnmStrikePrice, mnmAvgPrice, mnmExecutingBroker from [OMNE_ARD_PRD_HNI].[dbo].[TradeHist] where mnmExchSeg = 'bse_fo' and mnmAccountId = 'AA100' and mnmExchangeTime between \'{from_time}\' and \'{to_time}\'")
+                f"select mnmFillPrice,mnmSegment, mnmTradingSymbol,mnmTransactionType,mnmAccountId,mnmUser , mnmFillSize, "
+                f"mnmSymbolName, mnmExpiryDate, mnmOptionType, mnmStrikePrice, mnmAvgPrice, mnmExecutingBroker "
+                f"from [OMNE_ARD_PRD_HNI].[dbo].[TradeHist] "
+                f"where mnmExchSeg = 'bse_fo' "
+                f"and mnmExchangeTime between \'{from_time}\' and \'{to_time}\' "
+                f"and (mnmAccountId = 'AA100' or mnmAccountId = 'CPAA100')")
         try:
             sql_engine_str = (
                 f"DRIVER={{ODBC Driver 17 for SQL Server}};"
@@ -367,6 +384,20 @@ def get_date_from_jiffy(dt_val):
     date_time = int((base_date.timestamp() + (dt_val / 65536)))
     new_date = datetime.fromtimestamp(date_time, timezone.utc)
     formatted_date = new_date.astimezone(timezone(timedelta(hours=5, minutes=30))).strftime("%Y-%m-%d %I:%M:%S")
+    return formatted_date
+
+def get_date_from_jiffy_new(dt_val):
+    """
+    Converts the Jiffy format date to a readable format.
+    :param dt_val: long
+    :return: long (epoch time in seconds)
+    """
+    # Jiffy is 1/65536 of a second since Jan 1, 1980
+    # base_date = datetime(1980, 1, 1, tzinfo=timezone.utc)
+    # date_time = int((base_date.timestamp() + (dt_val / 65536)))
+    # new_date = datetime.fromtimestamp(date_time, timezone.utc)
+    # formatted_date = new_date.astimezone(timezone(timedelta(hours=5, minutes=30))).strftime("%Y-%m-%d %I:%M:%S")
+    formatted_date = int(dt_val/65536) + 315513000
     return formatted_date
 
 def get_date_from_non_jiffy(dt_val):
