@@ -12,7 +12,7 @@ from urllib.parse import quote
 import pytz
 import gzip
 import xlsxwriter
-from common import get_date_from_non_jiffy, get_date_from_jiffy, read_data_db, read_notis_file, write_notis_data, today, yesterday, write_notis_postgredb, read_file, engine_str
+from common import today
 import warnings
 from fastapi import FastAPI, Query, status, Depends
 from fastapi.encoders import jsonable_encoder
@@ -1320,8 +1320,191 @@ p=0
 # # now = datetime.now()
 # # get_bse_trade(now.replace(second=0).strftime('%d-%b-%Y %H:%M:%S'), (now + timedelta(minutes=1)).replace(second=0).strftime('%d-%b-%Y %H:%M:%S'))
 o=0
-eod_df = pd.read_csv(rf"D:\notis_analysis\table_data\NOTIS_EOD_NET_POS_CP_NONCP_2025-04-04_changed_1.csv", index_col=False)
-eod_df.EodExpiry = pd.to_datetime(eod_df.EodExpiry, dayfirst=True, format='mixed').dt.date
-p=0
-grouped_eod = eod_df.groupby(by=['EodBroker','EodUnderlying','EodExpiry','EodStrike','EodOptionType'])
+# from common import read_file
+# df = read_file(rf"D:\notis_analysis\bse_data\BSE_TRADE_DATA_ALL_22APR2025.xlsx")
+# col_keep = [
+#     'ExchSeg','TransactionType','ExchangeTime','AvgPrice','FillSize',
+#     'ExecutingBroker','TradingSymbol','ExpiryDate',
+#     'OptionType','User','AccountId','StrikePrice'
+# ]
+# df = df[col_keep]
+# df = df.applymap(lambda x: re.sub(r'\s+','',x) if isinstance(x,str) else x)
+# chg_format = ['AvgPrice','ExpiryDate','FillSize','StrikePrice']
+# for index,col in enumerate(chg_format, start=1):
+#     if index == 1:
+#         df[col] = df[col].astype(np.float64)
+#     elif index == 2:
+#         df[col] = df[col].astype('datetime64[ns]').dt.date
+#     else:
+#         df[col] = df[col].astype(np.int64)
+# df = df.round(2)
+# df['Broker'] = df['ExecutingBroker'].apply(lambda x: 'CP' if str(x).startswith('Y') else 'non CP')
+# df['Symbol'] = df['TradingSymbol'].apply(lambda x: 'SENSEX' if x.startswith('S') else 'BANKEX')
+# df.drop(columns=['TradingSymbol'], inplace=True)
+# df['trdQtyPrc'] = df['FillSize'] * df['AvgPrice']
+# pivot_df = df.pivot_table(
+#     index=['Broker','Symbol','ExpiryDate','StrikePrice','OptionType'],
+#     columns=['TransactionType'],
+#     values=['FillSize','trdQtyPrc'],
+#     aggfunc={'FillSize':'sum','trdQtyPrc':'sum'},
+#     fill_value=0
+# )
+# if len(df.TransactionType.unique()) == 1:
+#     if df.TransactionType.unique().tolist()[0] == 'B':
+#         pivot_df['SellTrdQtyPrc'],pivot_df['SellQty'] = 0,0
+#     else:
+#         pivot_df['BuyTrdQtyPrc'],pivot_df['BuyQty'] = 0,0
+# elif len(df) == 0 or len(pivot_df) == 0:
+#     pivot_df.columns = ['_'.join(col).strip() for col in pivot_df.columns.values]
+# pivot_df.columns = ['BuyQty','SellQty','BuyTrdQtyPrc','SellTrdQtyPrc']
+# pivot_df['BuyAvgPrc'] = pivot_df.apply(lambda row: row['BuyTrdQtyPrc']/row['BuyQty'] if row['BuyQty']>0 else 0, axis=1)
+# pivot_df['SellAvgPrc'] = pivot_df.apply(lambda row: row['SellTrdQtyPrc']/row['SellQty'] if row['SellQty']>0 else 0, axis=1)
+# pivot_df.drop(columns=['SellTrdQtyPrc','BuyTrdQtyPrc'], inplace=True)
+# pivot_df.reset_index(inplace=True)
 u=0
+# from common import get_date_from_jiffy_new, read_file
+# df=read_file(rf"D:\notis_analysis\testing\rawtradebook_2025-04-17.xlsx")
+p=0
+# from common import read_data_db
+# for_date = datetime.today().date().replace(day=28, month=4)
+# nse_cp_noncp = read_data_db(for_table=f'NOTIS_EOD_NET_POS_CP_NONCP_{for_date}')
+# bse_trade_data = read_data_db(for_table=f'BSE_TRADE_DATA_{for_date}')
+# bse_trade_data['Broker'] = bse_trade_data['ExecutingBroker'].apply(lambda x: 'CP' if x.startswith("Y") else 'non CP')
+o=0
+# def read_data_db(nnf=False, for_table='ENetMIS', from_time:str='', to_time:str='', from_source=False):
+#     global engine
+#     if not nnf and for_table == 'ENetMIS':
+#         # Sql connection parameters
+#         sql_server = "rms.ar.db"
+#         sql_database = "ENetMIS"
+#         sql_username = "notice_user"
+#         sql_password = "Notice@2024"
+#         if not from_time:
+#             sql_query = "SELECT * FROM [ENetMIS].[dbo].[NSE_FO_AA100_view]"
+#         else:
+#             sql_query = f"SELECT * FROM [ENetMIS].[dbo].[NSE_FO_AA100_view] WHERE CreateDate BETWEEN '{from_time}' AND '{to_time}';"
+#         # if from_source:
+#         #     sql_query = f"""
+#         #                     WITH CTE AS (
+#         #                         SELECT *,
+#         #                                ROW_NUMBER() OVER (ORDER BY (SELECT NULL)) AS RowNum
+#         #                         FROM [ENetMIS].[dbo].[NSE_FO_AA100_view]
+#         #                     )
+#         #                     SELECT *
+#         #                     FROM CTE
+#         #                     WHERE RowNum > {offset} AND RowNum <= {offset + page_size};
+#         #                     """
+#         try:
+#             sql_connection_string = (
+#                 f"DRIVER={{ODBC Driver 17 for SQL Server}};"
+#                 f"SERVER={sql_server};"
+#                 f"DATABASE={sql_database};"
+#                 f"UID={sql_username};"
+#                 f"PWD={sql_password}"
+#             )
+#             with pyodbc.connect(sql_connection_string) as sql_conn:
+#                 df = pd.read_sql_query(sql_query, sql_conn)
+#             logger.info(f"Data fetched from SQL Server. Shape:{df.shape}")
+#             return df
+#         except (pyodbc.Error, psycopg2.Error) as e:
+#             logger.info("Error occurred:", e)
+#     elif nnf and for_table != 'ENetMIS':
+#         # engine = create_engine(engine_str)
+#         with engine.begin() as conn:
+#             df = pd.read_sql_table(n_tbl_notis_nnf_data, con=conn)
+#         logger.info(f"Data fetched from {for_table} table. Shape:{df.shape}")
+#         return df
+#     elif not nnf and for_table == 'TradeHist':
+#         sql_server = '172.30.100.41'
+#         sql_port = '1450'
+#         sql_db = 'OMNE_ARD_PRD'
+#         sql_userid = 'Pos_User'
+#         sql_paswd = 'Pass@Word1'
+#         if not from_time:
+#             print(f'Fetching today\'s BSE trade data till now.')
+#             # sql_query = (
+#             #     f"select mnmFillPrice,mnmSegment, mnmTradingSymbol,mnmTransactionType,mnmAccountId,mnmUser , mnmFillSize, mnmSymbolName, mnmExpiryDate, mnmOptionType, mnmStrikePrice, mnmAvgPrice, mnmExecutingBroker from TradeHist where (mnmSymbolName = 'BSXOPT' or mnmSymbolName = 'BSE')")
+#             sql_query = (
+#                 f"select mnmFillPrice,mnmSegment, mnmTradingSymbol,mnmTransactionType,mnmAccountId,mnmUser , mnmFillSize, "
+#                 f"mnmSymbolName, mnmExpiryDate, mnmOptionType, mnmStrikePrice, mnmAvgPrice, mnmExecutingBroker "
+#                 f"from [OMNE_ARD_PRD].[dbo].[TradeHist] "
+#                 f"where mnmExchSeg = 'bse_fo' "
+#                 f"and (mnmAccountId = 'AA100' or mnmAccountId = 'CPAA100')")
+#             sql_query2 = (
+#                 f"select mnmFillPrice,mnmSegment, mnmTradingSymbol,mnmTransactionType,mnmAccountId,mnmUser , mnmFillSize, "
+#                 f"mnmSymbolName, mnmExpiryDate, mnmOptionType, mnmStrikePrice, mnmAvgPrice, mnmExecutingBroker "
+#                 f"from [OMNE_ARD_PRD_HNI].[dbo].[TradeHist] "
+#                 f"where mnmExchSeg = 'bse_fo' "
+#                 f"and (mnmAccountId = 'AA100' or mnmAccountId = 'CPAA100')")
+#         else:
+#             logger.info(f'Fetching BSE trade data from {from_time} to {to_time}')
+#             # sql_query = (
+#             #     f"select mnmFillPrice,mnmSegment, mnmTradingSymbol,mnmTransactionType,mnmAccountId,mnmUser , mnmFillSize, mnmSymbolName, mnmExpiryDate, mnmOptionType, mnmStrikePrice, mnmAvgPrice, mnmExecutingBroker from TradeHist where (mnmSymbolName = 'BSXOPT' or mnmSymbolName = 'BSE') and mnmExchangeTime between \'{from_time}\' and \'{to_time}\'")
+#             sql_query = (
+#                 f"select mnmFillPrice,mnmSegment, mnmTradingSymbol,mnmTransactionType,mnmAccountId,mnmUser , mnmFillSize, "
+#                 f"mnmSymbolName, mnmExpiryDate, mnmOptionType, mnmStrikePrice, mnmAvgPrice, mnmExecutingBroker "
+#                 f"from [OMNE_ARD_PRD].[dbo].[TradeHist] "
+#                 f"where mnmExchSeg = 'bse_fo' "
+#                 f"and mnmExchangeTime between \'{from_time}\' and \'{to_time}\' "
+#                 f"and (mnmAccountId = 'AA100' or mnmAccountId = 'CPAA100')")
+#             sql_query2 = (
+#                 f"select mnmFillPrice,mnmSegment, mnmTradingSymbol,mnmTransactionType,mnmAccountId,mnmUser , mnmFillSize, "
+#                 f"mnmSymbolName, mnmExpiryDate, mnmOptionType, mnmStrikePrice, mnmAvgPrice, mnmExecutingBroker "
+#                 f"from [OMNE_ARD_PRD_HNI].[dbo].[TradeHist] "
+#                 f"where mnmExchSeg = 'bse_fo' "
+#                 f"and mnmExchangeTime between \'{from_time}\' and \'{to_time}\' "
+#                 f"and (mnmAccountId = 'AA100' or mnmAccountId = 'CPAA100')")
+#         try:
+#             sql_engine_str = (
+#                 f"DRIVER={{ODBC Driver 17 for SQL Server}};"
+#                 f"SERVER={sql_server},{sql_port};"
+#                 f"DATABASE={sql_db};"
+#                 f"UID={sql_userid};"
+#                 f"PWD={sql_paswd};"
+#             )
+#             with pyodbc.connect(sql_engine_str) as sql_conn:
+#                 df_bse = pd.read_sql_query(sql_query, sql_conn)
+#                 df_bse_hni = pd.read_sql_query(sql_query2,sql_conn)
+#             print(f'data fetched for bse: {df_bse.shape, df_bse_hni.shape}')
+#             final_bse_df = pd.concat([df_bse,df_bse_hni], ignore_index=True)
+#             return final_bse_df
+#         except (pyodbc.Error, psycopg2.Error) as e:
+#             print(f'Error in fetching data: {e}')
+#     elif not nnf and for_table!='ENetMIS':
+#         # engine = create_engine(engine_str)
+#         with engine.begin() as conn:
+#             df = pd.read_sql_table(for_table, con=conn)
+#         logger.info(f"Data fetched from {for_table} table. Shape:{df.shape}")
+#         return df
+# server = '172.30.100.40,1450'
+# database = OMNE_ARD_PRD_3.19
+# database_1 = OMNE_ARD_PRD_AA100_3.19
+t=0
+# # to get trade for 2 nnf ids
+# from common import read_data_db
+# holidays_25 = ['2025-02-26', '2025-03-14', '2025-03-31', '2025-04-10', '2025-04-14', '2025-04-18', '2025-05-01', '2025-08-15', '2025-08-27', '2025-10-02', '2025-10-21', '2025-10-22', '2025-11-05', '2025-12-25']
+# start_date = datetime.today().date().replace(day=1,month=4)
+# end_date = datetime.now().date().replace(day=30,month=4)
+# b_days = pd.bdate_range(start=start_date, end=end_date, freq='C', weekmask='1111100', holidays=holidays_25).date.tolist()
+# main_df = pd.DataFrame()
+# for each_date in b_days:
+#     table_name = f"NOTIS_NNF_WISE_NET_POSITION_{each_date}"
+#     df = read_data_db(for_table=table_name)
+#     df1 = df.query("nnfID == 111111111111122 or nnfID == 400013041212000")
+#     df1['for_date'] = each_date
+#     main_df = pd.concat([main_df,df1], ignore_index=True)
+#
+# main_df['NetQty'] = main_df['buyAvgQty'] - main_df['sellAvgQty']
+# main_df['tradeValue'] = (main_df['sellAvgPrice']*main_df['sellAvgQty']) - (main_df['buyAvgPrice']*main_df['buyAvgQty'])
+# main_df['nnfID'] = main_df['nnfID'].astype(str)
+e=0
+from common import today, yesterday, read_data_db
+from db_config import n_tbl_notis_nnf_data
+from nse_utility import NSEUtility
+table_name = f'NOTIS_EOD_NET_POS_CP_NONCP_{yesterday.strftime("%Y-%m-%d")}'
+df = read_data_db(for_table=table_name)
+df_nnf = read_data_db(nnf=True, for_table = n_tbl_notis_nnf_data)
+df_nnf = df_nnf.drop_duplicates()
+nse_df = read_data_db()
+modified_nse = NSEUtility.modify_file(df=nse_df,df_nnf=df_nnf)
+w=0

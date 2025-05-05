@@ -7,6 +7,7 @@ from cryptography.hazmat.backends import default_backend
 from django.utils.encoding import force_bytes, force_str
 from common import volt_dir,today
 
+# today=datetime.today().date().replace(day=2)
 SECRET_KEY = "yi91poFLFMiXnkB12j/KY0RjG1fwTO7MwQWXjszcPGE="
 value = force_bytes("ARathi@123456")
 member_code = '06769'

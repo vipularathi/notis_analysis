@@ -8,14 +8,16 @@ from openpyxl.utils.dataframe import dataframe_to_rows
 from sqlalchemy import create_engine, text, insert
 
 from db_config import n_tbl_notis_trade_book, n_tbl_notis_raw_data, n_tbl_notis_nnf_data, n_tbl_notis_desk_wise_net_position, n_tbl_notis_nnf_wise_net_position, n_tbl_notis_eod_net_pos_cp_noncp, n_tbl_bse_trade_data
-from common import read_data_db, read_notis_file, write_notis_data, write_notis_postgredb, get_date_from_non_jiffy, get_date_from_jiffy, today, yesterday, root_dir, bhav_dir, modified_dir, table_dir, download_bhavcopy, bse_dir
+from common import (read_data_db, write_notis_data, write_notis_postgredb, today,
+                    root_dir, bhav_dir, modified_dir, table_dir, bse_dir,
+                    download_bhavcopy, logger)
 from nse_utility import NSEUtility
 from bse_utility import BSEUtility
 
 
 warnings.filterwarnings('ignore', message="pandas only supports SQLAlchemy connectable.*")
 pd.set_option('display.float_format', lambda a:'%.2f' %a)
-
+actual_date = datetime.now().date()
 # def modify_file(df, df_nnf):
 #     list_str_int64 = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 16, 17, 18, 19, 21, 23, 27, 28]
 #     list_str_none = [15, 20, 25, 30, 31, 32, 33, 34, 35, 36, 37]
@@ -30,7 +32,7 @@ pd.set_option('display.float_format', lambda a:'%.2f' %a)
 #         df[f'Column{i}'] = df[f'Column{i}'].astype('str')
 #     # --------------------------------------------------------------------------------------------------------------------------------
 #     pbar = progressbar.ProgressBar(max_value=100, widgets=[progressbar.Percentage(), ' ', progressbar.Bar(marker='=', left='[', right=']'), progressbar.ETA()])
-#     print('Starting file modification...')
+#     logger.info('Starting file modification...')
 #     pbar.update(0)
 #     df.rename(columns={
 #         'Column1': 'seqNo', 'Column2': 'mkt', 'Column3': 'trdNo',
@@ -75,10 +77,10 @@ pd.set_option('display.float_format', lambda a:'%.2f' %a)
 #     # proceed only if all ctclid from notis file is present in nnf file or not
 #     missing_ctclid = set(df['ctclid'].unique()) - set(df_nnf['NNFID'].unique())
 #     if missing_ctclid:
-#         print(f"\nMissing ctclid(s) from NNF file: {missing_ctclid}")
+#         logger.info(f"\nMissing ctclid(s) from NNF file: {missing_ctclid}")
 #         raise ValueError(f'The ctclid values are not matching the NNFID values - {missing_ctclid}')
 #     else:
-#         print('\nAll ctclid values are present in NNF file.\n')
+#         logger.info('\nAll ctclid values are present in NNF file.\n')
 #     merged_df = pd.merge(df, df_nnf, left_on='ctclid', right_on='NNFID', how='left')
 #     merged_df.drop(columns=['NNFID'], axis=1, inplace=True)
 #     pbar.update(100)
@@ -95,7 +97,7 @@ def download_tables():
         df = read_data_db(for_table=table)
         # df.to_csv(os.path.join(table_dir, f"{table}.xlsx"), index=False)
         write_notis_data(df=df, filepath=os.path.join(table_dir,f'{table}.xlsx'))
-        print(f"{table} data fetched and written at path: {os.path.join(table_dir, f'{table}.xlsx')}")
+        logger.info(f"{table} data fetched and written at path: {os.path.join(table_dir, f'{table}.xlsx')}")
 
 # def truncate_tables():
 #     table_name = ["notis_raw_data","NOTIS_TRADE_BOOK","NOTIS_DESK_WISE_NET_POSITION","NOTIS_NNF_WISE_NET_POSITION","NOTIS_USERID_WISE_NET_POSITION",f'NOTIS_EOD_NET_POS_CP_NONCP_{today.strftime("%Y-%m-%d")}']
@@ -108,9 +110,9 @@ def download_tables():
 #             if row_count > 0:
 #                 # conn.execute(text(f'delete from "{each}"'))
 #                 conn.execute(text(f'truncate table "{each}"'))
-#                 print(f'Existing data from table {each} deleted')
+#                 logger.info(f'Existing data from table {each} deleted')
 #             else:
-#                 print(f'No data in table {each}, no need to delete')
+#                 logger.info(f'No data in table {each}, no need to delete')
 def main():
     # truncate_tables()
     # today = datetime(year=2025, month=3, day=7).date()
@@ -123,7 +125,7 @@ def main():
 
     readable_mod_time = datetime.fromtimestamp(os.path.getmtime(nnf_file_path))
     if readable_mod_time.date() == today: # Check if the NNF file is modified today or not
-        print(f'New NNF Data found, modifying the nnf data in db . . .')
+        logger.info(f'New NNF Data found, modifying the nnf data in db . . .')
         df_nnf = pd.read_excel(nnf_file_path, index_col=False)
         df_nnf = df_nnf.loc[:, ~df_nnf.columns.str.startswith('Un')]
         df_nnf.columns = df_nnf.columns.str.replace(' ', '', regex=True)
@@ -137,7 +139,7 @@ def main():
     write_notis_postgredb(modified_df, table_name=n_tbl_notis_trade_book, truncate_required=True)
     write_notis_data(modified_df, modify_filepath)
     write_notis_data(modified_df, rf'C:\Users\vipulanand\Documents\Anand Rathi Financial Services Ltd (Synced)\OneDrive - Anand Rathi Financial Services Ltd\notis_files\NOTIS_TRADE_DATA_{today.strftime("%d%b%Y").upper()}.csv')
-    print('file saved in modified_data folder')
+    logger.info('file saved in modified_data folder')
     # # make net-pos tables
     # pivot_df = modified_df.pivot_table(
     #     index=['MainGroup', 'SubGroup', 'broker', 'ctclid', 'sym', 'expDt', 'strPrc', 'optType'],
@@ -197,23 +199,28 @@ def main():
     write_notis_postgredb(cp_noncp_db_df, table_name=n_tbl_notis_eod_net_pos_cp_noncp, truncate_required=True)
 
 if __name__ == '__main__':
-    download_bhavcopy()
-    print(f'Today\'s bhavcopy downloaded and stored at {bhav_dir}')
-    stt = time.time()
-    main()
-    ett = time.time()
-    print(f'total time taken for modifying, adding data in db and writing in local directory - {ett - stt} seconds')
-    print(f'fetching BSE trades...')
-    stt = datetime.now()
-    df_bse = BSEUtility.get_bse_trade_data()
-    write_notis_data(df_bse, os.path.join(bse_dir, f'BSE_TRADE_DATA_{today.strftime("%d%b%Y").upper()}.xlsx'))
-    write_notis_postgredb(df=df_bse, table_name=n_tbl_bse_trade_data, truncate_required=True)
-    ett = datetime.now()
-    print(f'BSE trade fetched. Total time taken: {(ett - stt).seconds} seconds')
-    pbar = progressbar.ProgressBar(max_value=100, widgets=[progressbar.Percentage(), ' ', progressbar.Bar(marker='=', left='[', right=']'), progressbar.ETA()])
-    pbar.update(1)
-    for i in range(100):
-        time.sleep(1)
-        pbar.update(i + 1)
-    pbar.finish()
-    download_tables()
+    if actual_date == today:
+        logger.info(f'Starting final main.')
+        download_bhavcopy()
+        logger.info(f'Today\'s bhavcopy downloaded and stored at {bhav_dir}')
+        stt = time.time()
+        main()
+        ett = time.time()
+        logger.info(f'total time taken for modifying, adding data in db and writing in local directory - {ett - stt} seconds')
+        logger.info(f'fetching BSE trades...')
+        stt = datetime.now()
+        df_bse = BSEUtility.get_bse_trade_data()
+        write_notis_data(df_bse, os.path.join(bse_dir, f'BSE_TRADE_DATA_{today.strftime("%d%b%Y").upper()}.xlsx'))
+        write_notis_postgredb(df=df_bse, table_name=n_tbl_bse_trade_data, truncate_required=True)
+        ett = datetime.now()
+        logger.info(f'BSE trade fetched. Total time taken: {(ett - stt).seconds} seconds')
+        pbar = progressbar.ProgressBar(max_value=100, widgets=[progressbar.Percentage(), ' ', progressbar.Bar(marker='=', left='[', right=']'), progressbar.ETA()])
+        pbar.update(1)
+        for i in range(100):
+            time.sleep(1)
+            pbar.update(i + 1)
+        pbar.finish()
+        download_tables()
+    else:
+        logger.info(f'Today is not a business date hence exiting')
+        exit()

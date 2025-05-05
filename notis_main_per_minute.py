@@ -11,6 +11,7 @@ from db_config import engine_str,n_tbl_notis_trade_book,n_tbl_notis_raw_data,n_t
 from common import get_date_from_non_jiffy, get_date_from_jiffy, today, yesterday, root_dir, logger, read_data_db, write_notis_postgredb, truncate_tables
 from nse_utility import NSEUtility
 warnings.filterwarnings("ignore")
+today_date = datetime.now().date()
 
 n_tbl_test_mod = n_tbl_notis_trade_book
 n_tbl_test_raw = n_tbl_notis_raw_data
@@ -152,57 +153,61 @@ def main(from_time, to_time):
     write_notis_postgredb(nnf_db_df, table_name=n_tbl_test_net_pos_nnf, truncate_required=True)
 
 if __name__ == '__main__':
-    recover = False
-    stt = datetime.now().replace(hour=9, minute=15)
-    ett = datetime.now().replace(hour=15, minute=35)
-    # backtest_date = (datetime.now()-timedelta(days=1))
-    # stt = backtest_date.replace(hour=9, minute=15)
-    # ett = backtest_date.replace(hour=15, minute=35)
-    actual_start_time = datetime.now()
-    logger.info(f'test started at {datetime.now()}')
-    if actual_start_time > stt and actual_start_time < ett:
-        recover = True
-    while datetime.now() < stt:
-        time.sleep(1)
-    while datetime.now() < ett:
-        now = datetime.now()
-        # now=backtest_date.replace(hour=now.hour, minute=now.minute, second=now.second, microsecond=0)
-        # next_min = (now + timedelta(minutes=1)).replace(second=0, microsecond=0)
-        # logger.info('\n')
-        # main(from_time=now.replace(second=0, microsecond=0).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3], to_time=next_min.strftime("%Y-%m-%d %H:%M:%S.%f")[:-3])
-        # time.sleep((next_min - now).total_seconds() + 30)
-        # if now.second == 1:
-        #     # now=now.replace(day=28)
-        #     print('in if')
-        #     logger.info('\n')
-        #     logger.info(f"now time => {now.strftime('%Y-%m-%d %H:%M:%S')}")
-        #     main((now - timedelta(minutes=1)).replace(second=0).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3],
-        #                   now.replace(second=0).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3])
-        #     get_bse_trade_data((now - timedelta(minutes=1)).replace(second=0).strftime('%d-%b-%Y %H:%M:%S'), now.replace(
-        #         second=0).strftime('%d-%b-%Y %H:%M:%S'))
-        # # else:
-        # #     print('in else')
-        # #     next_time = (now + timedelta(minutes=1)).replace(second=1, microsecond=0)
-        # #     time.sleep((next_time - now).total_seconds())
-        if now.second == 1:
-            print('in if')
-            if recover:
-                print('in recover')
-                table_list = [n_tbl_test_mod, n_tbl_test_raw, n_tbl_test_cp_noncp, n_tbl_test_net_pos_desk,
-                              n_tbl_test_net_pos_nnf, n_tbl_test_bse]
-                for each in table_list:
-                    truncate_tables(each)
-                main_from_time = stt.replace(second=0).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
-                main_to_time = now.replace(second=0).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
-                bse_from_time = stt.replace(second=0).strftime('%d-%b-%Y %H:%M:%S')
-                bse_to_time = now.replace(second=0).strftime('%d-%b-%Y %H:%M:%S')
-                recover = False
-            else:
-                main_from_time = (now - timedelta(minutes=1)).replace(second=0).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
-                main_to_time = now.replace(second=0).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
-                bse_from_time = (now - timedelta(minutes=1)).replace(second=0).strftime('%d-%b-%Y %H:%M:%S')
-                bse_to_time = now.replace(second=0).strftime('%d-%b-%Y %H:%M:%S')
-            logger.info(f"\nnow time => {now.strftime('%Y-%m-%d %H:%M:%S')}")
-            main(main_from_time, main_to_time)
-            get_bse_trade_data(bse_from_time, bse_to_time)
+    if today_date == today:
+        recover = False
+        stt = datetime.now().replace(hour=9, minute=15)
+        ett = datetime.now().replace(hour=15, minute=35)
+        # backtest_date = (datetime.now()-timedelta(days=1))
+        # stt = backtest_date.replace(hour=9, minute=15)
+        # ett = backtest_date.replace(hour=15, minute=35)
+        actual_start_time = datetime.now()
+        logger.info(f'test started at {datetime.now()}')
+        if actual_start_time > stt and actual_start_time < ett:
+            recover = True
+        while datetime.now() < stt:
             time.sleep(1)
+        while datetime.now() < ett:
+            now = datetime.now()
+            # now=backtest_date.replace(hour=now.hour, minute=now.minute, second=now.second, microsecond=0)
+            # next_min = (now + timedelta(minutes=1)).replace(second=0, microsecond=0)
+            # logger.info('\n')
+            # main(from_time=now.replace(second=0, microsecond=0).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3], to_time=next_min.strftime("%Y-%m-%d %H:%M:%S.%f")[:-3])
+            # time.sleep((next_min - now).total_seconds() + 30)
+            # if now.second == 1:
+            #     # now=now.replace(day=28)
+            #     print('in if')
+            #     logger.info('\n')
+            #     logger.info(f"now time => {now.strftime('%Y-%m-%d %H:%M:%S')}")
+            #     main((now - timedelta(minutes=1)).replace(second=0).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3],
+            #                   now.replace(second=0).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3])
+            #     get_bse_trade_data((now - timedelta(minutes=1)).replace(second=0).strftime('%d-%b-%Y %H:%M:%S'), now.replace(
+            #         second=0).strftime('%d-%b-%Y %H:%M:%S'))
+            # # else:
+            # #     print('in else')
+            # #     next_time = (now + timedelta(minutes=1)).replace(second=1, microsecond=0)
+            # #     time.sleep((next_time - now).total_seconds())
+            if now.second == 1:
+                print('in if')
+                if recover:
+                    print('in recover')
+                    table_list = [n_tbl_test_mod, n_tbl_test_raw, n_tbl_test_cp_noncp, n_tbl_test_net_pos_desk,
+                                  n_tbl_test_net_pos_nnf, n_tbl_test_bse]
+                    for each in table_list:
+                        truncate_tables(each)
+                    main_from_time = stt.replace(second=0).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
+                    main_to_time = now.replace(second=0).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
+                    bse_from_time = stt.replace(second=0).strftime('%d-%b-%Y %H:%M:%S')
+                    bse_to_time = now.replace(second=0).strftime('%d-%b-%Y %H:%M:%S')
+                    recover = False
+                else:
+                    main_from_time = (now - timedelta(minutes=1)).replace(second=0).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
+                    main_to_time = now.replace(second=0).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
+                    bse_from_time = (now - timedelta(minutes=1)).replace(second=0).strftime('%d-%b-%Y %H:%M:%S')
+                    bse_to_time = now.replace(second=0).strftime('%d-%b-%Y %H:%M:%S')
+                logger.info(f"\nnow time => {now.strftime('%Y-%m-%d %H:%M:%S')}")
+                main(main_from_time, main_to_time)
+                get_bse_trade_data(bse_from_time, bse_to_time)
+                time.sleep(1)
+    else:
+        logger.info(f'Today is not a business day hence exiting.')
+        exit()
