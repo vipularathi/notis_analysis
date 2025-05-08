@@ -13,7 +13,10 @@ import psycopg2
 import time
 import warnings
 from db_config import engine_str, n_tbl_notis_nnf_data
-from common import get_date_from_non_jiffy, get_date_from_jiffy, today, yesterday, root_dir, logger, read_data_db, read_file, bhav_dir
+from common import (get_date_from_non_jiffy, get_date_from_jiffy,
+                    today, yesterday,
+                    root_dir, logger, bhav_dir,
+                    read_data_db, read_file)
 
 class NSEUtility:
     @staticmethod

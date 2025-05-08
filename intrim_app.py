@@ -1,7 +1,7 @@
 import numpy as np
 import pandas as pd
-import os
-from main import read_notis_file
+import os, re
+# from main import read_notis_file
 import time
 from datetime import datetime, timedelta, timezone, date
 import pytz
@@ -11,13 +11,13 @@ import progressbar
 from sqlalchemy import create_engine
 from urllib.parse import quote
 import warnings
-from fastapi import FastAPI, Query, status
+from fastapi import FastAPI, Query, status, Response
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 from db_config import n_tbl_notis_trade_book, s_tbl_notis_trade_book, n_tbl_notis_raw_data, s_tbl_notis_raw_data, n_tbl_notis_nnf_data, s_tbl_notis_nnf_data
-from main import modify_file
+# from main import modify_file
 from common import get_date_from_non_jiffy, read_data_db, read_notis_file, write_notis_data, today, yesterday, write_notis_postgredb, read_file
 
 # today = datetime(year=2025, month=1, day=24).date()
@@ -45,7 +45,8 @@ class ServiceApp:
         self.add_routes()
 
     def add_routes(self):
-        self.app.add_api_route('/netPosition/intraday', methods=['GET'], endpoint=self.get_intraday_net_position)
+        # self.app.add_api_route('/netPosition/intraday', methods=['GET'], endpoint=self.get_intraday_net_position)
+        self.app.add_api_route('/get_oi', methods=['GET'], endpoint=self.get_oi)
 
     def get_intraday_net_position(self):
         # df_db = read_data_db()
@@ -118,9 +119,19 @@ class ServiceApp:
         df = pd.read_sql(query)
         return df
 
+    def get_oi(self, for_date=Query()):
+        for_date = datetime.today().date().strftime('%Y-%m-%d')
+        table_to_read = f'NOTIS_EOD_NET_POS_CP_NONCP_{for_date}'
+        eod_df = read_data_db(for_table=table_to_read)
+        eod_df.columns = [re.sub(r'Eod|\s', '', each) for each in eod_df.columns]
+        grouped_df = eod_df.groupby(by=['Broker', 'Underlying', 'Expiry'], as_index=False).agg(
+            {'FinalNetQty': lambda x: x.abs().sum()})
+        json_data = grouped_df.to_json(orient='records')
+        return Response(json_data, media_type='application/json')
+
 
 service = ServiceApp()
 app = service.app
 
 if __name__ == '__main__':
-    uvicorn.run('intrim_app:app', host='0.0.0.0', port=8861, workers=5)
+    uvicorn.run('intrim_app:app', host='0.0.0.0', port=8891, workers=5)
