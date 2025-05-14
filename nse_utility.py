@@ -13,7 +13,10 @@ import psycopg2
 import time
 import warnings
 from db_config import engine_str, n_tbl_notis_nnf_data
-from common import get_date_from_non_jiffy, get_date_from_jiffy, today, yesterday, root_dir, logger, read_data_db, read_file, bhav_dir
+from common import (get_date_from_non_jiffy, get_date_from_jiffy,
+                    today, yesterday,
+                    root_dir, logger, bhav_dir,
+                    read_data_db, read_file)
 
 class NSEUtility:
     @staticmethod
@@ -103,7 +106,8 @@ class NSEUtility:
         # eod_df.EodExpiry = eod_df.EodExpiry.dt.date
         eod_df['EodExpiry'] = pd.to_datetime(eod_df['EodExpiry'], dayfirst=True, format='mixed').dt.date
         # eod_df['EodExpiry'] = eod_df['EodExpiry'].dt.date
-        eod_df = eod_df.query("EodExpiry >= @today and EodNetQuantity != 0")
+        nse_underlying_list = ['NIFTY','BANKNIFTY','MIDCPNIFTY','FINNIFTY']
+        eod_df = eod_df.query("EodUnderlying in @nse_underlying_list and EodExpiry >= @today and EodNetQuantity != 0")
 
         grouped_eod = eod_df.groupby(by=['EodBroker','EodUnderlying','EodExpiry','EodStrike','EodOptionType'], as_index=False).agg({'EodNetQuantity':'sum','EodClosingPrice':'mean'})
         grouped_eod = grouped_eod.query("EodNetQuantity != 0")
@@ -133,7 +137,7 @@ class NSEUtility:
         merged_df['FinalNetQty'] = merged_df['EodNetQuantity'] + merged_df['IntradayVolume']
         merged_df.drop(columns = ['broker','symbol', 'expiryDate', 'strikePrice', 'optionType'], inplace = True)
 
-        if datetime.strptime('16:00:00', '%H:%M:%S').time() < datetime.now().time():
+        if datetime.strptime('16:30:00', '%H:%M:%S').time() < datetime.now().time():
             bhav_pattern = rf'regularNSEBhavcopy_{today.strftime("%d%m%Y")}.(xlsx|csv)'
             bhav_matched_files = [f for f in os.listdir(bhav_dir) if re.match(bhav_pattern, f)]
             bhav_df = read_file(os.path.join(bhav_dir, bhav_matched_files[0])) # regularBhavcopy_14012025.xlsx

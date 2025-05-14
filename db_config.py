@@ -256,22 +256,46 @@ s_tbl_notis_eod_net_pos_cp_noncp = Table(
     Column("FinalSettlementPrice", BigInteger, nullable=True)
 )
 
+n_tbl_test_notis_eod_net_pos_cp_noncp = f"TEST_NOTIS_EOD_NET_POS_CP_NONCP_{today}"
+# n_tbl_notis_eod_net_pos_cp_noncp = f"NOTIS_EOD_NET_POS_CP_NONCP_{datetime(year=2025,month=3,day=13).date().strftime('%Y-%m-%d')}"
+s_tbl_test_notis_eod_net_pos_cp_noncp = Table(
+    n_tbl_test_notis_eod_net_pos_cp_noncp, metadata,
+    Column("EodBroker", String(50)),
+    Column("EodUnderlying", String(50)),
+    Column("EodExpiry", String(50)),
+    Column("EodStrike", BigInteger),
+    Column("EodOptionType", String(50)),
+    Column("EodNetQuantity", BigInteger),
+    Column("EodClosingPrice", BigInteger),
+    Column("buyQty", BigInteger,nullable=True),
+    Column("buyAvgPrice", BigInteger,nullable=True),
+    Column("sellQty", BigInteger,nullable=True),
+    Column("sellAvgPrice", BigInteger,nullable=True),
+    Column("IntradayVolume", BigInteger,nullable=True),
+    Column("FinalNetQty", BigInteger),
+    Column("FinalSettlementPrice", BigInteger, nullable=True)
+)
+
 # n_tbl_bse_trade_data = f"BSE_TRADE_DATA_{datetime(year=2025, month=3, day=17).date().strftime('%Y-%m-%d')}"
 n_tbl_bse_trade_data = f"BSE_TRADE_DATA_{today}"
 s_tbl_add = Table(
     n_tbl_bse_trade_data, metadata,
     Column("TerminalID", String(50)),
-    Column("Symbol", String(50)),
-    Column("ExpiryDate", String(50)),
+    Column("Underlying", String(50)),
+    Column("Expiry", String(50)),
     Column("OptionType", String(50)),
-    Column("StrikePrice", BigInteger),
-    Column("BuyPrc", BigInteger,nullable=True),
-    Column("SellPrc", BigInteger,nullable=True),
-    Column("BuyVol", BigInteger,nullable=True),
-    Column("SellVol", BigInteger,nullable=True),
-    Column("BSEIntradayVol", BigInteger),
-    Column("ExecutingBroker", String(50)),
-    Column("TradingSymbol", String(50))
+    Column("Strike", BigInteger),
+    Column("FillPrice", BigInteger,nullable=True),
+    Column("AvgPrice", Float,nullable=True),
+    Column("FillSize", BigInteger,nullable=True),
+    Column("Broker", String(50),nullable=True),
+    Column("AccountId", String(50)),
+    Column("TransactionType", String(50)),
+    Column("Segment", String(50)),
+    Column("TradingSymbol", String(50)),
+    Column("SymbolName", String(50)),
+    Column("ExecutingBroker", String(50))
+
 )
 
 n_tbl_notis_desk_wise_net_position = f"NOTIS_DESK_WISE_NET_POSITION_{today}"

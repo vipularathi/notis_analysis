@@ -89,34 +89,12 @@ class ServiceApp:
         self.app.add_api_route('/netPosition/intraday', methods=['GET'], endpoint=self.get_intraday_net_position)
         self.app.add_api_route('/netPosition/eod', methods=['GET'], endpoint=self.get_intraday_net_position)
         self.app.add_api_route('/data', methods=['GET'], endpoint=self.get_data)
-        # self.app.add_api_route('/data/deskwise', methods=['GET'], endpoint=self.get_deskwise_netposition)
-        # self.app.add_api_route('/data/useridwise', methods=['GET'], endpoint=self.get_useridwise_netposition)
-        # self.app.add_api_route('/data/nnfwise', methods=['GET'], endpoint=self.get_nnfwise_netposition)
-        # self.app.add_api_route('/data/rawTradeData', methods=['GET'], endpoint=self.get_raw_trade_data)
         self.app.add_api_route('/netPosition/raw', methods=['GET'], endpoint=self.get_raw_net_position)
         self.app.add_api_route('/download', methods=['GET'], endpoint=self.download_data)
         self.app.add_api_route('/exposure', methods=['GET'], endpoint=self.get_exposure)
         self.app.add_api_route('/sourceData', methods=['GET'], endpoint=self.get_source_data)
         self.app.add_api_route('/downloadSourceData', methods=['GET'], endpoint=self.download_source_data)
-
-    # def get_notis_trade_data(self, for_date:date=Query()):
-    #     for_dt = pd.to_datetime(for_date).date()
-    #     if for_dt == today:
-    #         tablename = f'NOTIS_TRADE_BOOK'
-    #     else:
-    #         tablename = f'NOTIS_TRADE_BOOK_{for_dt}'
-    #     desk_db_df = read_data_db(for_table=tablename)
-    #     json_data = desk_db_df.to_json(orient='records')
-    #     if not len(desk_db_df):
-    #         return Response(content=json_data, media_type='application/json')
-    #     else:
-    #         compressed_data = gzip.compress(json_data.encode('utf-8'))
-    #         return Response(content=compressed_data, media_type='application/gzip')
-    #
-    # def test_get_notis_trade_data(self, for_date:date=Query(), db:Session=Depends(get_db)):
-    #     for_dt = pd.to_datetime(for_date).date()
-    #     tablename = f'NOTIS_TRADE_BOOK' if for_dt==today else f'NOTIS_TRADE_BOOK_{for_dt}'
-    #     return StreamingResponse(stream_data(db, tablename), media_type='application/json')
+        self.app.add_api_route('/get_oi', methods=['GET'], endpoint=self.get_oi)
 
     def get_data(self, for_date:date=Query(), for_table:str=Query(), page:int=Query(1), page_size:int=Query(1000),db:Session=Depends(get_db)):
         for_dt = pd.to_datetime(for_date).date()
@@ -369,81 +347,6 @@ class ServiceApp:
             logger.info(f'total time taken for zip_path:{(ett - stt).total_seconds()}')
             return FileResponse(path=zip_path, media_type='application/gzip')
 
-
-    # def get_deskwise_netposition(self, for_date:date=Query()):
-    #     for_dt = pd.to_datetime(for_date).date()
-    #     if for_dt == today:
-    #         tablename = f'NOTIS_DESK_WISE_NET_POSITION'
-    #     else:
-    #         tablename = f'NOTIS_DESK_WISE_NET_POSITION_{for_dt}'
-    #     desk_db_df = read_data_db(for_table=tablename)
-    #     json_data = desk_db_df.to_json(orient='records')
-    #     return json_data
-
-    # def get_deskwise_netposition(self, for_date:date=Query(), page:int=Query(1), page_size:int=Query(10000), db:Session=Depends(get_db)):
-    #     for_dt = pd.to_datetime(for_date).date()
-    #     if for_dt == today:
-    #         tablename = f'NOTIS_DESK_WISE_NET_POSITION'
-    #     else:
-    #         tablename = f'NOTIS_DESK_WISE_NET_POSITION_{for_dt}'
-    #     query=text(rf'select * from "{tablename}" limit {page_size} offset {(page-1)*page_size}')
-    #     result = db.execute(query).fetchall()
-    #     total_rows = db.execute(text(rf'Select count(*) from "{tablename}"')).scalar()
-    #     json_data = {
-    #         'data':[{k: conv_str(v) for k, v in dict(row).items()} for row in result],
-    #         'total_rows':total_rows,
-    #         'page':page,
-    #         'page_size':page_size
-    #     }
-    #     if not len(result):
-    #         return Response(content=json.dumps(json_data), media_type='application/json')
-    #     else:
-    #         compressed_data = gzip.compress(json.dumps(json_data).encode('utf-8'))
-    #         logger.info(f'\ntotal_rows={json_data["total_rows"]}\tpage={json_data["page"]}\tpage_size={json_data["page_size"]}\n')
-    #         return Response(content=compressed_data, media_type='application/gzip')
-    #         # return Response(content=json.dumps(json_data), media_type='application/json')
-    #     # desk_db_df = read_data_db(for_table=tablename)
-    #     # json_data = desk_db_df.to_json(orient='records')
-    #     # # compressed_data = gzip.compress(json_data.encode('utf-8'))
-    #     # # return Response(content=compressed_data, media_type='application/gzip')
-    #     # if not len(desk_db_df):
-    #     #     return Response(content=json_data, media_type='application/json')
-    #     # else:
-    #     #     compressed_data = gzip.compress(json_data.encode('utf-8'))
-    #     #     return Response(content=compressed_data, media_type='application/gzip')
-
-    # def get_useridwise_netposition(self, for_date:date=Query()):
-    #     for_dt = pd.to_datetime(for_date).date()
-    #     if for_dt == today:
-    #         tablename = f'NOTIS_USERID_WISE_NET_POSITION'
-    #     else:
-    #         tablename = f'NOTIS_USERID_WISE_NET_POSITION_{for_dt}'
-    #     desk_db_df = read_data_db(for_table=tablename)
-    #     json_data = desk_db_df.to_json(orient='records')
-    #     # compressed_data = gzip.compress(json_data.encode('utf-8'))
-    #     # return Response(content=compressed_data, media_type='application/gzip')
-    #     if not len(desk_db_df):
-    #         return Response(content=json_data, media_type='application/json')
-    #     else:
-    #         compressed_data = gzip.compress(json_data.encode('utf-8'))
-    #         return Response(content=compressed_data, media_type='application/gzip')
-
-    # def get_nnfwise_netposition(self, for_date:date=Query()):
-    #     for_dt = pd.to_datetime(for_date).date()
-    #     if for_dt == today:
-    #         tablename = f'NOTIS_NNF_WISE_NET_POSITION'
-    #     else:
-    #         tablename = f'NOTIS_NNF_WISE_NET_POSITION_{for_dt}'
-    #     desk_db_df = read_data_db(for_table=tablename)
-    #     json_data = desk_db_df.to_json(orient='records')
-    #     # compressed_data = gzip.compress(json_data.encode('utf-8'))
-    #     # return Response(content=compressed_data, media_type='application/gzip')
-    #     if not len(desk_db_df):
-    #         return Response(content=json_data, media_type='application/json')
-    #     else:
-    #         compressed_data = gzip.compress(json_data.encode('utf-8'))
-    #         return Response(content=compressed_data, media_type='application/gzip')
-
     def get_intraday_net_position(self, for_date:date=Query()):
         for_dt = pd.to_datetime(for_date).date()
         if for_dt == today:
@@ -469,22 +372,6 @@ class ServiceApp:
         else:
             compressed_data = gzip.compress(json_data.encode('utf-8'))
             return Response(content=compressed_data, media_type='application/gzip')
-
-    # def get_raw_trade_data(self, for_date:date=Query()):
-    #     for_dt = pd.to_datetime(for_date).date()
-    #     if for_dt == today:
-    #         tablename = f'notis_raw_data'
-    #     else:
-    #         tablename = f'notis_raw_data_{for_dt}'
-    #     desk_db_df = read_data_db(for_table=tablename)
-    #     json_data = desk_db_df.to_json(orient='records')
-    #     # compressed_data = gzip.compress(json_data.encode('utf-8'))
-    #     # return Response(content=compressed_data, media_type='application/gzip')
-    #     if not len(desk_db_df):
-    #         return Response(content=json_data, media_type='application/json')
-    #     else:
-    #         compressed_data = gzip.compress(json_data.encode('utf-8'))
-    #         return Response(content=compressed_data, media_type='application/gzip')
 
     def get_raw_net_position(self, for_date:date=Query()):
         for_dt = pd.to_datetime(for_date).date()
@@ -546,43 +433,6 @@ class ServiceApp:
             # return Response(content=compressed_data, media_type='application/gzip')
             compressed_data = gzip.compress(json_data.encode('utf-8'))
             return Response(content=compressed_data, media_type='application/gzip')
-
-    def get_exposure(self, for_date:date=Query()):
-        volt_df = read_file(os.path.join(volt_dir, f'FOVOLT_{yesterday.strftime("%d%m%Y")}.csv'))
-        volt_df.columns = [re.sub(r'\s', '', each) for each in volt_df.columns]
-        volt_df = volt_df.iloc[:, 1:3]
-        volt_df.rename(columns={'UnderlyingClosePrice(A)': 'SpotClosePrice'}, inplace=True)
-        sym_list = ['NIFTY', 'BANKNIFTY', 'FINNIFTY', 'MIDCPNIFTY']
-        volt_df = volt_df.query("Symbol in @sym_list")
-
-        tablename = f'NOTIS_EOD_NET_POS_CP_NONCP_{for_date}'
-        cp_df = read_data_db(for_table=tablename)
-        cp_df.columns = [re.sub(r'Eod|\s', '', each) for each in cp_df.columns]
-
-        merged_df = cp_df.merge(volt_df, how='left', left_on=['Underlying'], right_on=['Symbol'])
-        merged_df.drop(columns=['Symbol'], inplace=True)
-        merged_df = merged_df.query("OptionType == 'CE' or OptionType == 'PE'")
-        merged_df.drop_duplicates(inplace=True)
-
-        pivot_df = merged_df.pivot_table(
-            index=['Broker', 'Underlying', 'SpotClosePrice'],
-            columns=['OptionType'],
-            values=['FinalNetQty'],
-            aggfunc={'FinalNetQty': 'sum'},
-            fill_value=0
-        )
-        pivot_df.columns = ['CE', 'PE']
-        pivot_df.reset_index(inplace=True)
-        pivot_df.SpotClosePrice = pivot_df.SpotClosePrice.astype('float64')
-        pivot_df['NetQty'] = pivot_df['CE'] - pivot_df['PE']
-        pivot_df['Exposure(in Crs)'] = (pivot_df['NetQty'] * pivot_df['SpotClosePrice']) / 10000000
-        print(f'exposure table shape: {pivot_df.shape}')
-        # list_to_int = ['SpotClosePrice','CE','PE','NetQty','Exposure(in Crs)']
-        # for each in list_to_int:
-        #     pivot_df[each] = pivot_df[each].astype(str)
-        json_data = pivot_df.to_json(orient='records')
-        if not pivot_df.empty:
-            return Response(content=json_data, media_type='application/json')
 
     def get_source_data(self, for_date='', for_table:str=Query(), page:int=Query(1), page_size:int=Query(1000), db:Session=Depends(get_db)):
         offset = (page - 1) * page_size
@@ -743,6 +593,54 @@ class ServiceApp:
         ett = datetime.now()
         logger.info(f'total time taken for zip_path:{(ett - stt).total_seconds()}')
         return FileResponse(path=zip_path, media_type='application/gzip')
+
+    def get_exposure(self, for_date:date=Query()):
+        for_date = datetime.today().date().strftime('%Y-%m-%d')
+        volt_df = read_file(os.path.join(volt_dir, f'FOVOLT_{yesterday.strftime("%d%m%Y")}.csv'))
+        volt_df.columns = [re.sub(r'\s', '', each) for each in volt_df.columns]
+        volt_df = volt_df.iloc[:, 1:3]
+        volt_df.rename(columns={'UnderlyingClosePrice(A)': 'SpotClosePrice'}, inplace=True)
+        sym_list = ['NIFTY', 'BANKNIFTY', 'FINNIFTY', 'MIDCPNIFTY']
+        volt_df = volt_df.query("Symbol in @sym_list")
+
+        tablename = f'NOTIS_EOD_NET_POS_CP_NONCP_{for_date}'
+        cp_df = read_data_db(for_table=tablename)
+        cp_df.columns = [re.sub(r'Eod|\s', '', each) for each in cp_df.columns]
+
+        merged_df = cp_df.merge(volt_df, how='left', left_on=['Underlying'], right_on=['Symbol'])
+        merged_df.drop(columns=['Symbol'], inplace=True)
+        merged_df = merged_df.query("OptionType == 'CE' or OptionType == 'PE'")
+        merged_df.drop_duplicates(inplace=True)
+
+        pivot_df = merged_df.pivot_table(
+            index=['Broker', 'Underlying', 'SpotClosePrice'],
+            columns=['OptionType'],
+            values=['FinalNetQty'],
+            aggfunc={'FinalNetQty': 'sum'},
+            fill_value=0
+        )
+        pivot_df.columns = ['CE', 'PE']
+        pivot_df.reset_index(inplace=True)
+        pivot_df.SpotClosePrice = pivot_df.SpotClosePrice.astype('float64')
+        pivot_df['NetQty'] = pivot_df['CE'] - pivot_df['PE']
+        pivot_df['Exposure(in Crs)'] = (pivot_df['NetQty'] * pivot_df['SpotClosePrice']) / 10000000
+        print(f'exposure table shape: {pivot_df.shape}')
+        # list_to_int = ['SpotClosePrice','CE','PE','NetQty','Exposure(in Crs)']
+        # for each in list_to_int:
+        #     pivot_df[each] = pivot_df[each].astype(str)
+        json_data = pivot_df.to_json(orient='records')
+        if not pivot_df.empty:
+            return Response(content=json_data, media_type='application/json')
+
+    def get_oi(self, for_date=Query()):
+        for_date = datetime.today().date().strftime('%Y-%m-%d')
+        table_to_read = f'NOTIS_EOD_NET_POS_CP_NONCP_{for_date}'
+        eod_df = read_data_db(for_table=table_to_read)
+        eod_df.columns = [re.sub(r'Eod|\s', '', each) for each in eod_df.columns]
+        grouped_df = eod_df.groupby(by=['Broker', 'Underlying', 'Expiry'], as_index=False).agg(
+            {'FinalNetQty': lambda x: x.abs().sum()})
+        json_data = grouped_df.to_json(orient='records')
+        return Response(json_data, media_type='application/json')
 
 service = ServiceApp()
 app = service.app

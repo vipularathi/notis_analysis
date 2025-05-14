@@ -120,6 +120,7 @@ def read_data_db(nnf=False, for_table='ENetMIS', from_time:str='', to_time:str='
         sql_db = 'OMNE_ARD_PRD'
         sql_userid = 'Pos_User'
         sql_paswd = 'Pass@Word1'
+
         if not from_time:
             logger.info(f'Fetching today\'s BSE trade data till now.')
             # sql_query = (
@@ -138,8 +139,6 @@ def read_data_db(nnf=False, for_table='ENetMIS', from_time:str='', to_time:str='
                 f"and (mnmAccountId = 'AA100' or mnmAccountId = 'CPAA100')")
         else:
             logger.info(f'Fetching BSE trade data from {from_time} to {to_time}')
-            # sql_query = (
-            #     f"select mnmFillPrice,mnmSegment, mnmTradingSymbol,mnmTransactionType,mnmAccountId,mnmUser , mnmFillSize, mnmSymbolName, mnmExpiryDate, mnmOptionType, mnmStrikePrice, mnmAvgPrice, mnmExecutingBroker from TradeHist where (mnmSymbolName = 'BSXOPT' or mnmSymbolName = 'BSE') and mnmExchangeTime between \'{from_time}\' and \'{to_time}\'")
             sql_query = (
                 f"select mnmFillPrice,mnmSegment, mnmTradingSymbol,mnmTransactionType,mnmAccountId,mnmUser , mnmFillSize, "
                 f"mnmSymbolName, mnmExpiryDate, mnmOptionType, mnmStrikePrice, mnmAvgPrice, mnmExecutingBroker "
@@ -234,49 +233,6 @@ def read_file(filepath):
     df = pd.DataFrame(data[1:], columns=data[0])
     return df
 
-# def write_notis_postgredb(df, table_name, raw=False):
-#     start_time = time.time()
-#     engine = create_engine(engine_str)
-#
-#     with engine.begin() as conn:
-#         res = conn.execute(text(f'select count(*) from "{table_name}"'))
-#         row_count = res.scalar()
-#         if row_count > 0:
-#             conn.execute(text(f'delete from "{table_name}"'))
-#             logger.info(f'Existing data from table {table_name} deleted')
-#         else:
-#             logger.info(f'No existing data in table {table_name}')
-#     logger.info(f'Writing {"Raw" if raw else "Modified"} data to database...')
-#     total_rows = len(df)
-#     pbar = progressbar.ProgressBar(max_value=total_rows, widgets=[
-#         progressbar.Percentage(), ' ',
-#         progressbar.Bar(marker='=', left='[', right=']'),
-#         progressbar.ETA()
-#     ])
-#
-#     if raw:
-#         list_str_int64 = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 16, 17, 18, 19, 21, 23, 27, 28]
-#         list_str_none = [15, 20, 25, 30, 31, 32, 33, 34, 35, 36, 37]
-#         list_none_str = [38]
-#         for i in list_str_int64:
-#             # df_db.loc[:, f'Column{i}'] = df_db.loc[:, f'Column{i}'].astype('int64')
-#             column_name = f'Column{i}'
-#             df[f'Column{i}'] = df[f'Column{i}'].astype('int64')
-#         for i in list_str_none:
-#             df[f'Column{i}'] = None
-#         for i in list_none_str:
-#             df[f'Column{i}'] = df[f'Column{i}'].astype('str')
-#     chunk_size = 1000
-#     for i in range(0, total_rows, chunk_size):
-#         chunk = df.iloc[i:i + chunk_size]
-#         chunk.to_sql(table_name, engine, index=False, if_exists='append', method='multi')
-#         pbar.update(min(i + chunk_size, total_rows))
-#
-#     pbar.finish()
-#     logger.info(f'{"Raw" if raw else "Modified"} Data successfully inserted into database')
-#     end_time = time.time()
-#     logger.info(f'Total time taken: {end_time - start_time} seconds')
-
 def write_notis_postgredb(df, table_name, raw=False, truncate_required=False):
     start_time = time.time()
     if truncate_required:
@@ -317,26 +273,6 @@ def write_notis_postgredb(df, table_name, raw=False, truncate_required=False):
     logger.info(f'Data successfully inserted in table => {table_name}')
     end_time = time.time()
     logger.info(f'Total time taken: {end_time - start_time} seconds')
-
-# def write_notis_data(df, filepath):
-#     logger.info('Writing Notis file to excel...')
-#     wb = Workbook()
-#     ws = wb.active
-#     ws.title = 'Sheet1'
-#     rows = list(dataframe_to_rows(df, index=False, header=True))
-#     total_rows = len(rows)
-#     pbar = progressbar.ProgressBar(max_value=total_rows, widgets=[progressbar.Percentage(), ' ',
-#                                                            progressbar.Bar(marker='=', left='[', right=']'),
-#                                                            progressbar.ETA()])
-#     for i, row in enumerate(rows, start=1):
-#         ws.append(row)
-#         pbar.update(i)
-#     pbar.finish()
-#     # df.to_excel(os.path.join(modified_dir, file_name))
-#     logger.info('Saving the file...')
-#     # wb.save(filepath)
-#     wb.save(filepath)
-#     logger.info('New Notis excel file created')
 
 def write_notis_data(df, filepath):
     file_extention = os.path.splitext(filepath)[-1].lower()
