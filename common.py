@@ -1,9 +1,7 @@
 import re
 import pandas as pd
-import numpy as np
 from datetime import datetime, timedelta, timezone
 import os
-from dateutil.relativedelta import relativedelta
 import progressbar
 from openpyxl import load_workbook, Workbook
 from openpyxl.utils.dataframe import dataframe_to_rows
@@ -11,13 +9,15 @@ import pyodbc
 from sqlalchemy import create_engine, text, insert
 import psycopg2
 import time
-import warnings
 import csv
 import paramiko
 import logging
 from logging.handlers import TimedRotatingFileHandler
 import sys
-from db_config import engine_str, n_tbl_notis_trade_book, s_tbl_notis_trade_book, n_tbl_notis_raw_data, s_tbl_notis_raw_data, n_tbl_notis_nnf_data, s_tbl_notis_nnf_data
+from db_config import (engine_str,
+                       n_tbl_notis_trade_book, s_tbl_notis_trade_book,
+                       n_tbl_notis_raw_data, s_tbl_notis_raw_data,
+                       n_tbl_notis_nnf_data, s_tbl_notis_nnf_data)
 
 holidays_25 = ['2025-02-26', '2025-03-14', '2025-03-31', '2025-04-10', '2025-04-14', '2025-04-18', '2025-05-01', '2025-08-15', '2025-08-27', '2025-10-02', '2025-10-21', '2025-10-22', '2025-11-05', '2025-12-25']
 # holidays_25.append('2024-03-20') #add unusual holidays
@@ -47,7 +47,7 @@ zipped_dir = os.path.join(root_dir, 'zipped_files')
 dir_list = [bhav_dir, modified_dir, table_dir, eod_input_dir, bse_dir, logs_dir, volt_dir, zipped_dir, test_dir, logs_dir]
 status = [os.makedirs(_dir, exist_ok=True) for _dir in dir_list if not os.path.exists(_dir)]
 
-engine = create_engine(engine_str, pool_size = 20, max_overflow = 10)
+engine = create_engine(engine_str, pool_size = 20, max_overflow = 10, pool_pre_ping=True, pool_recycle=900)
 
 def define_logger():
     # Logging Definitions
@@ -61,8 +61,6 @@ def define_logger():
     handler.setLevel(log_lvl)
     console = logging.StreamHandler(stream=sys.stdout)
     console.setLevel(console_log_lvl)
-    # formatter = logging.Formatter('%(asctime)s %(name)s %(levelname)s %(message)s')  #NOSONAR
-    # formatter = logging.Formatter('%(asctime)s %(levelname)s %(filename)s %(funcName)s %(message)s')
     formatter = logging.Formatter('%(asctime)s %(levelname)s <%(funcName)s> %(message)s')
     handler.setFormatter(formatter)
     console.setFormatter(formatter)
@@ -70,7 +68,6 @@ def define_logger():
     _logger.addHandler(console)
     # logger.propagate = False  # Removes AWS Level Logging as it tracks root propagation as well
     return _logger
-logger = define_logger()
 def read_data_db(nnf=False, for_table='ENetMIS', from_time:str='', to_time:str='', from_source=False):
     global engine
     if not nnf and for_table == 'ENetMIS':
@@ -83,17 +80,6 @@ def read_data_db(nnf=False, for_table='ENetMIS', from_time:str='', to_time:str='
             sql_query = "SELECT * FROM [ENetMIS].[dbo].[NSE_FO_AA100_view]"
         else:
             sql_query = f"SELECT * FROM [ENetMIS].[dbo].[NSE_FO_AA100_view] WHERE CreateDate BETWEEN '{from_time}' AND '{to_time}';"
-        # if from_source:
-        #     sql_query = f"""
-        #                     WITH CTE AS (
-        #                         SELECT *,
-        #                                ROW_NUMBER() OVER (ORDER BY (SELECT NULL)) AS RowNum
-        #                         FROM [ENetMIS].[dbo].[NSE_FO_AA100_view]
-        #                     )
-        #                     SELECT *
-        #                     FROM CTE
-        #                     WHERE RowNum > {offset} AND RowNum <= {offset + page_size};
-        #                     """
         try:
             sql_connection_string = (
                 f"DRIVER={{ODBC Driver 17 for SQL Server}};"
@@ -123,17 +109,15 @@ def read_data_db(nnf=False, for_table='ENetMIS', from_time:str='', to_time:str='
 
         if not from_time:
             logger.info(f'Fetching today\'s BSE trade data till now.')
-            # sql_query = (
-            #     f"select mnmFillPrice,mnmSegment, mnmTradingSymbol,mnmTransactionType,mnmAccountId,mnmUser , mnmFillSize, mnmSymbolName, mnmExpiryDate, mnmOptionType, mnmStrikePrice, mnmAvgPrice, mnmExecutingBroker from TradeHist where (mnmSymbolName = 'BSXOPT' or mnmSymbolName = 'BSE')")
             sql_query = (
                 f"select mnmFillPrice,mnmSegment, mnmTradingSymbol,mnmTransactionType,mnmAccountId,mnmUser , mnmFillSize, "
-                f"mnmSymbolName, mnmExpiryDate, mnmOptionType, mnmStrikePrice, mnmAvgPrice, mnmExecutingBroker "
+                f"mnmSymbolName, mnmExpiryDate, mnmOptionType, mnmStrikePrice, mnmAvgPrice, mnmExecutingBroker, mnmExchangeTime "
                 f"from [OMNE_ARD_PRD].[dbo].[TradeHist] "
                 f"where mnmExchSeg = 'bse_fo' "
                 f"and (mnmAccountId = 'AA100' or mnmAccountId = 'CPAA100')")
             sql_query2 = (
                 f"select mnmFillPrice,mnmSegment, mnmTradingSymbol,mnmTransactionType,mnmAccountId,mnmUser , mnmFillSize, "
-                f"mnmSymbolName, mnmExpiryDate, mnmOptionType, mnmStrikePrice, mnmAvgPrice, mnmExecutingBroker "
+                f"mnmSymbolName, mnmExpiryDate, mnmOptionType, mnmStrikePrice, mnmAvgPrice, mnmExecutingBroker, mnmExchangeTime "
                 f"from [OMNE_ARD_PRD_HNI].[dbo].[TradeHist] "
                 f"where mnmExchSeg = 'bse_fo' "
                 f"and (mnmAccountId = 'AA100' or mnmAccountId = 'CPAA100')")
@@ -141,14 +125,14 @@ def read_data_db(nnf=False, for_table='ENetMIS', from_time:str='', to_time:str='
             logger.info(f'Fetching BSE trade data from {from_time} to {to_time}')
             sql_query = (
                 f"select mnmFillPrice,mnmSegment, mnmTradingSymbol,mnmTransactionType,mnmAccountId,mnmUser , mnmFillSize, "
-                f"mnmSymbolName, mnmExpiryDate, mnmOptionType, mnmStrikePrice, mnmAvgPrice, mnmExecutingBroker "
+                f"mnmSymbolName, mnmExpiryDate, mnmOptionType, mnmStrikePrice, mnmAvgPrice, mnmExecutingBroker, mnmExchangeTime "
                 f"from [OMNE_ARD_PRD].[dbo].[TradeHist] "
                 f"where mnmExchSeg = 'bse_fo' "
                 f"and mnmExchangeTime between \'{from_time}\' and \'{to_time}\' "
                 f"and (mnmAccountId = 'AA100' or mnmAccountId = 'CPAA100')")
             sql_query2 = (
                 f"select mnmFillPrice,mnmSegment, mnmTradingSymbol,mnmTransactionType,mnmAccountId,mnmUser , mnmFillSize, "
-                f"mnmSymbolName, mnmExpiryDate, mnmOptionType, mnmStrikePrice, mnmAvgPrice, mnmExecutingBroker "
+                f"mnmSymbolName, mnmExpiryDate, mnmOptionType, mnmStrikePrice, mnmAvgPrice, mnmExecutingBroker, mnmExchangeTime "
                 f"from [OMNE_ARD_PRD_HNI].[dbo].[TradeHist] "
                 f"where mnmExchSeg = 'bse_fo' "
                 f"and mnmExchangeTime between \'{from_time}\' and \'{to_time}\' "
@@ -170,11 +154,62 @@ def read_data_db(nnf=False, for_table='ENetMIS', from_time:str='', to_time:str='
         except (pyodbc.Error, psycopg2.Error) as e:
             logger.info(f'Error in fetching data: {e}')
     elif not nnf and for_table!='ENetMIS':
-        # engine = create_engine(engine_str)
         with engine.begin() as conn:
             df = pd.read_sql_table(for_table, con=conn)
         logger.info(f"Data fetched from {for_table} table. Shape:{df.shape}")
         return df
+    elif not nnf and for_table == 'Source_2':
+        sql_server = '172.30.100.40'
+        sql_port = '1450'
+        sql_db = 'OMNE_ARD_PRD_AA100_3.19'
+        sql_userid = 'Pos_User'
+        sql_paswd = 'Pass@Word1'
+        if not from_time:
+            logger.info(f'Fetching today\'s NSE&BSE trades from Source:2 till now.')
+            sql_query = (
+                f"select mnmFillPrice,mnmSegment, mnmTradingSymbol,mnmTransactionType,mnmAccountId,mnmUser , mnmFillSize, "
+                f"mnmSymbolName, mnmExpiryDate, mnmOptionType, mnmStrikePrice, mnmAvgPrice, mnmExecutingBroker "
+                f"from [OMNE_ARD_PRD_3.19].[dbo].[TradeHist] "
+                f"where mnmSymbolName in ('NIFTY','BANKNIFTY','MIDCPNIFTY','FINNIFTY','SENSEX') "
+                f"and (mnmAccountId = 'AA100' or mnmAccountId = 'CPAA100')")
+            sql_query2 = (
+                f"select mnmFillPrice,mnmSegment, mnmTradingSymbol,mnmTransactionType,mnmAccountId,mnmUser , mnmFillSize, "
+                f"mnmSymbolName, mnmExpiryDate, mnmOptionType, mnmStrikePrice, mnmAvgPrice, mnmExecutingBroker "
+                f"from [OMNE_ARD_PRD_AA100_3.19].[dbo].[TradeHist] "
+                f"where mnmSymbolName in ('NIFTY','BANKNIFTY','MIDCPNIFTY','FINNIFTY','SENSEX') "
+                f"and (mnmAccountId = 'AA100' or mnmAccountId = 'CPAA100')")
+        else:
+            logger.info(f'Fetching NSE&BSE trade data(Source:2) from {from_time} to {to_time}')
+            sql_query = (
+                f"select mnmFillPrice,mnmSegment, mnmTradingSymbol,mnmTransactionType,mnmAccountId,mnmUser , mnmFillSize, "
+                f"mnmSymbolName, mnmExpiryDate, mnmOptionType, mnmStrikePrice, mnmAvgPrice, mnmExecutingBroker "
+                f"from [OMNE_ARD_PRD_3.19].[dbo].[TradeHist] "
+                f"where mnmSymbolName in ('NIFTY','BANKNIFTY','MIDCPNIFTY','FINNIFTY','SENSEX') "
+                f"and mnmExchangeTime between \'{from_time}\' and \'{to_time}\' "
+                f"and (mnmAccountId = 'AA100' or mnmAccountId = 'CPAA100')")
+            sql_query2 = (
+                f"select mnmFillPrice,mnmSegment, mnmTradingSymbol,mnmTransactionType,mnmAccountId,mnmUser , mnmFillSize, "
+                f"mnmSymbolName, mnmExpiryDate, mnmOptionType, mnmStrikePrice, mnmAvgPrice, mnmExecutingBroker "
+                f"from [OMNE_ARD_PRD_AA100_3.19].[dbo].[TradeHist] "
+                f"where mnmSymbolName in ('NIFTY','BANKNIFTY','MIDCPNIFTY','FINNIFTY','SENSEX') "
+                f"and mnmExchangeTime between \'{from_time}\' and \'{to_time}\' "
+                f"and (mnmAccountId = 'AA100' or mnmAccountId = 'CPAA100')")
+        try:
+            sql_engine_str = (
+                f"DRIVER={{ODBC Driver 17 for SQL Server}};"
+                f"SERVER={sql_server},{sql_port};"
+                f"DATABASE={sql_db};"
+                f"UID={sql_userid};"
+                f"PWD={sql_paswd};"
+            )
+            with pyodbc.connect(sql_engine_str) as sql_conn:
+                df_bse = pd.read_sql_query(sql_query, sql_conn)
+                df_bse_hni = pd.read_sql_query(sql_query2,sql_conn)
+            logger.info(f'data fetched for bse: {df_bse.shape, df_bse_hni.shape}')
+            final_bse_df = pd.concat([df_bse,df_bse_hni], ignore_index=True)
+            return final_bse_df
+        except (pyodbc.Error, psycopg2.Error) as e:
+            logger.info(f'Error in fetching data: {e}')
 
 def read_notis_file(filepath):
     wb = load_workbook(filepath, read_only=True)
@@ -228,7 +263,6 @@ def read_file(filepath):
                 data.append(row.strip().split(','))
                 pbar.update(i)
         pbar.finish()
-        # df = pd.DataFrame(data, columns=header)
         logger.info('CSV file read')
     df = pd.DataFrame(data[1:], columns=data[0])
     return df
@@ -290,13 +324,10 @@ def write_notis_data(df, filepath):
             ws.append(row)
             pbar.update(i)
         pbar.finish()
-        # df.to_excel(os.path.join(modified_dir, file_name))
         logger.info('Saving the file...')
-        # wb.save(filepath)
         wb.save(filepath)
     elif file_extention == '.csv':
         logger.info('Writing Notis file to CSV...')
-        # df.to_csv(filepath, index=False)
         total_rows = len(df)
         pbar = progressbar.ProgressBar(max_value=total_rows,widgets=[progressbar.Percentage(),' ',progressbar.Bar(marker='=',left='[',right=']'),progressbar.ETA()])
         pbar.update(0)
@@ -403,3 +434,39 @@ def truncate_tables(tablename):
         else:
             logger.info(f'No data in table {tablename}, no need to delete')
 
+def revise_eod_net_pos(for_dt:str = '', modify_sensex:bool=False):# modify_sensex=True if only sensex data is to be revised
+    final_eod_df = pd.DataFrame()
+    for_date = pd.to_datetime(for_dt).date()
+    if not for_date:
+        print(f'No date entered, hence exiting.')
+        return
+    else:
+        sent_df = read_file(
+            rf"D:\notis_analysis\eod_original\EOD Net positions {for_date.strftime('%d%m%Y')} BSE.xlsx")
+        sent_df.columns = [re.sub(rf'\s|\.', '', each) for each in sent_df.columns]
+        sent_df.ExpiryDate = pd.to_datetime(sent_df.ExpiryDate, dayfirst=True, format='mixed').dt.date
+        sent_df['Broker'] = sent_df.apply(lambda row: 'CP' if row['PartyCode'].upper().endswith('CP') else 'non CP',
+                                          axis=1)
+        sent_df['OptionType'] = sent_df.apply(
+            lambda row: 'XX' if row['OptionType'].upper().startswith('F') else row['OptionType'], axis=1)
+        sent_df.drop(columns=['PartyCode'], inplace=True)
+        sent_df.rename(columns={'Symbol': 'Underlying', 'ExpiryDate': 'Expiry', 'StrikePrice': 'Strike'},
+                       inplace=True)
+        sent_df = sent_df.add_prefix('Eod')
+        sent_df.rename(columns={'EodNetQty': 'FinalNetQty'}, inplace=True)
+        col_to_add = ['EodNetQuantity', 'EodClosingPrice', 'buyQty', 'buyAvgPrice', 'sellQty', 'sellAvgPrice',
+                      'IntradayVolume', 'FinalSettlementPrice']
+        for col in col_to_add:
+            sent_df[col] = 0
+        final_eod_df = sent_df.copy()
+        # if only sensex data is to be revised, modify_sensex=True
+        if modify_sensex:
+            truncated_sent_df = sent_df.query('EodUnderlying == "SENSEX"')
+            eod_df = read_data_db(for_table=f'NOTIS_EOD_NET_POS_CP_NONCP_{for_date}')
+            eod_df.EodExpiry = pd.to_datetime(eod_df.EodExpiry, dayfirst=True, format='mixed').dt.date
+            concat_eod_df = pd.concat([eod_df, truncated_sent_df], ignore_index=True)
+            final_eod_df = concat_eod_df.copy()
+        write_notis_postgredb(df=final_eod_df,table_name=f'NOTIS_EOD_NET_POS_CP_NONCP_{for_date}',truncate_required=True)
+        p=0
+
+logger = define_logger()

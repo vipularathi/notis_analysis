@@ -1,8 +1,6 @@
-import re,pyodbc,psycopg2,os, warnings
+import re, warnings
 import pandas as pd
 import numpy as np
-from urllib.parse import quote
-from datetime import datetime
 
 from common import (today,yesterday,write_notis_postgredb,
                     write_notis_data, bse_dir, get_date_from_non_jiffy,
@@ -11,62 +9,8 @@ from common import (today,yesterday,write_notis_postgredb,
 warnings.filterwarnings('ignore')
 
 class BSEUtility:
-    # @staticmethod
-    # def get_bse_trade_data(from_time:str='',to_time:str=''):
-    #     df_bse = read_data_db(for_table='TradeHist', from_time=from_time, to_time=to_time)
-    #     df_bse = df_bse.query("mnmTransactionType != 'L'")
-    #     if df_bse.empty:
-    #         # print(f'No data for {from_time} hence skipping')
-    #         logger.info("No data for today hence skipping")
-    #         return
-    #     df_bse.replace('', 0, inplace=True)
-    #     df_bse.columns = [re.sub(r'mnm|\s', '', each) for each in df_bse.columns]
-    #     # df_bse.ExpiryDate = df_bse.ExpiryDate.apply(lambda x:pd.to_datetime(int(x), unit='s').date() if x !='' else x)
-    #     df_bse.ExpiryDate = df_bse.ExpiryDate.apply(lambda x: pd.to_datetime(int(x), unit='s').date())
-    #     # df_bse.replace('', 0, inplace=True)
-    #     to_int_list = ['FillPrice', 'FillSize', 'StrikePrice']
-    #     for each in to_int_list:
-    #         df_bse[each] = df_bse[each].astype(np.int64)
-    #     df_bse['AvgPrice'] = df_bse['AvgPrice'].astype(float).round(2)
-    #     df_bse['StrikePrice'] = (df_bse['StrikePrice'] / 100).astype(np.int64)
-    #     df_bse['Symbol'] = df_bse['TradingSymbol'].apply(lambda x: 'SENSEX' if x.upper().startswith('SEN') else x)
-    #     df_bse.rename(columns={'User': 'TerminalID'}, inplace=True)
-    #     pivot_df = df_bse.pivot_table(
-    #         index=['TerminalID', 'Symbol', 'TradingSymbol', 'ExpiryDate', 'OptionType', 'StrikePrice',
-    #                'ExecutingBroker'],
-    #         columns=['TransactionType'],
-    #         values=['FillSize', 'AvgPrice'],
-    #         aggfunc={'FillSize': 'sum', 'AvgPrice': 'mean'},
-    #         fill_value=0
-    #     )
-    #     if len(df_bse.TransactionType.unique()) == 1:
-    #         if df_bse.TransactionType.unique().tolist()[0] == 'B':
-    #             pivot_df['SellAvgPrc'] = 0;
-    #             pivot_df['SellQty'] = 0
-    #             pivot_df.columns = ['BuyPrc', 'SellPrc', 'BuyVol', 'SellVol']
-    #         elif df_bse.TransactionType.unique().tolist()[0] == 'S':
-    #             pivot_df['BuyAvgPrc'] = 0;
-    #             pivot_df['BuyQty'] = 0
-    #             pivot_df.columns = ['BuyPrc', 'SellPrc', 'BuyVol', 'SellVol']
-    #     elif len(df_bse) == 0 or len(pivot_df) == 0:
-    #         pivot_df.columns = ['_'.join(col).strip() for col in pivot_df.columns.values]
-    #     else:
-    #         pivot_df.columns = ['BuyPrc', 'SellPrc', 'BuyVol', 'SellVol']
-    #     pivot_df.reset_index(inplace=True)
-    #     pivot_df['BSEIntradayVol'] = pivot_df.BuyVol - pivot_df.SellVol
-    #     pivot_df.ExpiryDate = pivot_df.ExpiryDate.astype(str)
-    #     pivot_df['ExpiryDate'] = [re.sub(r'1970.*', '', each) for each in pivot_df['ExpiryDate']]
-    #     to_int_list = ['BuyPrc', 'SellPrc', 'BuyVol', 'SellVol']
-    #     for col in to_int_list:
-    #         pivot_df[col] = pivot_df[col].astype(np.int64)
-    #     logger.info(f'pivot shape: {pivot_df.shape}')
-    #     return pivot_df
-
     @staticmethod
     def calc_bse_eod_net_pos(desk_bse_df):
-        # read prev day eod table and group it
-        # read today's data and group it
-        # merge both grouped data, yesterday>today
         eod_df = read_data_db(for_table=f'NOTIS_EOD_NET_POS_CP_NONCP_{yesterday.strftime("%Y-%m-%d")}')
         # eod_df = eod_df.replace(' ', '', regex=True)
         if len(desk_bse_df) == 0:
@@ -78,9 +22,6 @@ class BSEUtility:
             return grouped_eod_df
         eod_df.columns = [re.sub(rf'Eod|\s', '', each) for each in eod_df.columns]
         eod_df.Expiry = pd.to_datetime(eod_df.Expiry, dayfirst=True, format='mixed').dt.date
-        # eod_df = eod_df.query("Underlying == 'SENSEX' and Expiry >= @today and FinalNetQty != 0")
-        # if len(desk_bse_df) == 0:
-        #     return eod_df
         eod_df.drop(
             columns=['NetQuantity', 'buyQty', 'buyAvgPrice', 'sellQty', 'sellAvgPrice', 'IntradayVolume',
                      'ClosingPrice'],
@@ -96,8 +37,6 @@ class BSEUtility:
         grouped_desk_df = desk_bse_df.groupby(by=['Broker', 'Underlying', 'Expiry', 'Strike', 'OptionType'],
                                               as_index=False).agg(
             {'BuyQty': 'sum', 'SellQty': 'sum', 'buyAvgPrice': 'mean', 'sellAvgPrice': 'mean', 'IntradayVolume': 'sum'})
-        # grouped_desk_df['IntradayVolume'] = grouped_desk_df['BuyQty'] - grouped_desk_df['SellQty']
-        # ============================================================================================
         if len(grouped_eod_df) > len(grouped_desk_df):
             merged_df = grouped_eod_df.merge(
                 grouped_desk_df,
@@ -148,6 +87,7 @@ class BSEUtility:
         bse_raw_df.rename(
             columns={'User': 'TerminalID', 'Symbol': 'Underlying', 'ExpiryDate': 'Expiry', 'StrikePrice': 'Strike'},
             inplace=True)
+        bse_raw_df['ExchangeTime'] = bse_raw_df['ExchangeTime'].astype(str)
         return bse_raw_df
 
     @staticmethod
@@ -178,6 +118,5 @@ class BSEUtility:
             eod_df.EodExpiry = pd.to_datetime(eod_df.EodExpiry, dayfirst=True, format='mixed').dt.date
 
             concat_eod_df = pd.concat([eod_df, truncated_sent_df], ignore_index=True)
-            write_notis_postgredb()
-        u = 0
+            # write_notis_postgredb()
 

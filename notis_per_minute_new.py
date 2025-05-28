@@ -219,7 +219,7 @@ n_tbl_test_net_pos_nnf = n_tbl_notis_nnf_wise_net_position
 n_tbl_test_bse = n_tbl_bse_trade_data
 main_mod_df = pd.DataFrame()
 main_mod_bse_df = pd.DataFrame()
-count=3100
+count=7000
 # final_eod_code = pd.DataFrame()
 eod_begin = 1
 
@@ -361,37 +361,40 @@ def find_net_pos(nse_pivot_df, bse_pivot_df):
     #     print(f'not in eod begin, final_eod shape:{final_eod.shape}')
     # yesterday_eod_tablename = f'TEST_NOTIS_EOD_NET_POS_CP_NONCP_{yesterday.strftime("%Y-%m-%d")}'  # NOTIS_EOD_NET_POS_CP_NONCP_2025-03-17
     # yest_eod = read_data_db(for_table=yesterday_eod_tablename)
-    today_eod_tablename = f'TEST_NOTIS_EOD_NET_POS_CP_NONCP_{today.strftime("%Y-%m-%d")}'
-    today_eod = read_data_db(for_table=today_eod_tablename)
-    # yest_eod.EodExpiry = pd.to_datetime(yest_eod.EodExpiry, dayfirst=True, format='mixed').dt.date
-    today_eod.EodExpiry = pd.to_datetime(today_eod.EodExpiry, dayfirst=True, format='mixed').dt.date
-    if not nse_pivot_df.empty:
-        cp_noncp_nse_df = NSEUtility.calc_eod_cp_noncp(nse_pivot_df)
-        # if not final_eod.empty:
-        #     final_eod = final_eod.query("EodUnderlying == 'SENSEX'")
+    if nse_pivot_df.empty and bse_pivot_df.empty:
+        return
     else:
-        cp_noncp_nse_df = today_eod.query("EodUnderlying != 'SENSEX'")
-        # if not final_eod.empty:
-        #     final_eod = final_eod.query("EodUnderlying == 'SENSEX'")
-    if not bse_pivot_df.empty:
-        cp_noncp_bse_df = BSEUtility.calc_bse_eod_net_pos(bse_pivot_df)
-        # if not final_eod.empty:
-        #     final_eod = final_eod.query("EodUnderlying != 'SENSEX'")
-    else:
-        cp_noncp_bse_df = today_eod.query("EodUnderlying == 'SENSEX'")
-        # if not final_eod.empty:
-        #     final_eod = final_eod.query("EodUnderlying != 'SENSEX'")
-    final_eod = pd.concat([cp_noncp_nse_df,cp_noncp_bse_df], ignore_index=True)
-    to_int = ['EodNetQuantity','buyQty','buyAvgPrice','sellQty','sellAvgPrice','IntradayVolume','FinalNetQty']
-    for each in to_int:
-        final_eod[each] = final_eod[each].astype(np.int64)
-    grouped_final_eod = final_eod.groupby(by=['EodBroker','EodUnderlying','EodExpiry','EodStrike','EodOptionType'], as_index=False).agg({'EodNetQuantity':'sum','buyQty':'sum','buyAvgPrice':'mean','sellQty':'sum','sellAvgPrice':'mean','IntradayVolume':'sum','FinalNetQty':'sum'})
-    grouped_final_eod['FinalNetQty'] = grouped_final_eod['EodNetQuantity']+grouped_final_eod['IntradayVolume']
-    # final_eod_code = final_eod
-    print(f'final_eod after calculation: {final_eod.shape}')
-    grouped_final_eod.to_excel(os.path.join(test_dir,f'mod_eod_net_pos_{count}.xlsx'),index=False)
-    print('final eod data written in test folder')
-    write_notis_postgredb(grouped_final_eod, table_name=n_tbl_test_notis_eod_net_pos_cp_noncp, truncate_required=True)
+        today_eod_tablename = f'TEST_NOTIS_EOD_NET_POS_CP_NONCP_{today.strftime("%Y-%m-%d")}'
+        today_eod = read_data_db(for_table=today_eod_tablename)
+        # yest_eod.EodExpiry = pd.to_datetime(yest_eod.EodExpiry, dayfirst=True, format='mixed').dt.date
+        today_eod.EodExpiry = pd.to_datetime(today_eod.EodExpiry, dayfirst=True, format='mixed').dt.date
+        if not nse_pivot_df.empty:
+            cp_noncp_nse_df = NSEUtility.calc_eod_cp_noncp(nse_pivot_df)
+            # if not final_eod.empty:
+            #     final_eod = final_eod.query("EodUnderlying == 'SENSEX'")
+        else:
+            cp_noncp_nse_df = today_eod.query("EodUnderlying != 'SENSEX'")
+            # if not final_eod.empty:
+            #     final_eod = final_eod.query("EodUnderlying == 'SENSEX'")
+        if not bse_pivot_df.empty:
+            cp_noncp_bse_df = BSEUtility.calc_bse_eod_net_pos(bse_pivot_df)
+            # if not final_eod.empty:
+            #     final_eod = final_eod.query("EodUnderlying != 'SENSEX'")
+        else:
+            cp_noncp_bse_df = today_eod.query("EodUnderlying == 'SENSEX'")
+            # if not final_eod.empty:
+            #     final_eod = final_eod.query("EodUnderlying != 'SENSEX'")
+        final_eod = pd.concat([cp_noncp_nse_df,cp_noncp_bse_df], ignore_index=True)
+        to_int = ['EodNetQuantity','buyQty','buyAvgPrice','sellQty','sellAvgPrice','IntradayVolume','FinalNetQty']
+        for each in to_int:
+            final_eod[each] = final_eod[each].astype(np.int64)
+        grouped_final_eod = final_eod.groupby(by=['EodBroker','EodUnderlying','EodExpiry','EodStrike','EodOptionType'], as_index=False).agg({'EodNetQuantity':'sum','buyQty':'sum','buyAvgPrice':'mean','sellQty':'sum','sellAvgPrice':'mean','IntradayVolume':'sum','FinalNetQty':'sum'})
+        grouped_final_eod['FinalNetQty'] = grouped_final_eod['EodNetQuantity']+grouped_final_eod['IntradayVolume']
+        # final_eod_code = final_eod
+        print(f'final_eod after calculation: {final_eod.shape}')
+        grouped_final_eod.to_excel(os.path.join(test_dir,f'mod_eod_net_pos_{count}.xlsx'),index=False)
+        print('final eod data written in test folder')
+        write_notis_postgredb(grouped_final_eod, table_name=n_tbl_test_notis_eod_net_pos_cp_noncp, truncate_required=True)
 
 
 if __name__ == '__main__':

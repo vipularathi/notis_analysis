@@ -1817,7 +1817,105 @@ p=0
 # ard_prd_mod = BSEUtility.bse_modify_file(ard_prd_df)
 # ard_prd_319_mod = BSEUtility.bse_modify_file(ard_prd_319_df)
 o=0
-from common import read_data_db, yesterday
-eod_tablename = f'NOTIS_EOD_NET_POS_CP_NONCP_{yesterday.strftime("%Y-%m-%d")}'  # NOTIS_EOD_NET_POS_CP_NONCP_2025-03-17
-orig_df = read_data_db(for_table=eod_tablename)
-u=0
+# from nse_utility import NSEUtility
+# from bse_utility import BSEUtility
+# from db_config import n_tbl_notis_nnf_data, engine_str
+# def read_data_db(nnf=False, for_table='ENetMIS', from_time:str='', to_time:str='', from_source=False):
+#     if not nnf and for_table == 'ENetMIS':
+#         # Sql connection parameters
+#         sql_server = "rms.ar.db"
+#         sql_database = "ENetMIS"
+#         sql_username = "notice_user"
+#         sql_password = "Notice@2024"
+#         if not from_time:
+#             sql_query = "SELECT * FROM [ENetMIS].[dbo].[NSE_FO_AA100_view]"
+#         else:
+#             sql_query = f"SELECT * FROM [ENetMIS].[dbo].[NSE_FO_AA100_view] WHERE CreateDate BETWEEN '{from_time}' AND '{to_time}';"
+#         try:
+#             sql_connection_string = (
+#                 f"DRIVER={{ODBC Driver 17 for SQL Server}};"
+#                 f"SERVER={sql_server};"
+#                 f"DATABASE={sql_database};"
+#                 f"UID={sql_username};"
+#                 f"PWD={sql_password}"
+#             )
+#             with pyodbc.connect(sql_connection_string) as sql_conn:
+#                 df = pd.read_sql_query(sql_query, sql_conn)
+#             print(f"Data fetched from SQL Server. Shape:{df.shape}")
+#             return df
+#         except (pyodbc.Error, psycopg2.Error) as e:
+#             print("Error occurred:", e)
+#     elif not nnf and for_table == 'Source_2':
+#         sql_server = '172.30.100.40'
+#         sql_port = '1450'
+#         sql_db = 'OMNE_ARD_PRD_AA100_3.19'
+#         sql_userid = 'Pos_User'
+#         sql_paswd = 'Pass@Word1'
+#         if not from_time:
+#             print(f'Fetching today\'s NSE&BSE trades from Source:2 till now.')
+#             sql_query = (
+#                 f"select mnmFillPrice,mnmSegment, mnmTradingSymbol,mnmTransactionType,mnmAccountId,mnmUser , mnmFillSize, "
+#                 f"mnmSymbolName, mnmExpiryDate, mnmOptionType, mnmStrikePrice, mnmAvgPrice, mnmExecutingBroker, mnmExchangeTime "
+#                 f"from [OMNE_ARD_PRD_3.19].[dbo].[TradeHist] "
+#                 f"where mnmSymbolName in ('NIFTY','BANKNIFTY','MIDCPNIFTY','FINNIFTY','SENSEX') "
+#                 f"and (mnmAccountId = 'AA100' or mnmAccountId = 'CPAA100')")
+#             sql_query2 = (
+#                 f"select mnmFillPrice,mnmSegment, mnmTradingSymbol,mnmTransactionType,mnmAccountId,mnmUser , mnmFillSize, "
+#                 f"mnmSymbolName, mnmExpiryDate, mnmOptionType, mnmStrikePrice, mnmAvgPrice, mnmExecutingBroker, mnmExchangeTime "
+#                 f"from [OMNE_ARD_PRD_AA100_3.19].[dbo].[TradeHist] "
+#                 f"where mnmSymbolName in ('NIFTY','BANKNIFTY','MIDCPNIFTY','FINNIFTY','SENSEX') "
+#                 f"and (mnmAccountId = 'AA100' or mnmAccountId = 'CPAA100')")
+#         else:
+#             print(f'Fetching NSE&BSE trade data(Source:2) from {from_time} to {to_time}')
+#             sql_query = (
+#                 f"select mnmFillPrice,mnmSegment, mnmTradingSymbol,mnmTransactionType,mnmAccountId,mnmUser , mnmFillSize, "
+#                 f"mnmSymbolName, mnmExpiryDate, mnmOptionType, mnmStrikePrice, mnmAvgPrice, mnmExecutingBroker,mnmExchangeTime "
+#                 f"from [OMNE_ARD_PRD_3.19].[dbo].[TradeHist] "
+#                 f"where mnmSymbolName in ('NIFTY','BANKNIFTY','MIDCPNIFTY','FINNIFTY','SENSEX') "
+#                 f"and mnmExchangeTime between \'{from_time}\' and \'{to_time}\' "
+#                 f"and (mnmAccountId = 'AA100' or mnmAccountId = 'CPAA100')")
+#             sql_query2 = (
+#                 f"select mnmFillPrice,mnmSegment, mnmTradingSymbol,mnmTransactionType,mnmAccountId,mnmUser , mnmFillSize, "
+#                 f"mnmSymbolName, mnmExpiryDate, mnmOptionType, mnmStrikePrice, mnmAvgPrice, mnmExecutingBroker, mnmExchangeTime "
+#                 f"from [OMNE_ARD_PRD_AA100_3.19].[dbo].[TradeHist] "
+#                 f"where mnmSymbolName in ('NIFTY','BANKNIFTY','MIDCPNIFTY','FINNIFTY','SENSEX') "
+#                 f"and mnmExchangeTime between \'{from_time}\' and \'{to_time}\' "
+#                 f"and (mnmAccountId = 'AA100' or mnmAccountId = 'CPAA100')")
+#         try:
+#             sql_engine_str = (
+#                 f"DRIVER={{ODBC Driver 17 for SQL Server}};"
+#                 f"SERVER={sql_server},{sql_port};"
+#                 f"DATABASE={sql_db};"
+#                 f"UID={sql_userid};"
+#                 f"PWD={sql_paswd};"
+#             )
+#             with pyodbc.connect(sql_engine_str) as sql_conn:
+#                 df_bse = pd.read_sql_query(sql_query, sql_conn)
+#                 df_bse_hni = pd.read_sql_query(sql_query2,sql_conn)
+#             print(f'data fetched for bse: {df_bse.shape, df_bse_hni.shape}')
+#             final_bse_df = pd.concat([df_bse,df_bse_hni], ignore_index=True)
+#             return final_bse_df
+#         except (pyodbc.Error, psycopg2.Error) as e:
+#             print(f'Error in fetching data: {e}')
+#     elif nnf and for_table != 'ENetMIS':
+#         engine = create_engine(engine_str, pool_size = 20, max_overflow = 10)
+#         with engine.begin() as conn:
+#             df = pd.read_sql_table(n_tbl_notis_nnf_data, con=conn)
+#         print(f"Data fetched from {for_table} table. Shape:{df.shape}")
+#         return df
+# old_nse_db = read_data_db(for_table='ENetMIS')
+# df_nnf = read_data_db(nnf=True, for_table='nnf_data')
+# modified_enet_db = NSEUtility.modify_file(df=old_nse_db,df_nnf=df_nnf)
+# both_db = read_data_db(for_table='Source_2')
+# modified_new_nse_db = BSEUtility.bse_modify_file(both_db)
+# def convert_to_modified_notis_format(nse_new_source_db):
+#     nse_new_source_db.columns = [re.sub(rf'mnm|\s','',each) for each in nse_new_source_db.columns]
+#     nse_new_source_db.rename({
+#         'ExchangeTime':'CreateDate','SymbolName':'sym','FillSize':'trdQty','TransactionType':'bsFlg',
+#         'AvgPrice':'trdPrc','ExecutingBroker':'cpCD','Strike':'strPrc','Expiry':'expDt','OptionType':'optType',
+#         'AccountId':'cliActNo','Broker':'broker'
+#     })
+p=0
+from common import revise_eod_net_pos
+revise_eod_net_pos(for_dt='2025-05-16')
+o=0

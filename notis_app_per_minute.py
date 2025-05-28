@@ -12,22 +12,26 @@ from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse, StreamingResponse, FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 
-from db_config import n_tbl_notis_trade_book, s_tbl_notis_trade_book, n_tbl_notis_raw_data, s_tbl_notis_raw_data, n_tbl_notis_nnf_data, s_tbl_notis_nnf_data, engine_str, notis_engine_str, bse_engine_str
-from common import get_date_from_non_jiffy,get_date_from_jiffy, read_data_db, read_notis_file, write_notis_data, write_notis_postgredb, read_file, today, yesterday, logger, volt_dir, zipped_dir
+from db_config import (n_tbl_notis_trade_book, s_tbl_notis_trade_book,
+                       n_tbl_notis_raw_data, s_tbl_notis_raw_data,
+                       n_tbl_notis_nnf_data, s_tbl_notis_nnf_data,
+                       engine_str, notis_engine_str, bse_engine_str)
+from common import (get_date_from_non_jiffy,get_date_from_jiffy,
+                    read_data_db, read_notis_file, read_file,
+                    write_notis_data, write_notis_postgredb,
+                    today, yesterday,
+                    logger, volt_dir, zipped_dir)
 
-# today = datetime.now().date()
-# today = datetime(year=2025, month=3, day=24).date()
-# yesterday = datetime(year=2025, month=1, day=23).date()
 pd.set_option('display.max_columns', None)
 warnings.filterwarnings('ignore')
 
-engine = create_engine(engine_str)
+engine = create_engine(engine_str, pool_pre_ping=True, pool_recycle=900)
 sessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
-notis_engine = create_engine(notis_engine_str)
+notis_engine = create_engine(notis_engine_str, pool_pre_ping=True, pool_recycle=900)
 sessionLocalNotis = sessionmaker(autocommit=False, autoflush=False, bind=notis_engine)
 
-bse_engine = create_engine(bse_engine_str)
+bse_engine = create_engine(bse_engine_str, pool_pre_ping=True, pool_recycle=900)
 sessionLocalBSE = sessionmaker(autocommit=False, autoflush=False, bind=bse_engine)
 
 def conv_str(obj):
@@ -59,24 +63,6 @@ def get_bse_db():
         yield db
     finally:
         db.close()
-
-# def stream_data(db: Session, tablename: str):
-#     def conv_str(obj):
-#         if isinstance(obj,datetime):
-#             # return obj.strftime('%Y-%m-%d %H:%M:%S')
-#             return obj.isoformat()
-#     yield '['
-#     first = True
-#     query = text(rf'Select * from "{tablename}"')
-#     with db.connection().execution_options(stream_results=True) as conn:
-#         result = conn.execute(query)
-#         for row in result:
-#             if not first:
-#                 yield ','
-#             first = False
-#             # logger.info(json.dumps(dict(row), default=conv_str))
-#             yield json.dumps(dict(row), default=conv_str)
-#     yield ']'
 
 class ServiceApp:
     def __init__(self):
@@ -112,12 +98,6 @@ class ServiceApp:
             tablename = f'NOTIS_EOD_NET_POS_CP_NONCP_{today}' if for_dt == today else f'NOTIS_EOD_NET_POS_CP_NONCP_{for_dt.strftime("%Y-%m-%d")}'
         elif for_table == f'bsetradebook':
             tablename = f'BSE_TRADE_DATA_{today.strftime("%Y-%m-%d")}' if for_dt == today else f'BSE_TRADE_DATA_{for_dt.strftime("%Y-%m-%d")}'
-        # elif for_table == f'sourcenotisraw':
-        #     tablename = f'source_notis_raw_data'
-        # elif for_table == f'sourcebseraw':
-        #     tablename = f'source_bse_raw_data'
-        # logger.info(f'tablename={tablename}')
-        # tablename = f'NOTIS_TRADE_BOOK' if for_dt==today else f'NOTIS_TRADE_BOOK_{for_dt}'
         query=text(rf'Select * from "{tablename}" limit {page_size} offset {(page -1)*page_size}')
         result = db.execute(query).fetchall()
         total_rows = db.execute(text(rf'Select count(*) from "{tablename}"')).scalar()
@@ -181,19 +161,6 @@ class ServiceApp:
                 grouped_desk_db_df.expiryDate = grouped_desk_db_df.expiryDate.astype(str)
                 if grouped_desk_db_df.empty:
                     return JSONResponse(content={"message": "No data available"}, status_code=204)
-                # # json_data = grouped_desk_db_df.to_json(orient='records')
-                # # if not len(grouped_desk_db_df):
-                # #     return Response(content=json_data, media_type='application/json')
-                # # else:
-                # #     compressed_data = gzip.compress(json_data.encode('utf-8'))
-                # #     return Response(content=compressed_data, media_type='application/gzip')
-                # buffer = io.StringIO()
-                # writer = csv.writer(buffer)
-                # writer.writerow(grouped_desk_db_df.columns)
-                # writer.writerow(grouped_desk_db_df.values)
-                # with gzip.open(zip_path, 'wt', encoding='utf-8', newline='') as f:
-                #     f.write(buffer.getvalue())
-                # return FileResponse(zip_path, media_type='application/gzip')
                 buffer = io.BytesIO()
                 with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
                     grouped_desk_db_df.to_excel(writer, index=False)
@@ -249,19 +216,6 @@ class ServiceApp:
                 pivot_df['expDt'] = pivot_df['expDt'].astype(str)
                 pivot_df['IntradayVolume'] = pivot_df['BuyVol'] - pivot_df['SellVol']
 
-                # # json_data = pivot_df.to_json(orient='records')
-                # # # # return pivot_df.to_dict(orient='records')
-                # # # compressed_data = gzip.compress(json_data.encode('utf-8'))
-                # # # return Response(content=compressed_data, media_type='application/gzip')
-                # # compressed_data = gzip.compress(json_data.encode('utf-8'))
-                # # return Response(content=compressed_data, media_type='application/gzip')
-                # buffer = io.StringIO()
-                # writer = csv.writer(buffer)
-                # writer.writerow(pivot_df.columns)
-                # writer.writerow(pivot_df.values)
-                # with gzip.open(zip_path,'wt',encoding='utf-8',newline='') as f:
-                #     f.write(buffer.getvalue())
-                # return FileResponse(zip_path, media_type='application/gzip')
                 buffer = io.BytesIO()
                 with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
                     pivot_df.to_excel(writer, index=False)
@@ -270,46 +224,6 @@ class ServiceApp:
                     f.write(buffer.getvalue())
                 return FileResponse(zip_path, media_type='application/gzip')
         else:
-            # if not os.path.exists(zip_path) or for_dt == today:
-            #     stt = datetime.now()
-            #     total_rows = db.execute(text(rf'select count(*) from "{tablename}"')).scalar()
-            #     page_size = 5_00_000
-            #     num_pages = total_rows // page_size + (1 if (total_rows % page_size) else 0)
-            #     logger.info(f'Total rows in DB: {total_rows}, Splitting into {num_pages} sheets')
-            #     buffer = io.BytesIO()
-            #     wb = xlsxwriter.Workbook(buffer, {'in_memory': True})
-            #     for page in range(num_pages):
-            #         query = f'select * from "{tablename}" limit {page_size} offset {(page) * page_size}'
-            #         logger.info(query)
-            #         pbar = progressbar.ProgressBar(
-            #             max_value=total_rows + 1,
-            #             widgets=[
-            #                 progressbar.Percentage(), '',
-            #                 progressbar.Bar(marker='=',left='[',right=']'),
-            #                 progressbar.ETA()
-            #             ]
-            #         )
-            #         result = db.execute(text(query))
-            #         ws = wb.add_worksheet(f'Sheet{page + 1}')
-            #         for col, header in enumerate(result.keys()):
-            #             ws.write(0, col, header)
-            #         for rn, row in enumerate(result, start=1):
-            #             for col, cell in enumerate(row):
-            #                 ws.write(rn, col, cell)
-            #             pbar.update(rn)
-            #         pbar.finish()
-            #         p = 0
-            #     wb.close()
-            #     logger.info('fetching data from buffer')
-            #     buffer.seek(0)
-            #     logger.info('Writing to xlsx file and zipping . . ')
-            #     with gzip.open(zip_path, 'wb') as f:
-            #         f.write(buffer.getvalue())
-            #     ett = datetime.now()
-            #     logger.info(f'total time taken for zip_path:{(ett - stt).total_seconds()}')
-            #     return FileResponse(path=zip_path, media_type='application/gzip')
-            # else:
-            #     return FileResponse(path=zip_path, media_type='application/gzip')
             stt = datetime.now()
             total_rows = db.execute(text(rf'select count(*) from "{tablename}"')).scalar()
             page_size = 5_00_000
@@ -365,8 +279,6 @@ class ServiceApp:
         grouped_desk_db_df.rename(columns={'buyAvgQty': 'buyQty', 'sellAvgQty': 'sellQty'})
         grouped_desk_db_df.expiryDate = grouped_desk_db_df.expiryDate.astype(str)
         json_data = grouped_desk_db_df.to_json(orient='records')
-        # compressed_data = gzip.compress(json_data.encode('utf-8'))
-        # return Response(content=compressed_data, media_type='application/gzip')
         if not len(grouped_desk_db_df):
             return Response(content=json_data, media_type='application/json')
         else:
@@ -525,28 +437,6 @@ class ServiceApp:
                     WHERE RowNum > {page * page_size} AND RowNum <= {(page + 1) * page_size};
                 """)
             elif for_table == f'sourcebseraw':
-                # query = (f"""
-                #     WITH CTE AS (
-                #         SELECT mnmFillPrice, mnmSegment, mnmTradingSymbol, mnmTransactionType, mnmAccountId, mnmUser, mnmFillSize, mnmSymbolName, mnmExpiryDate, mnmOptionType, mnmStrikePrice, mnmAvgPrice, mnmExecutingBroker,
-                #                ROW_NUMBER() OVER (ORDER BY (SELECT NULL)) AS RowNum
-                #         FROM [OMNE_ARD_PRD].[dbo].[TradeHist]
-                #         WHERE mnmExchSeg = 'bse_fo' and mnmAccountId = 'AA100'
-                #     )
-                #     SELECT mnmFillPrice, mnmSegment, mnmTradingSymbol, mnmTransactionType, mnmAccountId, mnmUser, mnmFillSize, mnmSymbolName, mnmExpiryDate, mnmOptionType, mnmStrikePrice, mnmAvgPrice, mnmExecutingBroker
-                #     FROM CTE
-                #     WHERE RowNum > {page * page_size} AND RowNum <= {(page + 1) * page_size};
-                # """)
-                # query2 = (f"""
-                #     WITH CTE AS (
-                #         SELECT mnmFillPrice, mnmSegment, mnmTradingSymbol, mnmTransactionType, mnmAccountId, mnmUser, mnmFillSize, mnmSymbolName, mnmExpiryDate, mnmOptionType, mnmStrikePrice, mnmAvgPrice, mnmExecutingBroker,
-                #                ROW_NUMBER() OVER (ORDER BY (SELECT NULL)) AS RowNum
-                #         FROM [OMNE_ARD_PRD_HNI].[dbo].[TradeHist]
-                #         WHERE mnmExchSeg = 'bse_fo' and mnmAccountId = 'AA100'
-                #     )
-                #     SELECT mnmFillPrice, mnmSegment, mnmTradingSymbol, mnmTransactionType, mnmAccountId, mnmUser, mnmFillSize, mnmSymbolName, mnmExpiryDate, mnmOptionType, mnmStrikePrice, mnmAvgPrice, mnmExecutingBroker
-                #     FROM CTE
-                #     WHERE RowNum > {page * page_size} AND RowNum <= {(page + 1) * page_size};
-                # """)
                 query = (f"""
                     WITH CTE1 AS (
                         SELECT mnmFillPrice, mnmSegment, mnmTradingSymbol, mnmTransactionType, mnmAccountId, mnmUser, mnmFillSize, mnmSymbolName, mnmExpiryDate, mnmOptionType, mnmStrikePrice, mnmAvgPrice, mnmExecutingBroker,
@@ -600,7 +490,7 @@ class ServiceApp:
         volt_df.columns = [re.sub(r'\s', '', each) for each in volt_df.columns]
         volt_df = volt_df.iloc[:, 1:3]
         volt_df.rename(columns={'UnderlyingClosePrice(A)': 'SpotClosePrice'}, inplace=True)
-        sym_list = ['NIFTY', 'BANKNIFTY', 'FINNIFTY', 'MIDCPNIFTY']
+        sym_list = ['NIFTY','BANKNIFTY','FINNIFTY','MIDCPNIFTY','SENSEX']
         volt_df = volt_df.query("Symbol in @sym_list")
 
         tablename = f'NOTIS_EOD_NET_POS_CP_NONCP_{for_date}'
@@ -625,9 +515,6 @@ class ServiceApp:
         pivot_df['NetQty'] = pivot_df['CE'] - pivot_df['PE']
         pivot_df['Exposure(in Crs)'] = (pivot_df['NetQty'] * pivot_df['SpotClosePrice']) / 10000000
         print(f'exposure table shape: {pivot_df.shape}')
-        # list_to_int = ['SpotClosePrice','CE','PE','NetQty','Exposure(in Crs)']
-        # for each in list_to_int:
-        #     pivot_df[each] = pivot_df[each].astype(str)
         json_data = pivot_df.to_json(orient='records')
         if not pivot_df.empty:
             return Response(content=json_data, media_type='application/json')

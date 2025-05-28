@@ -2,16 +2,11 @@ import re, os, progressbar, pyodbc, warnings, psycopg2, time
 import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta, timezone
-from dateutil.relativedelta import relativedelta
-from openpyxl import load_workbook, Workbook
-from openpyxl.utils.dataframe import dataframe_to_rows
-from sqlalchemy import create_engine, text, insert
 
 from db_config import (n_tbl_notis_trade_book, n_tbl_notis_raw_data,
                        n_tbl_notis_nnf_data, n_tbl_notis_desk_wise_net_position,
                        n_tbl_notis_nnf_wise_net_position,
-                       n_tbl_notis_eod_net_pos_cp_noncp, n_tbl_bse_trade_data,
-                       n_tbl_test_notis_eod_net_pos_cp_noncp)
+                       n_tbl_notis_eod_net_pos_cp_noncp, n_tbl_bse_trade_data)
 from common import (read_data_db, write_notis_data, write_notis_postgredb, today,
                     root_dir, bhav_dir, modified_dir, table_dir, bse_dir,
                     download_bhavcopy, logger)
@@ -65,22 +60,12 @@ def get_nse_data():
         aggfunc={'trdQty': 'sum', 'trdQtyPrc': 'sum'},
         fill_value=0
     )
-    # if len(modified_df.bsFlg.unique()) == 1:
-    #     if modified_df.bsFlg.unique().tolist()[0] == 'B':
-    #         pivot_df['SellTrdQtyPrc'] = 0;
-    #         pivot_df['SellQty'] = 0
-    #     elif modified_df.bsFlg.unique().tolist()[0] == 'S':
-    #         pivot_df['BuyTrdQtyPrc'] = 0;
-    #         pivot_df['BuyQty'] = 0
-    # elif len(modified_df) == 0 or len(pivot_df) == 0:
-    #     pivot_df.columns = ['_'.join(col).strip() for col in pivot_df.columns.values]
-    # pivot_df.columns = ['BuyQty', 'SellQty', 'BuyTrdQtyPrc', 'SellTrdQtyPrc']
-    if len(modified_df.TransactionType.unique()) == 1:
-        if modified_df.TransactionType.unique().tolist()[0] == 'B':
+    if len(modified_df.bsFlg.unique()) == 1:
+        if modified_df.bsFlg.unique().tolist()[0] == 'B':
             pivot_df['SellTrdQtyPrc'] = 0;
             pivot_df['SellQty'] = 0
             pivot_df.columns = ['BuyQty', 'BuyTrdQtyPrc', 'SellQty', 'SellTrdQtyPrc']
-        elif modified_df.TransactionType.unique().tolist()[0] == 'S':
+        elif modified_df.bsFlg.unique().tolist()[0] == 'S':
             pivot_df['BuyTrdQtyPrc'] = 0;
             pivot_df['BuyQty'] = 0
             pivot_df.columns = ['SellQty', 'SellTrdQtyPrc', 'BuyQty', 'BuyTrdQtyPrc']
@@ -100,18 +85,6 @@ def get_nse_data():
                     inplace=True)
     pivot_df.volume = pivot_df.buyAvgQty - pivot_df.sellAvgQty
     return pivot_df
-    # # DESK
-    # dsk_db_df = NSEUtility.calc_deskwise_net_pos(pivot_df)
-    # write_notis_postgredb(dsk_db_df, table_name=n_tbl_notis_desk_wise_net_position, truncate_required=True)
-    # # NNF
-    # nnf_db_df = NSEUtility.calc_nnfwise_net_pos(pivot_df)
-    # write_notis_postgredb(nnf_db_df, table_name=n_tbl_notis_nnf_wise_net_position, truncate_required=True)
-    # # CP NONCP
-    # cp_noncp_nse_df = NSEUtility.calc_eod_cp_noncp(pivot_df)
-    # cp_noncp_bse_df = get_bse_data()
-    # final_cp_noncp_eod_df = pd.concat([cp_noncp_nse_df,cp_noncp_bse_df],ignore_index=True)
-    # write_notis_postgredb(final_cp_noncp_eod_df, table_name=n_tbl_notis_eod_net_pos_cp_noncp, truncate_required=True)
-    # write_notis_postgredb(final_cp_noncp_eod_df, table_name=n_tbl_test_notis_eod_net_pos_cp_noncp)
 
 def find_net_pos(nse_pivot_df, bse_pivot_df):
     # DESK
@@ -124,8 +97,18 @@ def find_net_pos(nse_pivot_df, bse_pivot_df):
     cp_noncp_nse_df = NSEUtility.calc_eod_cp_noncp(nse_pivot_df)
     cp_noncp_bse_df = BSEUtility.calc_bse_eod_net_pos(bse_pivot_df)
     final_cp_noncp_eod_df = pd.concat([cp_noncp_nse_df, cp_noncp_bse_df], ignore_index=True)
-    write_notis_postgredb(final_cp_noncp_eod_df, table_name=n_tbl_notis_eod_net_pos_cp_noncp, truncate_required=True)
-    write_notis_postgredb(final_cp_noncp_eod_df, table_name=n_tbl_test_notis_eod_net_pos_cp_noncp)
+
+    to_int = ['EodStrike','EodNetQuantity', 'buyQty', 'buyAvgPrice', 'sellQty', 'sellAvgPrice', 'IntradayVolume', 'FinalNetQty']
+    for each in to_int:
+        final_cp_noncp_eod_df[each] = final_cp_noncp_eod_df[each].astype(np.int64)
+    grouped_final_eod = final_cp_noncp_eod_df.groupby(by=['EodBroker', 'EodUnderlying', 'EodExpiry', 'EodStrike', 'EodOptionType'],
+                                          as_index=False).agg(
+        {'EodNetQuantity': 'sum', 'buyQty': 'sum', 'buyAvgPrice': 'mean', 'sellQty': 'sum', 'sellAvgPrice': 'mean',
+         'IntradayVolume': 'sum', 'FinalNetQty': 'sum'})
+    grouped_final_eod['FinalNetQty'] = grouped_final_eod['EodNetQuantity'] + grouped_final_eod['IntradayVolume']
+
+    write_notis_postgredb(grouped_final_eod, table_name=n_tbl_notis_eod_net_pos_cp_noncp, truncate_required=True)
+    # write_notis_postgredb(final_cp_noncp_eod_df, table_name=n_tbl_test_notis_eod_net_pos_cp_noncp, truncate_required=True)
 
 def get_bse_data():
     stt = datetime.now()
@@ -135,6 +118,7 @@ def get_bse_data():
     modified_bse_df = BSEUtility.bse_modify_file(raw_bse_df)
     write_notis_postgredb(df=modified_bse_df,table_name=n_tbl_bse_trade_data,truncate_required=True)
     write_notis_data(modified_bse_df, os.path.join(bse_dir, f'BSE_TRADE_DATA_{today.strftime("%d%b%Y").upper()}.xlsx'))
+    write_notis_data(modified_bse_df, rf'C:\Users\vipulanand\Documents\Anand Rathi Financial Services Ltd (Synced)\OneDrive - Anand Rathi Financial Services Ltd\notis_files\BSE_TRADE_DATA_{today.strftime("%d%b%Y").upper()}.xlsx')
     modified_bse_df['trdQtyPrc'] = modified_bse_df['FillSize'] * modified_bse_df['AvgPrice']
     pivot_df = modified_bse_df.pivot_table(
         index=['Broker', 'Underlying', 'Expiry', 'Strike', 'OptionType'],
@@ -167,10 +151,6 @@ def get_bse_data():
     ett = datetime.now()
     logger.info(f'BSE trade fetched. Total time taken: {(ett - stt).seconds} seconds')
     return pivot_df
-    # eod_bse_df = BSEUtility.calc_bse_eod_net_pos(pivot_df)
-    # ett = datetime.now()
-    # logger.info(f'BSE trade fetched. Total time taken: {(ett - stt).seconds} seconds')
-    # return eod_bse_df
 
 if __name__ == '__main__':
     if actual_date == today:
@@ -183,13 +163,6 @@ if __name__ == '__main__':
         find_net_pos(nse_pivot_df=nse_pivot_df, bse_pivot_df=bse_pivot_df)
         ett = time.time()
         logger.info(f'total time taken for modifying, adding data in db and writing in local directory - {ett - stt} seconds')
-        # logger.info(f'fetching BSE trades...')
-        # stt = datetime.now()
-        # # df_bse = BSEUtility.get_bse_trade_data()
-        # # write_notis_data(df_bse, os.path.join(bse_dir, f'BSE_TRADE_DATA_{today.strftime("%d%b%Y").upper()}.xlsx'))
-        # # write_notis_postgredb(df=df_bse, table_name=n_tbl_bse_trade_data, truncate_required=True)
-        # ett = datetime.now()
-        # logger.info(f'BSE trade fetched. Total time taken: {(ett - stt).seconds} seconds')
         pbar = progressbar.ProgressBar(max_value=100, widgets=[progressbar.Percentage(), ' ', progressbar.Bar(marker='=', left='[', right=']'), progressbar.ETA()])
         pbar.update(1)
         for i in range(100):
