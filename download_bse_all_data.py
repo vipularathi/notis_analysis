@@ -238,7 +238,7 @@ def read_data_db_1(nnf=False, for_table='ENetMIS', from_time:str='', to_time:str
         sql_port = '1450'
         sql_db = 'OMNE_ARD_PRD'
         sql_userid = 'Pos_User'
-        sql_paswd = 'Pass@Word1'
+        sql_paswd = 'Pass@Word'
         if not from_time:
             logger.info(f'Fetching today\'s BSE trade data till now.')
             # sql_query = (

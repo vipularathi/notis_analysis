@@ -165,6 +165,6 @@ cython_debug/
 *.csv
 *.xlsx
 *.pdf
-net_position_final_format.py
 jiffy_time_conversion.py
 untitled*
+Untitled*
