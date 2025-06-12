@@ -1916,6 +1916,43 @@ o=0
 #         'AccountId':'cliActNo','Broker':'broker'
 #     })
 p=0
-from common import revise_eod_net_pos
-revise_eod_net_pos(for_dt='2025-05-16')
+# from common import revise_eod_net_pos
+# revise_eod_net_pos(for_dt='2025-05-16')
 o=0
+# from pandas.testing import assert_frame_equal
+#
+# df1 = pd.read_excel(os.path.join(table_dir,f'BSE_TRADE_DATA_2025-05-29.xlsx'), index_col=False)
+# df2 = pd.read_excel(os.path.join(bse_dir,f'BSE_TRADE_DATA_29MAY2025.xlsx'), index_col=False)
+# res=df1.equals(df2)
+# print(f'res equal={res}')
+# # res_df = df1.compare(df2)
+# res_np=np.array_equal(df1.values,df2.values)
+# print(f'res np={res_np}')
+# sorted_df1 = df1.sort_index(axis=1).sort_values(by=df1.columns.tolist()).reset_index(inplace=True)
+# sorted_df1 = df1.sort_index(axis=1).sort_values(by=sorted(df1.columns.tolist())).reset_index(drop=True)
+# sorted_df2 = df2.sort_index(axis=1).sort_values(by=sorted(df2.columns.tolist())).reset_index(drop=True)
+# res_sorted=sorted_df1.equals(sorted_df2)
+# print(f'res sorted={res_sorted}')
+# res_compare = sorted_df1.compare(sorted_df2, align_axis=True)
+# print(f'res compare= {res_compare}')
+# try:
+#     assert_frame_equal(sorted_df1,sorted_df2)
+#     print(f'Assert DF Equal')
+# except AssertionError as e:
+#     print(f'Assert Df not Eq: {e}')
+# res_avgprc=df1['AvgPrice'].equals(df2['AvgPrice'])
+# print(f'res avg price={res_avgprc}')
+# for col in df1.columns:
+#     print(df1[col].equals(df2[col]))
+# sorted_df12 = df1.apply(sorted, axis=0)
+# sorted_df22 = df2.apply(sorted, axis=0)
+# res_sorted2 = sorted_df12.equals(sorted_df22)
+# print(f'res sorted2={res_sorted2}')
+y=0
+# to convert source2 expiry wheremnmTradingSymbol.startswith('SEN')
+# from dateutil.relativedelta import relativedelta
+# for each in raw_combined_trade_source2.mnmExpiryDate.unique():
+#     new_dt = pd.to_datetime(each, unit='s') + relativedelta(years=10)
+#     while new_dt.weekday() != 3:
+#         new_dt -= timedelta(days=1)
+#     print(f'raw={each}\tepoch_converted={new_dt}')

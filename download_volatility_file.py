@@ -5,7 +5,7 @@ from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.primitives import padding
 from cryptography.hazmat.backends import default_backend
 from django.utils.encoding import force_bytes, force_str
-from common import volt_dir,today
+from common import volt_dir,today, logger
 
 # today=datetime.today().date().replace(day=2)
 SECRET_KEY = "yi91poFLFMiXnkB12j/KY0RjG1fwTO7MwQWXjszcPGE="
@@ -42,7 +42,7 @@ def login():
 
     crypto = Crypto()
     encrypted_password = force_str(base64.urlsafe_b64encode(crypto.encrypt()))
-    print(f'Encrypted Password::>>{encrypted_password}')
+    logger.info(f'Encrypted Password::>>{encrypted_password}')
 
     payload = {
         "memberCode": member_code,
@@ -59,11 +59,11 @@ def login():
     if response.status_code == 200:
         response_data = response.json()
         session_token = response_data.get('token')
-        # print("Login successful:", response_data)
-        print(f"Login successful.\nSession token: {session_token}")
+        # logger.info("Login successful:", response_data)
+        logger.info(f"Login successful.\nSession token: {session_token}")
         return True
     else:
-        print(f"Login failed. Status code: {response.status_code}, Message: {response.text}")
+        logger.info(f"Login failed. Status code: {response.status_code}, Message: {response.text}")
 
 def download_volatility_file():
     df=pd.DataFrame()
@@ -80,19 +80,19 @@ def download_volatility_file():
     file_path = os.path.join(volt_dir, f'{file_name}')
     headers = {'Authorization':f'Bearer {session_token}'}
 
-    # print(f"Downloading from URL: {final_url}")
-    print(f"Saving to: {file_path}")
+    # logger.info(f"Downloading from URL: {final_url}")
+    logger.info(f"Saving to: {file_path}")
 
     response = requests.get(download_url, headers=headers, params=params)
-    print(f'Response status::>>{response}')
+    logger.info(f'Response status::>>{response}')
     if response.status_code == 200:
         volt_df = pd.read_csv(io.BytesIO(response.content))
         with open(file_path, 'wb') as file:
             file.write(response.content)
-        print(f"File downloaded successfully at {file_path}")
+        logger.info(f"File downloaded successfully at {file_path}")
         return volt_df
     else:
-        print(f"Could not download the file.\nStatus code: {response.status_code}, Message: {response.text}")
+        logger.info(f"Could not download the file.\nStatus code: {response.status_code}, Message: {response.text}")
 
 
 if login():

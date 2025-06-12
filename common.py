@@ -105,8 +105,7 @@ def read_data_db(nnf=False, for_table='ENetMIS', from_time:str='', to_time:str='
         sql_port = '1450'
         sql_db = 'OMNE_ARD_PRD'
         sql_userid = 'Pos_User'
-        sql_paswd = 'Pass@Word1'
-
+        sql_paswd = 'Pass@Word'
         if not from_time:
             logger.info(f'Fetching today\'s BSE trade data till now.')
             sql_query = (
@@ -153,47 +152,42 @@ def read_data_db(nnf=False, for_table='ENetMIS', from_time:str='', to_time:str='
             return final_bse_df
         except (pyodbc.Error, psycopg2.Error) as e:
             logger.info(f'Error in fetching data: {e}')
-    elif not nnf and for_table!='ENetMIS':
-        with engine.begin() as conn:
-            df = pd.read_sql_table(for_table, con=conn)
-        logger.info(f"Data fetched from {for_table} table. Shape:{df.shape}")
-        return df
-    elif not nnf and for_table == 'Source_2':
+    elif not nnf and for_table == 'Source2':
         sql_server = '172.30.100.40'
         sql_port = '1450'
-        sql_db = 'OMNE_ARD_PRD_AA100_3.19'
+        sql_db = 'OMNE_ARD_PRD_3.19'
         sql_userid = 'Pos_User'
         sql_paswd = 'Pass@Word1'
         if not from_time:
             logger.info(f'Fetching today\'s NSE&BSE trades from Source:2 till now.')
             sql_query = (
                 f"select mnmFillPrice,mnmSegment, mnmTradingSymbol,mnmTransactionType,mnmAccountId,mnmUser , mnmFillSize, "
-                f"mnmSymbolName, mnmExpiryDate, mnmOptionType, mnmStrikePrice, mnmAvgPrice, mnmExecutingBroker "
+                f"mnmSymbolName, mnmExpiryDate, mnmOptionType, mnmStrikePrice, mnmAvgPrice, mnmExecutingBroker, mnmExchangeTime "
                 f"from [OMNE_ARD_PRD_3.19].[dbo].[TradeHist] "
-                f"where mnmSymbolName in ('NIFTY','BANKNIFTY','MIDCPNIFTY','FINNIFTY','SENSEX') "
-                f"and (mnmAccountId = 'AA100' or mnmAccountId = 'CPAA100')")
+                f"where mnmSegment = 'FO' "
+                f"and mnmAccountId in ('AA100','CPAA100')")
             sql_query2 = (
                 f"select mnmFillPrice,mnmSegment, mnmTradingSymbol,mnmTransactionType,mnmAccountId,mnmUser , mnmFillSize, "
-                f"mnmSymbolName, mnmExpiryDate, mnmOptionType, mnmStrikePrice, mnmAvgPrice, mnmExecutingBroker "
+                f"mnmSymbolName, mnmExpiryDate, mnmOptionType, mnmStrikePrice, mnmAvgPrice, mnmExecutingBroker, mnmExchangeTime "
                 f"from [OMNE_ARD_PRD_AA100_3.19].[dbo].[TradeHist] "
-                f"where mnmSymbolName in ('NIFTY','BANKNIFTY','MIDCPNIFTY','FINNIFTY','SENSEX') "
-                f"and (mnmAccountId = 'AA100' or mnmAccountId = 'CPAA100')")
+                f"where mnmSegment = 'FO' "
+                f"and mnmAccountId in ('AA100','CPAA100')")
         else:
             logger.info(f'Fetching NSE&BSE trade data(Source:2) from {from_time} to {to_time}')
             sql_query = (
                 f"select mnmFillPrice,mnmSegment, mnmTradingSymbol,mnmTransactionType,mnmAccountId,mnmUser , mnmFillSize, "
-                f"mnmSymbolName, mnmExpiryDate, mnmOptionType, mnmStrikePrice, mnmAvgPrice, mnmExecutingBroker "
+                f"mnmSymbolName, mnmExpiryDate, mnmOptionType, mnmStrikePrice, mnmAvgPrice, mnmExecutingBroker, mnmExchangeTime "
                 f"from [OMNE_ARD_PRD_3.19].[dbo].[TradeHist] "
-                f"where mnmSymbolName in ('NIFTY','BANKNIFTY','MIDCPNIFTY','FINNIFTY','SENSEX') "
+                f"where mnmSegment = 'FO' "
                 f"and mnmExchangeTime between \'{from_time}\' and \'{to_time}\' "
-                f"and (mnmAccountId = 'AA100' or mnmAccountId = 'CPAA100')")
+                f"and mnmAccountId in ('AA100','CPAA100')")
             sql_query2 = (
                 f"select mnmFillPrice,mnmSegment, mnmTradingSymbol,mnmTransactionType,mnmAccountId,mnmUser , mnmFillSize, "
-                f"mnmSymbolName, mnmExpiryDate, mnmOptionType, mnmStrikePrice, mnmAvgPrice, mnmExecutingBroker "
+                f"mnmSymbolName, mnmExpiryDate, mnmOptionType, mnmStrikePrice, mnmAvgPrice, mnmExecutingBroker, mnmExchangeTime "
                 f"from [OMNE_ARD_PRD_AA100_3.19].[dbo].[TradeHist] "
-                f"where mnmSymbolName in ('NIFTY','BANKNIFTY','MIDCPNIFTY','FINNIFTY','SENSEX') "
+                f"where mnmSegment = 'FO' "
                 f"and mnmExchangeTime between \'{from_time}\' and \'{to_time}\' "
-                f"and (mnmAccountId = 'AA100' or mnmAccountId = 'CPAA100')")
+                f"and mnmAccountId in ('AA100','CPAA100')")
         try:
             sql_engine_str = (
                 f"DRIVER={{ODBC Driver 17 for SQL Server}};"
@@ -203,13 +197,18 @@ def read_data_db(nnf=False, for_table='ENetMIS', from_time:str='', to_time:str='
                 f"PWD={sql_paswd};"
             )
             with pyodbc.connect(sql_engine_str) as sql_conn:
-                df_bse = pd.read_sql_query(sql_query, sql_conn)
-                df_bse_hni = pd.read_sql_query(sql_query2,sql_conn)
-            logger.info(f'data fetched for bse: {df_bse.shape, df_bse_hni.shape}')
-            final_bse_df = pd.concat([df_bse,df_bse_hni], ignore_index=True)
-            return final_bse_df
+                df_bse_source2 = pd.read_sql_query(sql_query, sql_conn)
+                df_bse_hni_source2 = pd.read_sql_query(sql_query2, sql_conn)
+            logger.info(f'NSE & BSE trade data fetched from source 2: {df_bse_source2.shape, df_bse_hni_source2.shape}')
+            final_bse_df_source2 = pd.concat([df_bse_source2,df_bse_hni_source2], ignore_index=True)
+            return final_bse_df_source2
         except (pyodbc.Error, psycopg2.Error) as e:
             logger.info(f'Error in fetching data: {e}')
+    elif not nnf and for_table !='ENetMIS':
+        with engine.begin() as conn:
+            df = pd.read_sql_table(for_table, con=conn)
+        logger.info(f"Data fetched from {for_table} table. Shape:{df.shape}")
+        return df
 
 def read_notis_file(filepath):
     wb = load_workbook(filepath, read_only=True)
