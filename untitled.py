@@ -1956,3 +1956,16 @@ y=0
 #     while new_dt.weekday() != 3:
 #         new_dt -= timedelta(days=1)
 #     print(f'raw={each}\tepoch_converted={new_dt}')
+p=0
+
+# import yfinance as yf
+#
+# nifty = yf.Ticker("^NSEI") # NIFTY 50
+# sensex = yf.Ticker("^BSESN") # SENSEX
+#
+# print(nifty.history(period="2d")['Close'])
+# print(sensex.history(period="2d")['Close'])
+u=0
+from common import download_bhavcopy
+download_bhavcopy()
+p=0

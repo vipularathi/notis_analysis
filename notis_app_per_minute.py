@@ -7,18 +7,20 @@ from openpyxl.utils.dataframe import dataframe_to_rows
 from sqlalchemy import create_engine
 from sqlalchemy.sql import text
 from sqlalchemy.orm import sessionmaker, Session
-from fastapi import FastAPI, Query, status, Response, Depends
+from fastapi import FastAPI, Query, status, Response, Depends, UploadFile, File, HTTPException
 from fastapi.encoders import jsonable_encoder
-from fastapi.responses import JSONResponse, StreamingResponse, FileResponse
+from fastapi.responses import JSONResponse, StreamingResponse, FileResponse, PlainTextResponse
 from fastapi.middleware.cors import CORSMiddleware
 
 from db_config import (n_tbl_notis_trade_book, s_tbl_notis_trade_book,
                        n_tbl_notis_raw_data, s_tbl_notis_raw_data,
                        n_tbl_notis_nnf_data, s_tbl_notis_nnf_data,
+                        n_tbl_srspl_trade_data, n_tbl_notis_eod_net_pos_cp_noncp,
                        engine_str, notis_engine_str, bse_engine_str)
 from common import (get_date_from_non_jiffy,get_date_from_jiffy,
                     read_data_db, read_notis_file, read_file,
                     write_notis_data, write_notis_postgredb,
+                    analyze_expired_instruments,
                     today, yesterday,
                     logger, volt_dir, zipped_dir)
 
@@ -81,6 +83,7 @@ class ServiceApp:
         self.app.add_api_route('/sourceData', methods=['GET'], endpoint=self.get_source_data)
         self.app.add_api_route('/downloadSourceData', methods=['GET'], endpoint=self.download_source_data)
         self.app.add_api_route('/get_oi', methods=['GET'], endpoint=self.get_oi)
+        self.app.add_api_route('/upload', methods=['POST'], endpoint=self.add_new_trade_data)
 
     def get_data(self, for_date:date=Query(), for_table:str=Query(), page:int=Query(1), page_size:int=Query(1000),db:Session=Depends(get_db)):
         for_dt = pd.to_datetime(for_date).date()
@@ -98,9 +101,15 @@ class ServiceApp:
             tablename = f'NOTIS_EOD_NET_POS_CP_NONCP_{today}' if for_dt == today else f'NOTIS_EOD_NET_POS_CP_NONCP_{for_dt.strftime("%Y-%m-%d")}'
         elif for_table == f'bsetradebook':
             tablename = f'BSE_TRADE_DATA_{today.strftime("%Y-%m-%d")}' if for_dt == today else f'BSE_TRADE_DATA_{for_dt.strftime("%Y-%m-%d")}'
-        query=text(rf'Select * from "{tablename}" limit {page_size} offset {(page -1)*page_size}')
+        if for_table == 'eodnetposcp':
+            query = text(rf'Select "EodBroker","EodUnderlying","EodExpiry","EodStrike","EodOptionType","EodNetQuantity","buyQty","buyValue","sellQty","sellValue",'
+                         rf'"PreFinalNetQty","ExpiredSpot_close","ExpiredRate","ExpiredAssn_value","ExpiredSellValue","ExpiredBuyValue","ExpiredQty","FinalNetQty" '
+                         rf'from "{tablename}" limit {page_size} offset {(page -1)*page_size}')
+        else:
+            query=text(rf'Select * from "{tablename}" limit {page_size} offset {(page -1)*page_size}')
         result = db.execute(query).fetchall()
         total_rows = db.execute(text(rf'Select count(*) from "{tablename}"')).scalar()
+        # total_rows = 18
         json_data = {
             'data':[{k: conv_str(v) for k, v in row._mapping.items()} for row in result],
             'total_rows':total_rows,
@@ -223,6 +232,18 @@ class ServiceApp:
                 with gzip.open(zip_path, 'wb') as f:
                     f.write(buffer.getvalue())
                 return FileResponse(zip_path, media_type='application/gzip')
+        elif for_table == 'eodnetposcp':
+            grouped_desk_db_df = read_data_db(for_table=tablename)
+            grouped_desk_db_df.drop(columns=['buyAvgPrice','sellAvgPrice'], inplace=True)
+            if grouped_desk_db_df.empty:
+                return JSONResponse(content={"message": "No data available"}, status_code=204)
+            buffer = io.BytesIO()
+            with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
+                grouped_desk_db_df.to_excel(writer, index=False)
+            buffer.seek(0)
+            with gzip.open(zip_path, 'wb') as f:
+                f.write(buffer.getvalue())
+            return FileResponse(zip_path, media_type='application/gzip')
         else:
             stt = datetime.now()
             total_rows = db.execute(text(rf'select count(*) from "{tablename}"')).scalar()
@@ -493,8 +514,8 @@ class ServiceApp:
         sym_list = ['NIFTY','BANKNIFTY','FINNIFTY','MIDCPNIFTY','SENSEX']
         volt_df = volt_df.query("Symbol in @sym_list")
 
-        tablename = f'NOTIS_EOD_NET_POS_CP_NONCP_{for_date}'
-        cp_df = read_data_db(for_table=tablename)
+        # tablename = f'NOTIS_EOD_NET_POS_CP_NONCP_{for_date}'
+        cp_df = read_data_db(for_table=n_tbl_notis_eod_net_pos_cp_noncp)
         cp_df.columns = [re.sub(r'Eod|\s', '', each) for each in cp_df.columns]
 
         merged_df = cp_df.merge(volt_df, how='left', left_on=['Underlying'], right_on=['Symbol'])
@@ -520,18 +541,64 @@ class ServiceApp:
             return Response(content=json_data, media_type='application/json')
 
     def get_oi(self, for_date=Query()):
-        for_date = datetime.today().date().strftime('%Y-%m-%d')
-        table_to_read = f'NOTIS_EOD_NET_POS_CP_NONCP_{for_date}'
-        eod_df = read_data_db(for_table=table_to_read)
+        # for_date = datetime.today().date().strftime('%Y-%m-%d')
+        # table_to_read = f'NOTIS_EOD_NET_POS_CP_NONCP_{for_date}'
+        eod_df = read_data_db(for_table=n_tbl_notis_eod_net_pos_cp_noncp)
         eod_df.columns = [re.sub(r'Eod|\s', '', each) for each in eod_df.columns]
         grouped_df = eod_df.groupby(by=['Broker', 'Underlying', 'Expiry'], as_index=False).agg(
-            {'FinalNetQty': lambda x: x.abs().sum()})
+            {'PreFinalNetQty': lambda x: x.abs().sum()})
         json_data = grouped_df.to_json(orient='records')
         return Response(json_data, media_type='application/json')
+    
+    def add_new_trade_data(self, for_date=Query(), file:UploadFile=File(...)):
+        # for_date = datetime.today().date().strftime('%Y-%m-%d')
+        # table_to_read = f'NOTIS_EOD_NET_POS_CP_NONCP_{for_date}'
+        filename = file.filename.lower()
+        if not (filename.endswith('.csv') or filename.endswith('.xlsx')):
+            # raise HTTPException(
+            #     status_code=400,
+            #     detail="Invalid file. Please upload only csv or xlsx file."
+            # )
+            # return JSONResponse(status_code=415,
+            #                     content={
+            #                         "status":"Fail",
+            #                         "message":"Unsupported file format"
+            #                     }
+            #                 )
+            return JSONResponse(status_code=415, content="Unsupported file format")
+        data = file.file.read()
+        buffer = io.BytesIO(data)
+        try:
+            if filename.endswith('.csv'):
+                df = pd.read_csv(buffer)
+            else:
+                df = pd.read_excel(buffer)
+            df['EodBroker'] = 'SRSPL'
+            df['EodExpiry'] = pd.to_datetime(df['EodExpiry'], dayfirst=True).dt.date
+            df = df[['EodBroker', 'EodUnderlying', 'EodExpiry', 'EodStrike', 'EodOptionType', 'EodNetQuantity', 'buyQty',
+                 'buyValue', 'sellQty', 'sellValue', 'PreFinalNetQty']]
+            write_notis_postgredb(df=df, table_name=n_tbl_srspl_trade_data, truncate_required=True)
+            eod_df = read_data_db(for_table=n_tbl_notis_eod_net_pos_cp_noncp)
+            eod_df = eod_df.query("EodBroker != 'SRSPL'")
+            concat_df = pd.concat([eod_df,df], ignore_index=True)
+            concat_df['EodExpiry'] = pd.to_datetime(concat_df['EodExpiry'], dayfirst=True).dt.date
+            concat_df.fillna(0, inplace=True)
+            if today in concat_df.EodExpiry.unique():
+                concat_df = analyze_expired_instruments(grouped_final_eod=concat_df)
+            write_notis_postgredb(df=concat_df, table_name=n_tbl_notis_eod_net_pos_cp_noncp, truncate_required=True)
+        except Exception as e:
+            raise HTTPException(
+                status_code=400,
+                detail='File format not supported.'
+            )
+        # return PlainTextResponse(
+        #     status_code=200,
+        #     content='File Uploaded successfully.'
+        # )
+        return JSONResponse("File Uploaded successfully")
 
 service = ServiceApp()
 app = service.app
 
 if __name__ == '__main__':
     uvicorn.run('notis_app_per_minute:app', host='172.16.47.81', port=8871, workers=6)
-

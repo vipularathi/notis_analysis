@@ -87,15 +87,17 @@ class NSEUtility:
     def calc_eod_cp_noncp(desk_db_df):
         eod_tablename = f'NOTIS_EOD_NET_POS_CP_NONCP_{yesterday.strftime("%Y-%m-%d")}' #NOTIS_EOD_NET_POS_CP_NONCP_2025-03-17
         eod_df = read_data_db(for_table=eod_tablename)
-        eod_df.columns = [re.sub(r'Eod|\s','',each) for each in eod_df.columns]
-        eod_df.drop(columns=['NetQuantity','buyQty','buyAvgPrice','sellQty','sellAvgPrice','IntradayVolume','ClosingPrice'], inplace=True)
-        eod_df.rename(columns={'FinalNetQty':'NetQuantity','FinalSettlementPrice':'ClosingPrice'}, inplace=True)
+        eod_df.columns = [re.sub(r'Eod|\s|Expired','',each) for each in eod_df.columns]
+        eod_df.drop(columns=['NetQuantity','buyQty','buyAvgPrice','buyValue','sellQty','sellAvgPrice','sellValue',
+                             'IntradayVolume','PreFinalNetQty','Spot_close','Rate','Assn_value','SellValue','BuyValue','Qty'],
+                    inplace=True)
+        eod_df.rename(columns={'FinalNetQty':'NetQuantity'}, inplace=True)
         eod_df = eod_df.add_prefix('Eod')
         eod_df['EodExpiry'] = pd.to_datetime(eod_df['EodExpiry'], dayfirst=True, format='mixed').dt.date
         nse_underlying_list = ['NIFTY','BANKNIFTY','MIDCPNIFTY','FINNIFTY']
         eod_df = eod_df.query("EodUnderlying in @nse_underlying_list and EodExpiry >= @today and EodNetQuantity != 0")
 
-        grouped_eod = eod_df.groupby(by=['EodBroker','EodUnderlying','EodExpiry','EodStrike','EodOptionType'], as_index=False).agg({'EodNetQuantity':'sum','EodClosingPrice':'mean'})
+        grouped_eod = eod_df.groupby(by=['EodBroker','EodUnderlying','EodExpiry','EodStrike','EodOptionType'], as_index=False).agg({'EodNetQuantity':'sum'})
         grouped_eod = grouped_eod.query("EodNetQuantity != 0")
         grouped_eod = grouped_eod.drop_duplicates()
 
@@ -104,7 +106,7 @@ class NSEUtility:
         desk_db_df.strikePrice = desk_db_df.strikePrice.astype('int64')
         desk_db_df['expiryDate'] = pd.to_datetime(desk_db_df['expiryDate'], dayfirst=True, format='mixed').dt.date
 
-        grouped_desk_db_df = desk_db_df.groupby(by=['broker','symbol', 'expiryDate', 'strikePrice', 'optionType']).agg({'buyAvgQty':'sum','buyAvgPrice':'mean','sellAvgQty':'sum','sellAvgPrice':'mean'}).reset_index()
+        grouped_desk_db_df = desk_db_df.groupby(by=['broker','symbol', 'expiryDate', 'strikePrice', 'optionType']).agg({'buyAvgQty':'sum','buyAvgPrice':'mean','buyValue':'sum','sellAvgQty':'sum','sellAvgPrice':'mean','sellValue':'sum'}).reset_index()
         grouped_desk_db_df['IntradayVolume'] = grouped_desk_db_df['buyAvgQty'] - grouped_desk_db_df['sellAvgQty']
         grouped_desk_db_df.rename(columns={'buyAvgQty':'buyQty','sellAvgQty':'sellQty'}, inplace=True)
         # ================================================================
@@ -120,36 +122,36 @@ class NSEUtility:
         merged_df['FinalNetQty'] = merged_df['EodNetQuantity'] + merged_df['IntradayVolume']
         merged_df.drop(columns = ['broker','symbol', 'expiryDate', 'strikePrice', 'optionType'], inplace = True)
 
-        if datetime.strptime('16:30:00', '%H:%M:%S').time() < datetime.now().time():
-            bhav_pattern = rf'regularNSEBhavcopy_{today.strftime("%d%m%Y")}.(xlsx|csv)'
-            bhav_matched_files = [f for f in os.listdir(bhav_dir) if re.match(bhav_pattern, f)]
-            bhav_df = read_file(os.path.join(bhav_dir, bhav_matched_files[0])) # regularBhavcopy_14012025.xlsx
-            bhav_df.columns = bhav_df.columns.str.replace(' ', '')
-            bhav_df.rename(columns={'VWAPclose':'closingPrice'}, inplace=True)
-            bhav_df.columns = bhav_df.columns.str.capitalize()
-            bhav_df = bhav_df.add_prefix('Bhav')
-            bhav_df.BhavExpiry = bhav_df.BhavExpiry.apply(lambda x: pd.to_datetime(get_date_from_non_jiffy(x)).date())
-            bhav_df.loc[bhav_df['BhavOptiontype'] == 'XX', 'BhavStrikeprice'] = 0
-            bhav_df = bhav_df.applymap(lambda x: x.strip() if isinstance(x, str) else x)
-            bhav_df.BhavStrikeprice = bhav_df.BhavStrikeprice.astype('int64')
-            bhav_df.BhavStrikeprice = bhav_df.BhavStrikeprice.apply(lambda x: x/100 if x>0 else x)
-            col_keep = ['BhavSymbol', 'BhavExpiry', 'BhavStrikeprice', 'BhavOptiontype','BhavClosingprice']
-            bhav_df = bhav_df[col_keep]
-            bhav_df = bhav_df.drop_duplicates()
+        # if datetime.strptime('16:30:00', '%H:%M:%S').time() < datetime.now().time():
+        #     bhav_pattern = rf'regularNSEBhavcopy_{today.strftime("%d%m%Y")}.(xlsx|csv)'
+        #     bhav_matched_files = [f for f in os.listdir(bhav_dir) if re.match(bhav_pattern, f)]
+        #     bhav_df = read_file(os.path.join(bhav_dir, bhav_matched_files[0])) # regularBhavcopy_14012025.xlsx
+        #     bhav_df.columns = bhav_df.columns.str.replace(' ', '')
+        #     bhav_df.rename(columns={'VWAPclose':'closingPrice'}, inplace=True)
+        #     bhav_df.columns = bhav_df.columns.str.capitalize()
+        #     bhav_df = bhav_df.add_prefix('Bhav')
+        #     bhav_df.BhavExpiry = bhav_df.BhavExpiry.apply(lambda x: pd.to_datetime(get_date_from_non_jiffy(x)).date())
+        #     bhav_df.loc[bhav_df['BhavOptiontype'] == 'XX', 'BhavStrikeprice'] = 0
+        #     bhav_df = bhav_df.applymap(lambda x: x.strip() if isinstance(x, str) else x)
+        #     bhav_df.BhavStrikeprice = bhav_df.BhavStrikeprice.astype('int64')
+        #     bhav_df.BhavStrikeprice = bhav_df.BhavStrikeprice.apply(lambda x: x/100 if x>0 else x)
+        #     col_keep = ['BhavSymbol', 'BhavExpiry', 'BhavStrikeprice', 'BhavOptiontype','BhavClosingprice']
+        #     bhav_df = bhav_df[col_keep]
+        #     bhav_df = bhav_df.drop_duplicates()
+        #
+        #     merged_bhav_df = merged_df.merge(bhav_df, left_on=["EodUnderlying", "EodExpiry", "EodStrike", "EodOptionType"], right_on=['BhavSymbol', 'BhavExpiry', 'BhavStrikeprice', 'BhavOptiontype'], how='left')
+        #     merged_bhav_df.drop(columns = ['BhavSymbol', 'BhavExpiry', 'BhavStrikeprice', 'BhavOptiontype'], inplace = True)
+        # else:
+        #     merged_bhav_df = merged_df.copy()
+        #     merged_bhav_df['BhavClosingprice'] = 0
 
-            merged_bhav_df = merged_df.merge(bhav_df, left_on=["EodUnderlying", "EodExpiry", "EodStrike", "EodOptionType"], right_on=['BhavSymbol', 'BhavExpiry', 'BhavStrikeprice', 'BhavOptiontype'], how='left')
-            merged_bhav_df.drop(columns = ['BhavSymbol', 'BhavExpiry', 'BhavStrikeprice', 'BhavOptiontype'], inplace = True)
-        else:
-            merged_bhav_df = merged_df.copy()
-            merged_bhav_df['BhavClosingprice'] = 0
-
-        merged_bhav_df.fillna(0,inplace=True)
-        merged_bhav_df.buyAvgPrice = merged_bhav_df.buyAvgPrice.astype('int64')
-        merged_bhav_df.sellAvgPrice = merged_bhav_df.sellAvgPrice.astype('int64')
-        merged_bhav_df.BhavClosingprice = merged_bhav_df.BhavClosingprice.astype('int64')
-        merged_bhav_df.rename(columns = {'BhavClosingprice':'FinalSettlementPrice'}, inplace = True)
-        logger.info(f'cp noncp length at {datetime.now()} is {merged_bhav_df.shape}')
-        return merged_bhav_df
+        merged_df.fillna(0,inplace=True)
+        # merged_bhav_df.buyAvgPrice = merged_bhav_df.buyAvgPrice.astype('int64')
+        # merged_bhav_df.sellAvgPrice = merged_bhav_df.sellAvgPrice.astype('int64')
+        # merged_bhav_df.BhavClosingprice = merged_bhav_df.BhavClosingprice.astype('int64')
+        # merged_bhav_df.rename(columns = {'BhavClosingprice':'FinalSettlementPrice'}, inplace = True)
+        logger.info(f'cp noncp length at {datetime.now()} is {merged_df.shape}')
+        return merged_df
 
     @staticmethod
     def calc_deskwise_net_pos(pivot_df):

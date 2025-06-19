@@ -1,19 +1,11 @@
-import re
+import re, requests, os, pyodbc, psycopg2, time, csv, paramiko, logging, sys, progressbar
 import pandas as pd
 from datetime import datetime, timedelta, timezone
-import os
-import progressbar
+import numpy as np
 from openpyxl import load_workbook, Workbook
 from openpyxl.utils.dataframe import dataframe_to_rows
-import pyodbc
 from sqlalchemy import create_engine, text, insert
-import psycopg2
-import time
-import csv
-import paramiko
-import logging
 from logging.handlers import TimedRotatingFileHandler
-import sys
 from db_config import (engine_str,
                        n_tbl_notis_trade_book, s_tbl_notis_trade_book,
                        n_tbl_notis_raw_data, s_tbl_notis_raw_data,
@@ -432,6 +424,43 @@ def truncate_tables(tablename):
             logger.info(f'Existing data from table {tablename} deleted')
         else:
             logger.info(f'No data in table {tablename}, no need to delete')
+        
+def find_spot():
+    spot_dict = {}
+    index_list = ["NIFTY", "BANKNIFTY", "FINNIFTY", "MIDCPNIFTY", "SENSEX"]
+    url = 'http://192.168.112.219:8080/livedataname'
+    headers = {
+        'esegment': '["1"]',
+        'oi': '["1"]'
+    }
+    for each in index_list:
+        headers[f"inst_name"] = f'["{each}"]'
+        try:
+            response = requests.get(url=url, headers=headers)
+            if response.status_code == 200:
+                for index, index_value in response.json().items():
+                    # spot_list.append({index:f'{index_value[2]}'})
+                    spot_dict[index] = index_value[2]
+        except Exception as e:
+            print(f"Error in fetching spot data = {e}")
+    return spot_dict
+
+def calc_rate(row):
+    if row['EodOptionType'] == 'PE':
+        return max(row['EodStrike']-row['ExpiredSpot_close'], 0)
+    else:
+        return max(row['ExpiredSpot_close']-row['EodStrike'], 0)
+
+def analyze_expired_instruments(grouped_final_eod):
+    spot_dict = find_spot()
+    mask = grouped_final_eod['EodExpiry'] == today
+    grouped_final_eod.loc[mask, 'ExpiredSpot_close'] = grouped_final_eod['EodUnderlying'].map(spot_dict)
+    grouped_final_eod.loc[mask, 'ExpiredRate'] = grouped_final_eod.loc[mask].apply(calc_rate, axis=1)
+    grouped_final_eod.loc[mask, 'ExpiredAssn_value'] = (grouped_final_eod.loc[mask, 'PreFinalNetQty'] * grouped_final_eod.loc[mask, 'ExpiredRate'])
+    grouped_final_eod.loc[mask, 'ExpiredBuyValue'] = np.where(grouped_final_eod.loc[mask, 'PreFinalNetQty'] > 0,grouped_final_eod.loc[mask, 'ExpiredAssn_value'], 0)
+    grouped_final_eod.loc[mask, 'ExpiredSellValue'] = np.where(grouped_final_eod.loc[mask, 'PreFinalNetQty'] < 0,abs(grouped_final_eod.loc[mask, 'ExpiredAssn_value']), 0)
+    grouped_final_eod.loc[mask, 'ExpiredQty'] = -1 * grouped_final_eod.loc[mask, 'PreFinalNetQty']
+    return grouped_final_eod
 
 def revise_eod_net_pos(for_dt:str = '', modify_sensex:bool=False):# modify_sensex=True if only sensex data is to be revised
     final_eod_df = pd.DataFrame()

@@ -244,14 +244,36 @@ s_tbl_notis_eod_net_pos_cp_noncp = Table(
     Column("EodStrike", BigInteger),
     Column("EodOptionType", String(50)),
     Column("EodNetQuantity", BigInteger),
-    Column("EodClosingPrice", BigInteger),
     Column("buyQty", BigInteger,nullable=True),
-    Column("buyAvgPrice", BigInteger,nullable=True),
+    Column("buyAvgPrice", Float,nullable=True), # remove
+    Column("buyValue", Float,nullable=True),
     Column("sellQty", BigInteger,nullable=True),
-    Column("sellAvgPrice", BigInteger,nullable=True),
-    Column("IntradayVolume", BigInteger,nullable=True),
+    Column("sellAvgPrice", Float,nullable=True), # remove
+    Column("sellValue", Float,nullable=True),
+    Column("PreFinalNetQty", BigInteger),
+    Column("ExpiredSpot_close", Float),
+    Column("ExpiredRate", Float),
+    Column("ExpiredAssn_value", Float),
+    Column("ExpiredBuyValue", Float),
+    Column("ExpiredSellValue", Float),
+    Column("ExpiredQty", Float),
     Column("FinalNetQty", BigInteger),
-    Column("FinalSettlementPrice", BigInteger, nullable=True)
+)
+
+n_tbl_srspl_trade_data = f"SRSPL_TRADE_DATA_{today}"
+s_tbl_srspl_trade = Table(
+    n_tbl_srspl_trade_data, metadata,
+    Column("EodBroker", String(50)),
+    Column("EodUnderlying", String(50)),
+    Column("EodStrike", BigInteger),
+    Column("EodOptionType", String(10)),
+    Column("EodExpiry", String(20)),
+    Column("EodNetQuantity", BigInteger),
+    Column("buyQty", BigInteger),
+    Column("buyValue", Float),
+    Column("sellQty", BigInteger),
+    Column("sellValue", Float),
+    Column("PreFinalNetQty", BigInteger)
 )
 
 # n_tbl_test_notis_eod_net_pos_cp_noncp = f"TEST_NOTIS_EOD_NET_POS_CP_NONCP_{today}"
