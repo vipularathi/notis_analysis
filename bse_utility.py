@@ -14,29 +14,29 @@ class BSEUtility:
         eod_df = read_data_db(for_table=f'NOTIS_EOD_NET_POS_CP_NONCP_{yesterday.strftime("%Y-%m-%d")}')
         # eod_df = eod_df.replace(' ', '', regex=True)
         if len(desk_bse_df) == 0:
-            eod_df.Expiry = pd.to_datetime(eod_df.Expiry, dayfirst=True, format='mixed').dt.date
+            eod_df.EodExpiry = pd.to_datetime(eod_df.EodExpiry, dayfirst=True, format='mixed').dt.date
             eod_df = eod_df.query("EodUnderlying == 'SENSEX' and EodExpiry >= @today and FinalNetQty != 0")
             grouped_eod_df = eod_df.groupby(
                 by=['EodBroker', 'EodUnderlying', 'EodExpiry', 'EodStrike', 'EodOptionType'],
-                as_index=False).agg({'FinalNetQty': 'sum', 'EodClosingPrice': 'sum'})
+                as_index=False).agg({'FinalNetQty': 'sum'})
             return grouped_eod_df
-        eod_df.columns = [re.sub(rf'Eod|\s', '', each) for each in eod_df.columns]
+        eod_df.columns = [re.sub(rf'Eod|\s|Expired', '', each) for each in eod_df.columns]
         eod_df.Expiry = pd.to_datetime(eod_df.Expiry, dayfirst=True, format='mixed').dt.date
         eod_df.drop(
-            columns=['NetQuantity', 'buyQty', 'buyAvgPrice', 'sellQty', 'sellAvgPrice', 'IntradayVolume',
-                     'ClosingPrice'],
+            columns=['NetQuantity', 'buyQty', 'buyAvgPrice', 'buyValue','sellQty', 'sellAvgPrice', 'sellValue', 'IntradayVolume',
+                     'PreFinalNetQty','Spot_close','Rate','Assn_value','SellValue','BuyValue','Qty'],
             inplace=True
         )
-        eod_df.rename(columns={'FinalNetQty': 'NetQuantity', 'FinalSettlementPrice': 'ClosingPrice'}, inplace=True)
+        eod_df.rename(columns={'IntradayNetQty': 'NetQuantity'}, inplace=True)
         eod_df = eod_df.add_prefix('Eod')
         eod_df = eod_df.query("EodUnderlying == 'SENSEX' and EodExpiry >= @today and EodNetQuantity != 0")
         grouped_eod_df = eod_df.groupby(by=['EodBroker', 'EodUnderlying', 'EodExpiry', 'EodStrike', 'EodOptionType'],
-                                        as_index=False).agg({'EodNetQuantity': 'sum', 'EodClosingPrice': 'mean'})
+                                        as_index=False).agg({'EodNetQuantity': 'sum'})
         grouped_eod_df = grouped_eod_df.query("EodUnderlying == 'SENSEX' and EodExpiry >= @today and EodNetQuantity != 0")
         # ============================================================================================
         grouped_desk_df = desk_bse_df.groupby(by=['Broker', 'Underlying', 'Expiry', 'Strike', 'OptionType'],
                                               as_index=False).agg(
-            {'BuyQty': 'sum', 'SellQty': 'sum', 'buyAvgPrice': 'mean', 'sellAvgPrice': 'mean', 'IntradayVolume': 'sum'})
+            {'BuyQty': 'sum', 'SellQty': 'sum', 'buyAvgPrice': 'mean', 'sellAvgPrice': 'mean', 'buyValue':'sum', 'sellValue':'sum','IntradayVolume': 'sum'})
         if len(grouped_eod_df) > len(grouped_desk_df):
             merged_df = grouped_eod_df.merge(
                 grouped_desk_df,
@@ -60,10 +60,9 @@ class BSEUtility:
             merged_df.loc[merged_df[coltd1[i]] == 0, coltd1[i]] = merged_df[coltd2[i]]
             merged_df.loc[merged_df[coltd2[i]] == 0, coltd2[i]] = merged_df[coltd1[i]]
         merged_df['FinalNetQty'] = merged_df['EodNetQuantity'] + merged_df['IntradayVolume']
-        merged_df['FinalSettlementPrice'] = 0
         merged_df.drop(columns=['Broker', 'Underlying', 'Expiry', 'Strike', 'OptionType'], inplace=True)
         # ============================================================================================
-        col_to_int = ['BuyQty', 'SellQty', 'FinalSettlementPrice']
+        col_to_int = ['BuyQty', 'SellQty']
         for col in col_to_int:
             merged_df[col] = merged_df[col].astype(np.int64)
         merged_df.rename(columns={'BuyQty':'buyQty','SellQty':'sellQty'},inplace=True)
@@ -119,4 +118,3 @@ class BSEUtility:
 
             concat_eod_df = pd.concat([eod_df, truncated_sent_df], ignore_index=True)
             # write_notis_postgredb()
-

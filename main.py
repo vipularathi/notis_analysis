@@ -6,10 +6,10 @@ from datetime import datetime, timedelta, timezone
 from db_config import (n_tbl_notis_trade_book, n_tbl_notis_raw_data,
                        n_tbl_notis_nnf_data, n_tbl_notis_desk_wise_net_position,
                        n_tbl_notis_nnf_wise_net_position,
-                       n_tbl_notis_eod_net_pos_cp_noncp, n_tbl_bse_trade_data)
+                       n_tbl_notis_eod_net_pos_cp_noncp, n_tbl_bse_trade_data,n_tbl_srspl_trade_data)
 from common import (read_data_db, write_notis_data, write_notis_postgredb, today,
                     root_dir, bhav_dir, modified_dir, table_dir, bse_dir,
-                    download_bhavcopy, logger)
+                    download_bhavcopy, logger, find_spot, analyze_expired_instruments)
 from nse_utility import NSEUtility
 from bse_utility import BSEUtility
 
@@ -17,6 +17,12 @@ warnings.filterwarnings('ignore', message="pandas only supports SQLAlchemy conne
 pd.set_option('display.float_format', lambda a:'%.2f' %a)
 actual_date = datetime.now().date()
 
+def calc_rate(row):
+    if row['EodOptionType'] == 'PE':
+        return max(row['EodStrike']-row['ExpiredSpot_close'],0)
+    else:
+        return max(row['ExpiredSpot_close']-row['EodStrike'], 0)
+    
 def download_tables():
     table_list = [n_tbl_notis_desk_wise_net_position, n_tbl_notis_nnf_wise_net_position,n_tbl_notis_eod_net_pos_cp_noncp, n_tbl_bse_trade_data]
     # today = datetime(year=2025, month=1, day=10).date().strftime('%Y_%m_%d').upper()
@@ -29,6 +35,10 @@ def download_tables():
 def get_nse_data():
     logger.info(f'fetching NSE trades...')
     df_db = read_data_db()
+    if df_db.empty:
+        logger.info(f'No NSE trade done today hence skipping')
+        df = pd.DataFrame()
+        return df
     logger.info(f'Notis trade data fetched, shape={df_db.shape}')
     write_notis_postgredb(df=df_db, table_name=n_tbl_notis_raw_data, raw=True, truncate_required=True)
     modify_filepath = os.path.join(modified_dir, f'NOTIS_TRADE_DATA_{today.strftime("%d%b%Y").upper()}.csv')
@@ -52,7 +62,7 @@ def get_nse_data():
     write_notis_data(modified_df, modify_filepath)
     write_notis_data(modified_df, rf'C:\Users\vipulanand\Documents\Anand Rathi Financial Services Ltd (Synced)\OneDrive - Anand Rathi Financial Services Ltd\notis_files\NOTIS_TRADE_DATA_{today.strftime("%d%b%Y").upper()}.csv')
     logger.info('file saved in modified_data folder')
-    modified_df['trdQtyPrc'] = modified_df['trdQty'] * modified_df['trdPrc']
+    modified_df['trdQtyPrc'] = modified_df['trdQty'] * (modified_df['trdPrc']/100)
     pivot_df = modified_df.pivot_table(
         index=['MainGroup', 'SubGroup', 'broker', 'ctclid', 'sym', 'expDt', 'strPrc', 'optType'],
         columns=['bsFlg'],
@@ -74,14 +84,14 @@ def get_nse_data():
     else:
         pivot_df.columns = ['BuyQty', 'SellQty', 'BuyTrdQtyPrc', 'SellTrdQtyPrc']
     pivot_df.reset_index(inplace=True)
-    pivot_df['BuyAvgPrc'] = pivot_df.apply(lambda row: row['BuyTrdQtyPrc'] / row['BuyQty'] if row['BuyQty'] > 0 else 0,
+    pivot_df['BuyAvgPrc'] = pivot_df.apply(lambda row: row['BuyTrdQtyPrc'] / row['BuyQty'] if row['BuyQty'] > 0 else 0.0,
                                            axis=1)
     pivot_df['SellAvgPrc'] = pivot_df.apply(
-        lambda row: row['SellTrdQtyPrc'] / row['SellQty'] if row['SellQty'] > 0 else 0, axis=1)
-    pivot_df.drop(columns=['BuyTrdQtyPrc', 'SellTrdQtyPrc'], inplace=True)
+        lambda row: row['SellTrdQtyPrc'] / row['SellQty'] if row['SellQty'] > 0 else 0.0, axis=1)
+    # pivot_df.drop(columns=['BuyTrdQtyPrc', 'SellTrdQtyPrc'], inplace=True)
     pivot_df.rename(columns={'MainGroup': 'mainGroup', 'SubGroup': 'subGroup', 'sym': 'symbol', 'expDt': 'expiryDate',
-                             'strPrc': 'strikePrice', 'optType': 'optionType', 'BuyAvgPrc': 'buyAvgPrice',
-                             'SellAvgPrc': 'sellAvgPrice', 'BuyQty': 'buyAvgQty', 'SellQty': 'sellAvgQty'},
+                             'strPrc': 'strikePrice', 'optType': 'optionType', 'BuyAvgPrc': 'buyAvgPrice','BuyTrdQtyPrc':'buyValue',
+                             'SellAvgPrc': 'sellAvgPrice', 'BuyQty': 'buyAvgQty', 'SellQty': 'sellAvgQty','SellTrdQtyPrc':'sellValue'},
                     inplace=True)
     pivot_df.volume = pivot_df.buyAvgQty - pivot_df.sellAvgQty
     return pivot_df
@@ -98,15 +108,44 @@ def find_net_pos(nse_pivot_df, bse_pivot_df):
     cp_noncp_bse_df = BSEUtility.calc_bse_eod_net_pos(bse_pivot_df)
     final_cp_noncp_eod_df = pd.concat([cp_noncp_nse_df, cp_noncp_bse_df], ignore_index=True)
 
-    to_int = ['EodStrike','EodNetQuantity', 'buyQty', 'buyAvgPrice', 'sellQty', 'sellAvgPrice', 'IntradayVolume', 'FinalNetQty']
+    to_int = ['EodStrike','EodNetQuantity', 'buyQty', 'sellQty', 'IntradayVolume', 'FinalNetQty']
     for each in to_int:
         final_cp_noncp_eod_df[each] = final_cp_noncp_eod_df[each].astype(np.int64)
     grouped_final_eod = final_cp_noncp_eod_df.groupby(by=['EodBroker', 'EodUnderlying', 'EodExpiry', 'EodStrike', 'EodOptionType'],
                                           as_index=False).agg(
-        {'EodNetQuantity': 'sum', 'buyQty': 'sum', 'buyAvgPrice': 'mean', 'sellQty': 'sum', 'sellAvgPrice': 'mean',
-         'IntradayVolume': 'sum', 'FinalNetQty': 'sum'})
-    grouped_final_eod['FinalNetQty'] = grouped_final_eod['EodNetQuantity'] + grouped_final_eod['IntradayVolume']
-
+        {'EodNetQuantity': 'sum', 'buyQty': 'sum', 'buyAvgPrice': 'mean','buyValue':'sum', 'sellQty': 'sum', 'sellAvgPrice': 'mean','sellValue':'sum',
+         'IntradayVolume': 'sum'})
+    grouped_final_eod['PreFinalNetQty'] = grouped_final_eod['EodNetQuantity'] + grouped_final_eod['IntradayVolume']
+    mask = grouped_final_eod['EodOptionType'] == 'XX'
+    masked_df = grouped_final_eod.loc[mask].copy()
+    grouped_final_eod.loc[mask, 'buyAvgPrice'] = np.where(masked_df['buyQty'] > 0,
+                                                          masked_df['buyValue'] / masked_df['buyQty'], 0)
+    grouped_final_eod.loc[mask, 'sellAvgPrice'] = np.where(masked_df['sellQty'] > 0,
+                                                           masked_df['sellValue'] / masked_df['sellQty'], 0)
+    srspl_df = read_data_db(for_table=n_tbl_srspl_trade_data)
+    grouped_final_eod = pd.concat([grouped_final_eod,srspl_df], ignore_index=True)
+    grouped_final_eod['EodExpiry'] = pd.to_datetime(grouped_final_eod['EodExpiry'], dayfirst=True).dt.date
+    grouped_final_eod.fillna(0, inplace=True)
+    grouped_final_eod['ExpiredSpot_close'] = 0.0
+    grouped_final_eod['ExpiredRate'] = 0.0
+    grouped_final_eod['ExpiredAssn_value'] = 0.0
+    grouped_final_eod['ExpiredSellValue'] = 0.0
+    grouped_final_eod['ExpiredBuyValue'] = 0.0
+    grouped_final_eod['ExpiredQty'] = 0.0
+    if today in grouped_final_eod.EodExpiry.unique():
+        spot_dict = find_spot()
+        mask = grouped_final_eod['EodExpiry'] == today
+        grouped_final_eod.loc[mask, 'ExpiredSpot_close'] = grouped_final_eod['EodUnderlying'].map(spot_dict)
+        grouped_final_eod.loc[mask, 'ExpiredRate'] = grouped_final_eod.loc[mask].apply(calc_rate, axis=1)
+        grouped_final_eod.loc[mask, 'ExpiredAssn_value'] = (grouped_final_eod.loc[mask, 'PreFinalNetQty'] * grouped_final_eod.loc[mask, 'ExpiredRate'])
+        grouped_final_eod.loc[mask, 'ExpiredBuyValue'] = np.where(grouped_final_eod.loc[mask, 'PreFinalNetQty'] > 0,
+                                                                  grouped_final_eod.loc[mask, 'ExpiredAssn_value'], 0)
+        grouped_final_eod.loc[mask, 'ExpiredSellValue'] = np.where(grouped_final_eod.loc[mask, 'PreFinalNetQty'] < 0,
+                                                                   grouped_final_eod.loc[mask, 'ExpiredAssn_value'], 0)
+        grouped_final_eod.loc[mask, 'ExpiredQty'] = -1 * grouped_final_eod.loc[mask, 'PreFinalNetQty']
+    grouped_final_eod['FinalNetQty'] = grouped_final_eod['PreFinalNetQty'] + grouped_final_eod['ExpiredQty']
+    grouped_final_eod.drop(columns=['buyAvgPrice', 'sellAvgPrice', 'IntradayVolume'], inplace=True)
+    grouped_final_eod = grouped_final_eod.round(2)
     write_notis_postgredb(grouped_final_eod, table_name=n_tbl_notis_eod_net_pos_cp_noncp, truncate_required=True)
     # write_notis_postgredb(final_cp_noncp_eod_df, table_name=n_tbl_test_notis_eod_net_pos_cp_noncp, truncate_required=True)
 
@@ -114,12 +153,16 @@ def get_bse_data():
     stt = datetime.now()
     logger.info(f'fetching BSE trades...')
     raw_bse_df = read_data_db(for_table='TradeHist')
+    if raw_bse_df.empty:
+        logger.info(f'No BSE trade done today hence skipping')
+        df = pd.DataFrame()
+        return df
     logger.info(f'BSE trade data fetched, shape={raw_bse_df.shape}')
     modified_bse_df = BSEUtility.bse_modify_file(raw_bse_df)
     write_notis_postgredb(df=modified_bse_df,table_name=n_tbl_bse_trade_data,truncate_required=True)
     write_notis_data(modified_bse_df, os.path.join(bse_dir, f'BSE_TRADE_DATA_{today.strftime("%d%b%Y").upper()}.xlsx'))
     write_notis_data(modified_bse_df, rf'C:\Users\vipulanand\Documents\Anand Rathi Financial Services Ltd (Synced)\OneDrive - Anand Rathi Financial Services Ltd\notis_files\BSE_TRADE_DATA_{today.strftime("%d%b%Y").upper()}.xlsx')
-    modified_bse_df['trdQtyPrc'] = modified_bse_df['FillSize'] * modified_bse_df['AvgPrice']
+    modified_bse_df['trdQtyPrc'] = modified_bse_df['FillSize'] * (modified_bse_df['AvgPrice']/100)
     pivot_df = modified_bse_df.pivot_table(
         index=['Broker', 'Underlying', 'Expiry', 'Strike', 'OptionType'],
         columns=['TransactionType'],
@@ -145,9 +188,10 @@ def get_bse_data():
         lambda row: row['BuyTrdQtyPrc'] / row['BuyQty'] if row['BuyQty'] > 0 else 0, axis=1)
     pivot_df['sellAvgPrice'] = pivot_df.apply(
         lambda row: row['SellTrdQtyPrc'] / row['SellQty'] if row['SellQty'] > 0 else 0, axis=1)
-    pivot_df.drop(columns=['BuyTrdQtyPrc', 'SellTrdQtyPrc'], inplace=True)
+    # pivot_df.drop(columns=['BuyTrdQtyPrc', 'SellTrdQtyPrc'], inplace=True)
     pivot_df['IntradayVolume'] = pivot_df.BuyQty - pivot_df.SellQty
-    pivot_df = pivot_df.round(2)
+    pivot_df.rename(columns={'BuyTrdQtyPrc': 'buyValue', 'SellTrdQtyPrc': 'sellValue'}, inplace=True)
+    # pivot_df = pivot_df.round(2)
     ett = datetime.now()
     logger.info(f'BSE trade fetched. Total time taken: {(ett - stt).seconds} seconds')
     return pivot_df
