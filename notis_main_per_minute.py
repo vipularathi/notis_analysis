@@ -171,6 +171,7 @@ def find_net_pos(nse_pivot_df, bse_pivot_df):
             cp_noncp_bse_df = final_eod.query("EodUnderlying == 'SENSEX'")
         final_eod = pd.concat([cp_noncp_nse_df, cp_noncp_bse_df], ignore_index=True)
         to_int = ['EodStrike','EodNetQuantity', 'buyQty', 'sellQty', 'IntradayVolume', 'FinalNetQty']
+        final_eod.fillna(0, inplace=True)
         for each in to_int:
             final_eod[each] = final_eod[each].astype(np.int64)
         grouped_final_eod = final_eod.groupby(by=['EodBroker', 'EodUnderlying', 'EodExpiry', 'EodStrike', 'EodOptionType'],

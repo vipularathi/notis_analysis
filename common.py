@@ -457,8 +457,8 @@ def analyze_expired_instruments(grouped_final_eod):
     grouped_final_eod.loc[mask, 'ExpiredSpot_close'] = grouped_final_eod['EodUnderlying'].map(spot_dict)
     grouped_final_eod.loc[mask, 'ExpiredRate'] = grouped_final_eod.loc[mask].apply(calc_rate, axis=1)
     grouped_final_eod.loc[mask, 'ExpiredAssn_value'] = (grouped_final_eod.loc[mask, 'PreFinalNetQty'] * grouped_final_eod.loc[mask, 'ExpiredRate'])
-    grouped_final_eod.loc[mask, 'ExpiredBuyValue'] = np.where(grouped_final_eod.loc[mask, 'PreFinalNetQty'] > 0,grouped_final_eod.loc[mask, 'ExpiredAssn_value'], 0)
-    grouped_final_eod.loc[mask, 'ExpiredSellValue'] = np.where(grouped_final_eod.loc[mask, 'PreFinalNetQty'] < 0,abs(grouped_final_eod.loc[mask, 'ExpiredAssn_value']), 0)
+    grouped_final_eod.loc[mask, 'ExpiredSellValue'] = np.where(grouped_final_eod.loc[mask, 'PreFinalNetQty'] > 0,grouped_final_eod.loc[mask, 'ExpiredAssn_value'], 0)
+    grouped_final_eod.loc[mask, 'ExpiredBuyValue'] = np.where(grouped_final_eod.loc[mask, 'PreFinalNetQty'] < 0,abs(grouped_final_eod.loc[mask, 'ExpiredAssn_value']), 0)
     grouped_final_eod.loc[mask, 'ExpiredQty'] = -1 * grouped_final_eod.loc[mask, 'PreFinalNetQty']
     return grouped_final_eod
 

@@ -89,7 +89,7 @@ class NSEUtility:
         eod_df = read_data_db(for_table=eod_tablename)
         eod_df.columns = [re.sub(r'Eod|\s|Expired','',each) for each in eod_df.columns]
         eod_df.drop(columns=['NetQuantity','buyQty','buyAvgPrice','buyValue','sellQty','sellAvgPrice','sellValue',
-                             'IntradayVolume','PreFinalNetQty','Spot_close','Rate','Assn_value','SellValue','BuyValue','Qty'],
+                             'PreFinalNetQty','Spot_close','Rate','Assn_value','SellValue','BuyValue','Qty'],
                     inplace=True)
         eod_df.rename(columns={'FinalNetQty':'NetQuantity'}, inplace=True)
         eod_df = eod_df.add_prefix('Eod')
