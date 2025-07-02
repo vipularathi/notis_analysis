@@ -21,7 +21,7 @@ from common import (get_date_from_non_jiffy,get_date_from_jiffy,
                     read_data_db, read_notis_file, read_file,
                     write_notis_data, write_notis_postgredb,
                     analyze_expired_instruments,
-                    today, yesterday,
+                    today, yesterday, bhav_dir,
                     logger, volt_dir, zipped_dir)
 
 pd.set_option('display.max_columns', None)
@@ -84,6 +84,7 @@ class ServiceApp:
         self.app.add_api_route('/downloadSourceData', methods=['GET'], endpoint=self.download_source_data)
         self.app.add_api_route('/get_oi', methods=['GET'], endpoint=self.get_oi)
         self.app.add_api_route('/upload', methods=['POST'], endpoint=self.add_new_trade_data)
+        self.app.add_api_route('/nifty/future/oi', methods=['GET'], endpoint=self.calc_nifty_future_oi)
 
     def get_data(self, for_date:date=Query(), for_table:str=Query(), page:int=Query(1), page_size:int=Query(1000),db:Session=Depends(get_db)):
         for_dt = pd.to_datetime(for_date).date()
@@ -596,6 +597,45 @@ class ServiceApp:
         #     content='File Uploaded successfully.'
         # )
         return JSONResponse("File Uploaded successfully")
+    
+    def calc_nifty_future_oi(self, for_date=Query()):
+        table_name = n_tbl_notis_eod_net_pos_cp_noncp
+        eod_df = read_data_db(for_table=n_tbl_notis_eod_net_pos_cp_noncp)
+        eod_df.EodExpiry = pd.to_datetime(eod_df.EodExpiry, dayfirst=True).dt.date
+        eod_df = eod_df.query("EodUnderlying == 'NIFTY' and EodOptionType == 'XX'")
+        grouped_eod = eod_df.groupby(by=['EodBroker', 'EodUnderlying', 'EodExpiry', 'EodStrike', 'EodOptionType'], as_index=False).agg({'EodNetQuantity':'sum', 'buyQty':'sum','sellQty':'sum','PreFinalNetQty':'sum'})
+        grouped_eod.fillna(0, inplace=True)
+        grouped_eod['OI'] = grouped_eod['PreFinalNetQty'].abs()
+        for each in grouped_eod['EodBroker'].unique():
+            mask = (grouped_eod['EodBroker'] == each) & (grouped_eod['EodExpiry'] == sorted(grouped_eod['EodExpiry'].unique())[-1])
+            total_oi = grouped_eod.query("EodBroker == @each")['OI'].abs().sum()
+            grouped_eod.loc[mask, 'OI Total'] = total_oi
+        grouped_eod.fillna(0, inplace=True)
+        bhav_pattern = rf'regularNSEBhavcopy_{yesterday.strftime("%d%m%Y")}.(xlsx|csv)' #regularNSEBhavcopy_19062025
+        bhav_matched_file = [f for f in os.listdir(bhav_dir) if re.match(bhav_pattern, f)]
+        bhav_df = read_file(os.path.join(bhav_dir,bhav_matched_file[0]))
+        bhav_df.columns = bhav_df.columns.str.replace(' ', '')
+        bhav_df = bhav_df.applymap(lambda x: x.strip() if isinstance(x, str) else x)
+        bhav_df.columns = bhav_df.columns.str.capitalize()
+        bhav_df = bhav_df.add_prefix('Bhav')
+        bhav_df['BhavOpeninterest'] = bhav_df['BhavOpeninterest'].astype(np.int64)
+        bhav_df['BhavExpiry'] = bhav_df['BhavExpiry'].apply(lambda x: pd.to_datetime(get_date_from_non_jiffy(x)).date())
+        for broker in grouped_eod.EodBroker.unique():
+            sum_oi = 0
+            mask=None
+            for index in grouped_eod.query("EodBroker == @broker")['EodUnderlying'].unique():
+                for last_exp in sorted(grouped_eod.query("EodBroker == @broker and EodUnderlying == @index")['EodExpiry'].unique()):
+                # last_exp = sorted(grouped_eod.query("EodBroker == @broker and EodUnderlying == @index")['EodExpiry'].unique())[-1]
+                    mask = (grouped_eod['EodBroker'] == broker) & (grouped_eod['EodUnderlying'] == index) & (grouped_eod['EodExpiry'] == last_exp)
+                    prev_oi = bhav_df.query("BhavSymbol == @index and BhavExpiry == @last_exp and BhavInstrumentname == 'FUTIDX'")['BhavOpeninterest'].unique()[0]
+                    sum_oi += prev_oi
+                grouped_eod.loc[mask,'Fut OI(T-1)'] = sum_oi
+        grouped_eod.replace('nan',0,inplace=True)
+        grouped_eod.fillna(0, inplace=True)
+        grouped_eod['Fut OI(T-1)'] = pd.to_numeric(grouped_eod['Fut OI(T-1)'], errors='coerce')
+        grouped_eod['%MktShare'] = grouped_eod.apply(lambda row: row['OI Total']/row['Fut OI(T-1)'] if row['Fut OI(T-1)'] != 0 else 0, axis=1)
+        json_data = grouped_eod.to_json(orient='records')
+        return JSONResponse(json_data, media_type='application/json')
 
 service = ServiceApp()
 app = service.app

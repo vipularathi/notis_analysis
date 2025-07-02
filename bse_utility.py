@@ -23,11 +23,12 @@ class BSEUtility:
         eod_df.columns = [re.sub(rf'Eod|\s|Expired', '', each) for each in eod_df.columns]
         eod_df.Expiry = pd.to_datetime(eod_df.Expiry, dayfirst=True, format='mixed').dt.date
         eod_df.drop(
-            columns=['NetQuantity', 'buyQty', 'buyAvgPrice', 'buyValue','sellQty', 'sellAvgPrice', 'sellValue', 'IntradayVolume',
+            columns=['NetQuantity', 'buyQty', 'buyAvgPrice', 'buyValue','sellQty', 'sellAvgPrice', 'sellValue',
                      'PreFinalNetQty','Spot_close','Rate','Assn_value','SellValue','BuyValue','Qty'],
             inplace=True
         )
-        eod_df.rename(columns={'IntradayNetQty': 'NetQuantity'}, inplace=True)
+        eod_df.rename(columns={'FinalNetQty': 'NetQuantity'}, inplace=True)
+        # eod_df.rename(columns={'IntradayNetQty': 'NetQuantity'}, inplace=True)
         eod_df = eod_df.add_prefix('Eod')
         eod_df = eod_df.query("EodUnderlying == 'SENSEX' and EodExpiry >= @today and EodNetQuantity != 0")
         grouped_eod_df = eod_df.groupby(by=['EodBroker', 'EodUnderlying', 'EodExpiry', 'EodStrike', 'EodOptionType'],

@@ -1966,6 +1966,7 @@ p=0
 # print(nifty.history(period="2d")['Close'])
 # print(sensex.history(period="2d")['Close'])
 u=0
-from common import download_bhavcopy
-download_bhavcopy()
+from db_config import n_tbl_notis_eod_net_pos_cp_noncp
+from common import read_data_db
+df = read_data_db(for_table=n_tbl_notis_eod_net_pos_cp_noncp)
 p=0

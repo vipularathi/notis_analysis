@@ -25,7 +25,7 @@ bse_sql_server = '172.30.100.41'
 bse_sql_port = '1450'
 bse_sql_db = 'OMNE_ARD_PRD'
 bse_sql_userid = 'Pos_User'
-bse_sql_paswd = 'Pass@Word1'
+bse_sql_paswd = 'Pass@Word'
 bse_encoded_password = quote(bse_sql_paswd)
 
 engine_str = f"postgresql+psycopg2://{pg_user}:{pg_pass}@{pg_host}:{pg_port}/{db_name}"
