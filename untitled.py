@@ -1966,7 +1966,111 @@ p=0
 # print(nifty.history(period="2d")['Close'])
 # print(sensex.history(period="2d")['Close'])
 u=0
-from db_config import n_tbl_notis_eod_net_pos_cp_noncp
-from common import read_data_db
-df = read_data_db(for_table=n_tbl_notis_eod_net_pos_cp_noncp)
+# from db_config import n_tbl_notis_eod_net_pos_cp_noncp
+# from common import read_data_db
+# df = read_data_db(for_table=n_tbl_notis_eod_net_pos_cp_noncp)
 p=0
+# from common import bhav_dir, yesterday
+# import paramiko
+#
+# for_date = datetime(year=2025,month=6,day=27).date()
+# def download_bhavcopy():
+#     host = '192.168.112.81'
+#     username = 'greek'
+#     password = 'greeksoft'
+#     filename = f"regularNSEBhavcopy_{for_date.strftime('%d%m%Y')}.csv"  # sample=regularBhavcopy_13022025
+#     remote_path = rf'/home/greek/NSE_BSE_Broadcast/NSE/Bhavcopy/Files/{filename}'
+#     local_path = os.path.join(bhav_dir, filename)
+#     try:
+#         transport = paramiko.Transport((host, 22))
+#         transport.connect(username=username, password=password)
+#         sftp = paramiko.SFTPClient.from_transport(transport)
+#         sftp.get(remote_path, local_path)
+#         sftp.close()
+#         transport.close()
+#         print(f'Bhavcopy for {for_date} downloaded to local server.')
+#     except Exception as e:
+#         print(f'Error: {e}')
+# download_bhavcopy()
+r=0
+#SRC2
+import pandas as pd
+import requests, json, os
+from datetime import datetime
+from sqlalchemy import create_engine
+from common import read_data_db, test_dir
+from db_config import inhouse_engine_str
+
+root_dir = os.getcwd()
+
+def get_src2_trade():
+    server_ip = "192.168.50.68"
+    adminusername = "user3_rms"
+    adminpassword = "user3_rms"
+    userid = 201
+    
+    def get_token():
+        url = f"http://{server_ip}:8010/v1/loginrms"
+        payload = json.dumps({
+            "username": adminusername,
+            "password": adminpassword
+        })
+        headers = {
+            'accept': 'application/json',
+            'Content-Type': 'application/json'
+        }
+        
+        response = requests.request("POST", url, headers=headers, data=payload)
+        response_msg = response.json()
+        authtoken = response_msg.get("token")
+        return authtoken
+    
+    def get_algo2_trades():
+        url = f"http://{server_ip}:8010/v1/dcNetposition?user_id={userid}"
+        payload = {}
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
+                          'AppleWebKit/537.36 (KHTML, like Gecko) '
+                          'Chrome/137.0.0.0 Safari/537.36',
+            'Accept': 'application/json',
+            'auth-token': get_token()
+        }
+        response = requests.request("GET", url, headers=headers, data=payload)
+        
+        if response.status_code == 200:
+            response = response.json()
+            data = response['data']
+            df = pd.DataFrame(data)
+            return df
+        else:
+            return pd.DataFrame()
+    
+    algo2_df = get_algo2_trades()
+    if not algo2_df.empty:
+        algo2_df.rename(columns={'strikePrice': 'StrikePrice'}, inplace=True)
+        # print(f'SRC2\n{algo2_df}')
+        print('data fetched from src2(68 server)')
+        return algo2_df
+    else:
+        print('No Algo2 trades.')
+        return pd.DataFrame()
+
+# SRC1
+def get_src1_trade():
+    inhouse_engine = create_engine(inhouse_engine_str, pool_size = 20, max_overflow = 10, pool_pre_ping=True, pool_recycle=900)
+    with inhouse_engine.begin() as conn:
+        df = pd.read_sql_table('netPositionBSE', con=conn)
+        print('data fetched from src1(inhouse db)')
+        df.createdAt = df.createdAt.astype(str)
+        df.updatedAt = df.updatedAt.astype(str)
+    return df
+
+def get_src3_trade():
+    df_src3 = read_data_db(for_table='BSE_ENetMIS')
+    print('data fetched from src3(RMS)')
+    return df_src3
+
+src1_df = get_src1_trade()
+src2_df = get_src2_trade()
+src3_df = get_src3_trade()
+w=0

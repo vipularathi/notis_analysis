@@ -196,11 +196,36 @@ def read_data_db(nnf=False, for_table='ENetMIS', from_time:str='', to_time:str='
             return final_bse_df_source2
         except (pyodbc.Error, psycopg2.Error) as e:
             logger.info(f'Error in fetching data: {e}')
+    elif not nnf and for_table == 'BSE_ENetMIS':
+        # Sql connection parameters
+        sql_server = "rms.ar.db"
+        sql_database = "ENetMIS"
+        sql_username = "notice_user"
+        sql_password = "Notice@2024"
+        if not from_time:
+            sql_query = "SELECT * FROM [ENetMIS].[dbo].[BSE_FO_AA100_view]"
+        else:
+            sql_query = f"SELECT * FROM [ENetMIS].[dbo].[BSE_FO_AA100_view]"
+        try:
+            sql_connection_string = (
+                f"DRIVER={{ODBC Driver 17 for SQL Server}};"
+                f"SERVER={sql_server};"
+                f"DATABASE={sql_database};"
+                f"UID={sql_username};"
+                f"PWD={sql_password}"
+            )
+            with pyodbc.connect(sql_connection_string) as sql_conn:
+                df = pd.read_sql_query(sql_query, sql_conn)
+            logger.info(f"Data fetched from SQL Server. Shape:{df.shape}")
+            return df
+        except (pyodbc.Error, psycopg2.Error) as e:
+            logger.info("Error occurred:", e)
     elif not nnf and for_table !='ENetMIS':
         with engine.begin() as conn:
             df = pd.read_sql_table(for_table, con=conn)
         logger.info(f"Data fetched from {for_table} table. Shape:{df.shape}")
         return df
+    
 
 def read_notis_file(filepath):
     wb = load_workbook(filepath, read_only=True)

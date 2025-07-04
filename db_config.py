@@ -28,7 +28,15 @@ bse_sql_userid = 'Pos_User'
 bse_sql_paswd = 'Pass@Word'
 bse_encoded_password = quote(bse_sql_paswd)
 
+inhouse_sql_host = '192.168.50.68'
+inhouse_sql_port = '5432'
+inhouse_sql_user = 'readonlybsefodc'
+inhouse_sql_pass = 'readonlybsefodc'
+inhouse_sql_database = 'bsefodc'
+
 engine_str = f"postgresql+psycopg2://{pg_user}:{pg_pass}@{pg_host}:{pg_port}/{db_name}"
+inhouse_engine_str = f'postgresql+psycopg2://{inhouse_sql_user}:{inhouse_sql_pass}@{inhouse_sql_host}:{inhouse_sql_port}/{inhouse_sql_database}'
+
 notis_engine_str = (
     f"mssql+pyodbc://{notis_sql_username}:{notis_encoded_password}"
     f"@{notis_sql_server}/{notis_sql_database}"
@@ -46,13 +54,6 @@ bse_engine_str = (
     f"@{bse_sql_server},{bse_sql_port}/{bse_sql_db}"
     f"?driver=ODBC+Driver+17+for+SQL+Server"
 )
-# bse_engine_str = (
-#     f"DRIVER={{ODBC Driver 17 for SQL Server}};"
-#     f"SERVER={bse_sql_server},{bse_sql_port};"
-#     f"DATABASE={bse_sql_db};"
-#     f"UID={bse_sql_userid};"
-#     f"PWD={bse_encoded_password};"
-# )
 
 metadata = MetaData()
 

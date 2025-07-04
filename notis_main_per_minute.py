@@ -26,8 +26,6 @@ n_tbl_test_bse = n_tbl_bse_trade_data
 main_mod_df = pd.DataFrame()
 main_mod_bse_df = pd.DataFrame()
 
-
-
 def calc_rate(row):
     if row['EodOptionType'] == 'PE':
         return max(row['EodStrike']-row['ExpiredSpot_close'], 0)
@@ -38,7 +36,7 @@ def get_bse_trade_data(from_time, to_time):
     global main_mod_bse_df
     pivot_df = pd.DataFrame()
     df_bse = read_data_db(for_table='TradeHist', from_time=from_time, to_time=to_time)
-    if df_bse.empty:
+    if df_bse is None or df_bse.empty:
         logger.info(f'No BSE trade from {from_time.split(" ")[1]} to {to_time.split(" ")[1]} hence skipping')
         return pivot_df
     logger.info(f'BSE trade data fetched from {from_time.split(" ")[1]} to {to_time.split(" ")[1]}, shape:{df_bse.shape}')
@@ -85,7 +83,7 @@ def get_nse_trade(from_time, to_time):
     global main_mod_df
     pivot_df = pd.DataFrame()
     df_db = read_data_db(from_time=from_time,to_time=to_time)
-    if df_db.empty:
+    if df_db is None or df_db.empty:
         logger.info(f'No NSE trade between {from_time.split(" ")[1][:-4]} and {to_time.split(" ")[1][:-4]} hence skipping further processes')
         return pivot_df
     logger.info(f'Notis trade data fetched from {from_time.split(" ")[1][:-4]} to {to_time.split(" ")[1][:-4]}, shape:{df_db.shape}')
@@ -159,26 +157,33 @@ def find_net_pos(nse_pivot_df, bse_pivot_df):
         #EOD_CP_NONCP
         eod_tablename = f'NOTIS_EOD_NET_POS_CP_NONCP_{today.strftime("%Y-%m-%d")}'  # NOTIS_EOD_NET_POS_CP_NONCP_2025-03-17
         final_eod = read_data_db(for_table=eod_tablename)
+        underlying_list = ['NIFTY', 'BANKNIFTY', 'MIDCPNIFTY', 'FINNIFTY', 'SENSEX', 'BANKEX']
+        final_eod = final_eod.query("EodUnderlying in @underlying_list")
         logger.info(f'final_eod before calculation: {final_eod.shape}')
         final_eod.EodExpiry = pd.to_datetime(final_eod.EodExpiry, dayfirst=True, format='mixed').dt.date
         if not nse_pivot_df.empty:
             cp_noncp_nse_df = NSEUtility.calc_eod_cp_noncp(nse_pivot_df)
         else:
-            cp_noncp_nse_df = final_eod.query("EodUnderlying != 'SENSEX'")
+            cp_noncp_nse_df = final_eod.query("EodUnderlying != 'SENSEX' and EodBroker != 'SRSPL'")
         if not bse_pivot_df.empty:
             cp_noncp_bse_df = BSEUtility.calc_bse_eod_net_pos(bse_pivot_df)
         else:
-            cp_noncp_bse_df = final_eod.query("EodUnderlying == 'SENSEX'")
+            bse_underlying_list = ['SENSEX', 'BANKEX']
+            cp_noncp_bse_df = final_eod.query("EodUnderlying in @bse_underlying_list and EodBroker != 'SRSPL'")
+        # srspl_df = final_eod.query("EodBroker == 'SRSPL'")
         final_eod = pd.concat([cp_noncp_nse_df, cp_noncp_bse_df], ignore_index=True)
+        # final_eod = pd.concat([pre_final_eod,srspl_df], ignore_index=True)
         to_int = ['EodStrike','EodNetQuantity', 'buyQty', 'sellQty', 'IntradayVolume', 'FinalNetQty']
         final_eod.fillna(0, inplace=True)
         for each in to_int:
             final_eod[each] = final_eod[each].astype(np.int64)
         grouped_final_eod = final_eod.groupby(by=['EodBroker', 'EodUnderlying', 'EodExpiry', 'EodStrike', 'EodOptionType'],
-                                              as_index=False).agg(
-            {'EodNetQuantity': 'sum', 'buyQty': 'sum', 'buyAvgPrice': 'mean','buyValue':'sum','sellQty': 'sum', 'sellAvgPrice': 'mean', 'sellValue':'sum',
-             'IntradayVolume': 'sum', 'FinalNetQty': 'sum'})
-        grouped_final_eod['PreFinalNetQty'] = grouped_final_eod['EodNetQuantity'] + grouped_final_eod['IntradayVolume']
+                                              as_index=False).agg({
+            'EodNetQuantity': 'sum', 'buyQty': 'sum', 'buyAvgPrice': 'mean', 'buyValue': 'sum',
+            'sellQty': 'sum', 'sellAvgPrice': 'mean', 'sellValue': 'sum', 'IntradayVolume': 'sum', 'FinalNetQty': 'sum'
+        })
+        grouped_final_eod['PreFinalNetQty'] = (grouped_final_eod['EodNetQuantity'] + grouped_final_eod['buyQty'] -
+                                               grouped_final_eod['sellQty'])
         mask = grouped_final_eod['EodOptionType'] == 'XX'
         masked_df = grouped_final_eod.loc[mask].copy()
         grouped_final_eod.loc[mask, 'buyAvgPrice'] = np.where(masked_df['buyQty'] > 0,
@@ -198,7 +203,7 @@ def find_net_pos(nse_pivot_df, bse_pivot_df):
         if today in grouped_final_eod['EodExpiry'].unique():
             grouped_final_eod = analyze_expired_instruments(grouped_final_eod=grouped_final_eod)
         grouped_final_eod['FinalNetQty'] = grouped_final_eod['PreFinalNetQty'] + grouped_final_eod['ExpiredQty']
-        grouped_final_eod.drop(columns=['buyAvgPrice', 'sellAvgPrice', 'IntradayVolume'], inplace=True)
+        grouped_final_eod.drop(columns=['IntradayVolume'], inplace=True)
         logger.info(f'final_eod after calculation: {grouped_final_eod.shape}')
         write_notis_postgredb(grouped_final_eod, table_name=n_tbl_notis_eod_net_pos_cp_noncp, truncate_required=True)
 

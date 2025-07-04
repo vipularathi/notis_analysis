@@ -95,7 +95,8 @@ class NSEUtility:
         eod_df = eod_df.add_prefix('Eod')
         eod_df['EodExpiry'] = pd.to_datetime(eod_df['EodExpiry'], dayfirst=True, format='mixed').dt.date
         nse_underlying_list = ['NIFTY','BANKNIFTY','MIDCPNIFTY','FINNIFTY']
-        eod_df = eod_df.query("EodUnderlying in @nse_underlying_list and EodExpiry >= @today and EodNetQuantity != 0")
+        eod_df = eod_df.query("EodUnderlying in @nse_underlying_list and EodExpiry >= @today and EodNetQuantity != 0 "
+                              "and EodBroker != 'SRSPL'")
 
         grouped_eod = eod_df.groupby(by=['EodBroker','EodUnderlying','EodExpiry','EodStrike','EodOptionType'], as_index=False).agg({'EodNetQuantity':'sum'})
         grouped_eod = grouped_eod.query("EodNetQuantity != 0")
@@ -106,7 +107,9 @@ class NSEUtility:
         desk_db_df.strikePrice = desk_db_df.strikePrice.astype('int64')
         desk_db_df['expiryDate'] = pd.to_datetime(desk_db_df['expiryDate'], dayfirst=True, format='mixed').dt.date
 
-        grouped_desk_db_df = desk_db_df.groupby(by=['broker','symbol', 'expiryDate', 'strikePrice', 'optionType']).agg({'buyAvgQty':'sum','buyAvgPrice':'mean','buyValue':'sum','sellAvgQty':'sum','sellAvgPrice':'mean','sellValue':'sum'}).reset_index()
+        grouped_desk_db_df = desk_db_df.groupby(by=['broker','symbol', 'expiryDate', 'strikePrice', 'optionType']).agg({
+            'buyAvgQty':'sum','buyAvgPrice':'mean','buyValue':'sum','sellAvgQty':'sum','sellAvgPrice':'mean','sellValue':'sum'
+        }).reset_index()
         grouped_desk_db_df['IntradayVolume'] = grouped_desk_db_df['buyAvgQty'] - grouped_desk_db_df['sellAvgQty']
         grouped_desk_db_df.rename(columns={'buyAvgQty':'buyQty','sellAvgQty':'sellQty'}, inplace=True)
         # ================================================================

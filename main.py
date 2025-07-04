@@ -35,7 +35,7 @@ def download_tables():
 def get_nse_data():
     logger.info(f'fetching NSE trades...')
     df_db = read_data_db()
-    if df_db.empty:
+    if df_db is None or df_db.empty:
         logger.info(f'No NSE trade done today hence skipping')
         df = pd.DataFrame()
         return df
@@ -96,64 +96,11 @@ def get_nse_data():
     pivot_df.volume = pivot_df.buyAvgQty - pivot_df.sellAvgQty
     return pivot_df
 
-def find_net_pos(nse_pivot_df, bse_pivot_df):
-    # DESK
-    dsk_db_df = NSEUtility.calc_deskwise_net_pos(nse_pivot_df)
-    write_notis_postgredb(dsk_db_df, table_name=n_tbl_notis_desk_wise_net_position, truncate_required=True)
-    # NNF
-    nnf_db_df = NSEUtility.calc_nnfwise_net_pos(nse_pivot_df)
-    write_notis_postgredb(nnf_db_df, table_name=n_tbl_notis_nnf_wise_net_position, truncate_required=True)
-    # CP NONCP
-    cp_noncp_nse_df = NSEUtility.calc_eod_cp_noncp(nse_pivot_df)
-    cp_noncp_bse_df = BSEUtility.calc_bse_eod_net_pos(bse_pivot_df)
-    final_cp_noncp_eod_df = pd.concat([cp_noncp_nse_df, cp_noncp_bse_df], ignore_index=True)
-
-    to_int = ['EodStrike','EodNetQuantity', 'buyQty', 'sellQty', 'IntradayVolume', 'FinalNetQty']
-    for each in to_int:
-        final_cp_noncp_eod_df[each] = final_cp_noncp_eod_df[each].astype(np.int64)
-    grouped_final_eod = final_cp_noncp_eod_df.groupby(by=['EodBroker', 'EodUnderlying', 'EodExpiry', 'EodStrike', 'EodOptionType'],
-                                          as_index=False).agg(
-        {'EodNetQuantity': 'sum', 'buyQty': 'sum', 'buyAvgPrice': 'mean','buyValue':'sum', 'sellQty': 'sum', 'sellAvgPrice': 'mean','sellValue':'sum',
-         'IntradayVolume': 'sum'})
-    grouped_final_eod['PreFinalNetQty'] = grouped_final_eod['EodNetQuantity'] + grouped_final_eod['IntradayVolume']
-    mask = grouped_final_eod['EodOptionType'] == 'XX'
-    masked_df = grouped_final_eod.loc[mask].copy()
-    grouped_final_eod.loc[mask, 'buyAvgPrice'] = np.where(masked_df['buyQty'] > 0,
-                                                          masked_df['buyValue'] / masked_df['buyQty'], 0)
-    grouped_final_eod.loc[mask, 'sellAvgPrice'] = np.where(masked_df['sellQty'] > 0,
-                                                           masked_df['sellValue'] / masked_df['sellQty'], 0)
-    srspl_df = read_data_db(for_table=n_tbl_srspl_trade_data)
-    grouped_final_eod = pd.concat([grouped_final_eod,srspl_df], ignore_index=True)
-    grouped_final_eod['EodExpiry'] = pd.to_datetime(grouped_final_eod['EodExpiry'], dayfirst=True).dt.date
-    grouped_final_eod.fillna(0, inplace=True)
-    grouped_final_eod['ExpiredSpot_close'] = 0.0
-    grouped_final_eod['ExpiredRate'] = 0.0
-    grouped_final_eod['ExpiredAssn_value'] = 0.0
-    grouped_final_eod['ExpiredSellValue'] = 0.0
-    grouped_final_eod['ExpiredBuyValue'] = 0.0
-    grouped_final_eod['ExpiredQty'] = 0.0
-    if today in grouped_final_eod.EodExpiry.unique():
-        spot_dict = find_spot()
-        mask = grouped_final_eod['EodExpiry'] == today
-        grouped_final_eod.loc[mask, 'ExpiredSpot_close'] = grouped_final_eod['EodUnderlying'].map(spot_dict)
-        grouped_final_eod.loc[mask, 'ExpiredRate'] = grouped_final_eod.loc[mask].apply(calc_rate, axis=1)
-        grouped_final_eod.loc[mask, 'ExpiredAssn_value'] = (grouped_final_eod.loc[mask, 'PreFinalNetQty'] * grouped_final_eod.loc[mask, 'ExpiredRate'])
-        grouped_final_eod.loc[mask, 'ExpiredBuyValue'] = np.where(grouped_final_eod.loc[mask, 'PreFinalNetQty'] > 0,
-                                                                  grouped_final_eod.loc[mask, 'ExpiredAssn_value'], 0)
-        grouped_final_eod.loc[mask, 'ExpiredSellValue'] = np.where(grouped_final_eod.loc[mask, 'PreFinalNetQty'] < 0,
-                                                                   grouped_final_eod.loc[mask, 'ExpiredAssn_value'], 0)
-        grouped_final_eod.loc[mask, 'ExpiredQty'] = -1 * grouped_final_eod.loc[mask, 'PreFinalNetQty']
-    grouped_final_eod['FinalNetQty'] = grouped_final_eod['PreFinalNetQty'] + grouped_final_eod['ExpiredQty']
-    grouped_final_eod.drop(columns=['buyAvgPrice', 'sellAvgPrice', 'IntradayVolume'], inplace=True)
-    grouped_final_eod = grouped_final_eod.round(2)
-    write_notis_postgredb(grouped_final_eod, table_name=n_tbl_notis_eod_net_pos_cp_noncp, truncate_required=True)
-    # write_notis_postgredb(final_cp_noncp_eod_df, table_name=n_tbl_test_notis_eod_net_pos_cp_noncp, truncate_required=True)
-
 def get_bse_data():
     stt = datetime.now()
     logger.info(f'fetching BSE trades...')
     raw_bse_df = read_data_db(for_table='TradeHist')
-    if raw_bse_df.empty:
+    if raw_bse_df is None or raw_bse_df.empty:
         logger.info(f'No BSE trade done today hence skipping')
         df = pd.DataFrame()
         return df
@@ -189,12 +136,68 @@ def get_bse_data():
     pivot_df['sellAvgPrice'] = pivot_df.apply(
         lambda row: row['SellTrdQtyPrc'] / row['SellQty'] if row['SellQty'] > 0 else 0, axis=1)
     # pivot_df.drop(columns=['BuyTrdQtyPrc', 'SellTrdQtyPrc'], inplace=True)
-    pivot_df['IntradayVolume'] = pivot_df.BuyQty - pivot_df.SellQty
+    pivot_df['IntradayVolume'] = pivot_df['BuyQty'] - pivot_df['SellQty']
     pivot_df.rename(columns={'BuyTrdQtyPrc': 'buyValue', 'SellTrdQtyPrc': 'sellValue'}, inplace=True)
     # pivot_df = pivot_df.round(2)
     ett = datetime.now()
     logger.info(f'BSE trade fetched. Total time taken: {(ett - stt).seconds} seconds')
     return pivot_df
+
+def find_net_pos(nse_pivot_df, bse_pivot_df):
+    # DESK
+    dsk_db_df = NSEUtility.calc_deskwise_net_pos(nse_pivot_df)
+    write_notis_postgredb(dsk_db_df, table_name=n_tbl_notis_desk_wise_net_position, truncate_required=True)
+    # NNF
+    nnf_db_df = NSEUtility.calc_nnfwise_net_pos(nse_pivot_df)
+    write_notis_postgredb(nnf_db_df, table_name=n_tbl_notis_nnf_wise_net_position, truncate_required=True)
+    # CP NONCP
+    cp_noncp_nse_df = NSEUtility.calc_eod_cp_noncp(nse_pivot_df)
+    cp_noncp_bse_df = BSEUtility.calc_bse_eod_net_pos(bse_pivot_df)
+    final_cp_noncp_eod_df = pd.concat([cp_noncp_nse_df, cp_noncp_bse_df], ignore_index=True)
+    underlying_list = ['NIFTY', 'BANKNIFTY', 'MIDCPNIFTY', 'FINNIFTY', 'SENSEX', 'BANKEX']
+    final_cp_noncp_eod_df = final_cp_noncp_eod_df.query("EodUnderlying in @underlying_list")
+
+    to_int = ['EodStrike','EodNetQuantity', 'buyQty', 'sellQty', 'IntradayVolume', 'FinalNetQty']
+    for each in to_int:
+        final_cp_noncp_eod_df[each] = final_cp_noncp_eod_df[each].astype(np.int64)
+    grouped_final_eod = final_cp_noncp_eod_df.groupby(by=['EodBroker', 'EodUnderlying', 'EodExpiry', 'EodStrike', 'EodOptionType'],
+                                          as_index=False).agg(
+        {'EodNetQuantity': 'sum', 'buyQty': 'sum', 'buyAvgPrice': 'mean','buyValue':'sum', 'sellQty': 'sum', 'sellAvgPrice': 'mean','sellValue':'sum',
+         'IntradayVolume': 'sum'})
+    grouped_final_eod['PreFinalNetQty'] = (grouped_final_eod['EodNetQuantity'] + grouped_final_eod['buyQty'] -
+                                           grouped_final_eod['sellQty'])
+    mask = grouped_final_eod['EodOptionType'] == 'XX'
+    masked_df = grouped_final_eod.loc[mask].copy()
+    grouped_final_eod.loc[mask, 'buyAvgPrice'] = np.where(masked_df['buyQty'] > 0,
+                                                          masked_df['buyValue'] / masked_df['buyQty'], 0)
+    grouped_final_eod.loc[mask, 'sellAvgPrice'] = np.where(masked_df['sellQty'] > 0,
+                                                           masked_df['sellValue'] / masked_df['sellQty'], 0)
+    srspl_df = read_data_db(for_table=n_tbl_srspl_trade_data)
+    grouped_final_eod = pd.concat([grouped_final_eod,srspl_df], ignore_index=True)
+    grouped_final_eod['EodExpiry'] = pd.to_datetime(grouped_final_eod['EodExpiry'], dayfirst=True).dt.date
+    grouped_final_eod.fillna(0, inplace=True)
+    grouped_final_eod['ExpiredSpot_close'] = 0.0
+    grouped_final_eod['ExpiredRate'] = 0.0
+    grouped_final_eod['ExpiredAssn_value'] = 0.0
+    grouped_final_eod['ExpiredSellValue'] = 0.0
+    grouped_final_eod['ExpiredBuyValue'] = 0.0
+    grouped_final_eod['ExpiredQty'] = 0.0
+    if today in grouped_final_eod.EodExpiry.unique():
+        spot_dict = find_spot()
+        mask = grouped_final_eod['EodExpiry'] == today
+        grouped_final_eod.loc[mask, 'ExpiredSpot_close'] = grouped_final_eod['EodUnderlying'].map(spot_dict)
+        grouped_final_eod.loc[mask, 'ExpiredRate'] = grouped_final_eod.loc[mask].apply(calc_rate, axis=1)
+        grouped_final_eod.loc[mask, 'ExpiredAssn_value'] = (grouped_final_eod.loc[mask, 'PreFinalNetQty'] * grouped_final_eod.loc[mask, 'ExpiredRate'])
+        grouped_final_eod.loc[mask, 'ExpiredBuyValue'] = np.where(grouped_final_eod.loc[mask, 'PreFinalNetQty'] > 0,
+                                                                  grouped_final_eod.loc[mask, 'ExpiredAssn_value'], 0)
+        grouped_final_eod.loc[mask, 'ExpiredSellValue'] = np.where(grouped_final_eod.loc[mask, 'PreFinalNetQty'] < 0,
+                                                                   grouped_final_eod.loc[mask, 'ExpiredAssn_value'], 0)
+        grouped_final_eod.loc[mask, 'ExpiredQty'] = -1 * grouped_final_eod.loc[mask, 'PreFinalNetQty']
+    grouped_final_eod['FinalNetQty'] = grouped_final_eod['PreFinalNetQty'] + grouped_final_eod['ExpiredQty']
+    grouped_final_eod.drop(columns=['IntradayVolume'], inplace=True)
+    grouped_final_eod = grouped_final_eod.round(2)
+    write_notis_postgredb(grouped_final_eod, table_name=n_tbl_notis_eod_net_pos_cp_noncp, truncate_required=True)
+    # write_notis_postgredb(final_cp_noncp_eod_df, table_name=n_tbl_test_notis_eod_net_pos_cp_noncp, truncate_required=True)
 
 if __name__ == '__main__':
     if actual_date == today:

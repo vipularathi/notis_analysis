@@ -27,13 +27,13 @@ from common import (get_date_from_non_jiffy,get_date_from_jiffy,
 pd.set_option('display.max_columns', None)
 warnings.filterwarnings('ignore')
 
-engine = create_engine(engine_str, pool_pre_ping=True, pool_recycle=900)
+engine = create_engine(engine_str, pool_pre_ping=True, pool_recycle=300)
 sessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
-notis_engine = create_engine(notis_engine_str, pool_pre_ping=True, pool_recycle=900)
+notis_engine = create_engine(notis_engine_str, pool_pre_ping=True, pool_recycle=300)
 sessionLocalNotis = sessionmaker(autocommit=False, autoflush=False, bind=notis_engine)
 
-bse_engine = create_engine(bse_engine_str, pool_pre_ping=True, pool_recycle=900)
+bse_engine = create_engine(bse_engine_str, pool_pre_ping=True, pool_recycle=300)
 sessionLocalBSE = sessionmaker(autocommit=False, autoflush=False, bind=bse_engine)
 
 def conv_str(obj):
@@ -464,13 +464,13 @@ class ServiceApp:
                         SELECT mnmFillPrice, mnmSegment, mnmTradingSymbol, mnmTransactionType, mnmAccountId, mnmUser, mnmFillSize, mnmSymbolName, mnmExpiryDate, mnmOptionType, mnmStrikePrice, mnmAvgPrice, mnmExecutingBroker,
                                ROW_NUMBER() OVER (ORDER BY (SELECT NULL)) AS RowNum
                         FROM [OMNE_ARD_PRD].[dbo].[TradeHist]
-                        WHERE mnmExchSeg = 'bse_fo' and mnmAccountId = 'AA100'
+                        WHERE mnmExchSeg = 'bse_fo' and (mnmAccountId = 'AA100' or mnmAccountId = 'CPAA100')
                     ),
                     CTE2 AS (
                         SELECT mnmFillPrice, mnmSegment, mnmTradingSymbol, mnmTransactionType, mnmAccountId, mnmUser, mnmFillSize, mnmSymbolName, mnmExpiryDate, mnmOptionType, mnmStrikePrice, mnmAvgPrice, mnmExecutingBroker,
                                ROW_NUMBER() OVER (ORDER BY (SELECT NULL)) AS RowNum
                         FROM [OMNE_ARD_PRD_HNI].[dbo].[TradeHist]
-                        WHERE mnmExchSeg = 'bse_fo' and mnmAccountId = 'AA100'
+                        WHERE mnmExchSeg = 'bse_fo' and (mnmAccountId = 'AA100' or mnmAccountId = 'CPAA100')
                     )
                     SELECT * FROM CTE1
                     WHERE RowNum > {page * page_size} AND RowNum <= {(page + 1) * page_size}
@@ -634,6 +634,7 @@ class ServiceApp:
         grouped_eod.fillna(0, inplace=True)
         grouped_eod['Fut OI(T-1)'] = pd.to_numeric(grouped_eod['Fut OI(T-1)'], errors='coerce')
         grouped_eod['%MktShare'] = grouped_eod.apply(lambda row: row['OI Total']/row['Fut OI(T-1)'] if row['Fut OI(T-1)'] != 0 else 0, axis=1)
+        grouped_eod['EodExpiry'] = grouped_eod['EodExpiry'].astype(str)
         json_data = grouped_eod.to_json(orient='records')
         return JSONResponse(json_data, media_type='application/json')
 
