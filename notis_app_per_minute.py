@@ -33,7 +33,7 @@ sessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 notis_engine = create_engine(notis_engine_str, pool_pre_ping=True, pool_recycle=300)
 sessionLocalNotis = sessionmaker(autocommit=False, autoflush=False, bind=notis_engine)
 
-bse_engine = create_engine(bse_engine_str, pool_pre_ping=True, pool_recycle=300)
+bse_engine = create_engine(notis_engine_str, pool_pre_ping=True, pool_recycle=300)
 sessionLocalBSE = sessionmaker(autocommit=False, autoflush=False, bind=bse_engine)
 
 def conv_str(obj):
@@ -83,9 +83,10 @@ class ServiceApp:
         self.app.add_api_route('/sourceData', methods=['GET'], endpoint=self.get_source_data)
         self.app.add_api_route('/downloadSourceData', methods=['GET'], endpoint=self.download_source_data)
         self.app.add_api_route('/get_oi', methods=['GET'], endpoint=self.get_oi)
-        self.app.add_api_route('/upload', methods=['POST'], endpoint=self.add_new_trade_data)
+        self.app.add_api_route('/upload', methods=['POST'], endpoint=self.upload_data)
         self.app.add_api_route('/nifty/future/oi', methods=['GET'], endpoint=self.calc_nifty_future_oi)
-
+        self.app.add_api_route('/data/nnfTable', methods=['GET'], endpoint=self.get_nnf_table)
+        
     def get_data(self, for_date:date=Query(), for_table:str=Query(), page:int=Query(1), page_size:int=Query(1000),db:Session=Depends(get_db)):
         for_dt = pd.to_datetime(for_date).date()
         if for_table == 'modifiedtradebook':
@@ -362,9 +363,6 @@ class ServiceApp:
             pivot_df['IntradayVolume'] = pivot_df['BuyVol'] - pivot_df['SellVol']
 
             json_data = pivot_df.to_json(orient='records')
-            # # return pivot_df.to_dict(orient='records')
-            # compressed_data = gzip.compress(json_data.encode('utf-8'))
-            # return Response(content=compressed_data, media_type='application/gzip')
             compressed_data = gzip.compress(json_data.encode('utf-8'))
             return Response(content=compressed_data, media_type='application/gzip')
 
@@ -387,32 +385,19 @@ class ServiceApp:
         elif for_table == f'sourcebseraw':
             query = text(f"""
                 WITH CTE AS (
-                    SELECT mnmFillPrice, mnmSegment, mnmTradingSymbol, mnmTransactionType, mnmAccountId, mnmUser, mnmFillSize, mnmSymbolName, mnmExpiryDate, mnmOptionType, mnmStrikePrice, mnmAvgPrice, mnmExecutingBroker,
+                    SELECT *,
                            ROW_NUMBER() OVER (ORDER BY (SELECT NULL)) AS RowNum
-                    FROM [OMNE_ARD_PRD].[dbo].[TradeHist]
-                    WHERE mnmExchSeg = 'bse_fo' and (mnmAccountId = 'AA100' or mnmAccountId = 'CPAA100')
+                    FROM [ENetMIS].[dbo].[BSE_FO_AA100_view]
+                    where scid like 'SENSEX%' or scid like 'BANKEX%'
                 )
-                SELECT mnmFillPrice, mnmSegment, mnmTradingSymbol, mnmTransactionType, mnmAccountId, mnmUser, mnmFillSize, mnmSymbolName, mnmExpiryDate, mnmOptionType, mnmStrikePrice, mnmAvgPrice, mnmExecutingBroker
+                SELECT *
                 FROM CTE
                 WHERE RowNum > {offset} AND RowNum <= {offset + page_size};
             """)
-            query2 = text(f"""
-                WITH CTE AS (
-                    SELECT mnmFillPrice, mnmSegment, mnmTradingSymbol, mnmTransactionType, mnmAccountId, mnmUser, mnmFillSize, mnmSymbolName, mnmExpiryDate, mnmOptionType, mnmStrikePrice, mnmAvgPrice, mnmExecutingBroker,
-                           ROW_NUMBER() OVER (ORDER BY (SELECT NULL)) AS RowNum
-                    FROM [OMNE_ARD_PRD_HNI].[dbo].[TradeHist]
-                    WHERE mnmExchSeg = 'bse_fo' and (mnmAccountId = 'AA100' or mnmAccountId = 'CPAA100')
-                )
-                SELECT mnmFillPrice, mnmSegment, mnmTradingSymbol, mnmTransactionType, mnmAccountId, mnmUser, mnmFillSize, mnmSymbolName, mnmExpiryDate, mnmOptionType, mnmStrikePrice, mnmAvgPrice, mnmExecutingBroker
-                FROM CTE
-                WHERE RowNum > {offset} AND RowNum <= {offset + page_size};
-            """)
-            result1 = db.execute(query).fetchall()
-            result2 = db.execute(query2).fetchall()
-            result = result1 + result2
-            total_rows1 = db.execute(text(rf"""Select count(*) from [OMNE_ARD_PRD].[dbo].[TradeHist] WHERE mnmExchSeg = 'bse_fo' and (mnmAccountId = 'AA100' or mnmAccountId = 'CPAA100')""")).scalar()
-            total_rows2 = db.execute(text(rf"""Select count(*) from [OMNE_ARD_PRD_HNI].[dbo].[TradeHist] WHERE mnmExchSeg = 'bse_fo' and (mnmAccountId = 'AA100' or mnmAccountId = 'CPAA100')""")).scalar()
-            total_rows = total_rows1 + total_rows2
+            result = db.execute(query).fetchall()
+            total_rows = db.execute(text(
+                rf"""Select count(*) from [ENetMIS].[dbo].[BSE_FO_AA100_view]
+                            where scid like 'SENSEX%' or scid like 'BANKEX%'""")).scalar()
         json_data = {
             'data': [{k: conv_str(v) for k, v in row._mapping.items()} for row in result],
             'total_rows': total_rows,
@@ -434,11 +419,9 @@ class ServiceApp:
         if for_table == f'sourcenotisraw':
             total_rows = db.execute(text(rf'Select count(*) from [ENetMIS].[dbo].[NSE_FO_AA100_view]')).scalar()
         elif for_table == f'sourcebseraw':
-            total_rows1 = db.execute(text(
-                rf"""Select count(*) from [OMNE_ARD_PRD].[dbo].[TradeHist] WHERE mnmExchSeg = 'bse_fo' and mnmAccountId = 'AA100'""")).scalar()
-            total_rows2 = db.execute(text(
-                rf"""Select count(*) from [OMNE_ARD_PRD_HNI].[dbo].[TradeHist] WHERE mnmExchSeg = 'bse_fo' and mnmAccountId = 'AA100'""")).scalar()
-            total_rows = total_rows1 + total_rows2
+            total_rows = db.execute(text(
+                rf"""Select count(*) from [ENetMIS].[dbo].[BSE_FO_AA100_view]
+                where scid like 'SENSEX%' or scid like 'BANKEX%'""")).scalar()
         page_size = 5_00_000
         num_pages = total_rows // page_size + (1 if (total_rows % page_size) else 0)
         logger.info(f'Total rows in DB: {total_rows}, Splitting into {num_pages} sheets')
@@ -460,23 +443,13 @@ class ServiceApp:
                 """)
             elif for_table == f'sourcebseraw':
                 query = (f"""
-                    WITH CTE1 AS (
-                        SELECT mnmFillPrice, mnmSegment, mnmTradingSymbol, mnmTransactionType, mnmAccountId, mnmUser, mnmFillSize, mnmSymbolName, mnmExpiryDate, mnmOptionType, mnmStrikePrice, mnmAvgPrice, mnmExecutingBroker,
+                    WITH CTE AS (
+                        SELECT *,
                                ROW_NUMBER() OVER (ORDER BY (SELECT NULL)) AS RowNum
-                        FROM [OMNE_ARD_PRD].[dbo].[TradeHist]
-                        WHERE mnmExchSeg = 'bse_fo' and (mnmAccountId = 'AA100' or mnmAccountId = 'CPAA100')
-                    ),
-                    CTE2 AS (
-                        SELECT mnmFillPrice, mnmSegment, mnmTradingSymbol, mnmTransactionType, mnmAccountId, mnmUser, mnmFillSize, mnmSymbolName, mnmExpiryDate, mnmOptionType, mnmStrikePrice, mnmAvgPrice, mnmExecutingBroker,
-                               ROW_NUMBER() OVER (ORDER BY (SELECT NULL)) AS RowNum
-                        FROM [OMNE_ARD_PRD_HNI].[dbo].[TradeHist]
-                        WHERE mnmExchSeg = 'bse_fo' and (mnmAccountId = 'AA100' or mnmAccountId = 'CPAA100')
+                        FROM [ENetMIS].[dbo].[BSE_FO_AA100_view]
                     )
-                    SELECT * FROM CTE1
+                    SELECT * FROM CTE
                     WHERE RowNum > {page * page_size} AND RowNum <= {(page + 1) * page_size}
-                    UNION ALL
-                    SELECT * FROM CTE2
-                    WHERE RowNum > {page * page_size} AND RowNum <= {(page + 1) * page_size};
                 """)
             logger.info(query)
             pbar = progressbar.ProgressBar(
@@ -551,21 +524,11 @@ class ServiceApp:
         json_data = grouped_df.to_json(orient='records')
         return Response(json_data, media_type='application/json')
     
-    def add_new_trade_data(self, for_date=Query(), file:UploadFile=File(...)):
+    def upload_data(self, for_date=Query(), file: UploadFile = File(...), for_table:str=Query()):
         # for_date = datetime.today().date().strftime('%Y-%m-%d')
         # table_to_read = f'NOTIS_EOD_NET_POS_CP_NONCP_{for_date}'
         filename = file.filename.lower()
         if not (filename.endswith('.csv') or filename.endswith('.xlsx')):
-            # raise HTTPException(
-            #     status_code=400,
-            #     detail="Invalid file. Please upload only csv or xlsx file."
-            # )
-            # return JSONResponse(status_code=415,
-            #                     content={
-            #                         "status":"Fail",
-            #                         "message":"Unsupported file format"
-            #                     }
-            #                 )
             return JSONResponse(status_code=415, content="Unsupported file format")
         data = file.file.read()
         buffer = io.BytesIO(data)
@@ -574,28 +537,34 @@ class ServiceApp:
                 df = pd.read_csv(buffer)
             else:
                 df = pd.read_excel(buffer)
-            df['EodBroker'] = 'SRSPL'
-            df['EodExpiry'] = pd.to_datetime(df['EodExpiry'], dayfirst=True).dt.date
-            df = df[['EodBroker', 'EodUnderlying', 'EodExpiry', 'EodStrike', 'EodOptionType', 'EodNetQuantity', 'buyQty',
-                 'buyValue', 'sellQty', 'sellValue', 'PreFinalNetQty']]
-            write_notis_postgredb(df=df, table_name=n_tbl_srspl_trade_data, truncate_required=True)
-            eod_df = read_data_db(for_table=n_tbl_notis_eod_net_pos_cp_noncp)
-            eod_df = eod_df.query("EodBroker != 'SRSPL'")
-            concat_df = pd.concat([eod_df,df], ignore_index=True)
-            concat_df['EodExpiry'] = pd.to_datetime(concat_df['EodExpiry'], dayfirst=True).dt.date
-            concat_df.fillna(0, inplace=True)
-            if today in concat_df.EodExpiry.unique():
-                concat_df = analyze_expired_instruments(grouped_final_eod=concat_df)
-            write_notis_postgredb(df=concat_df, table_name=n_tbl_notis_eod_net_pos_cp_noncp, truncate_required=True)
+            if for_table == 'SRSPL'.lower() or for_table == 'SRSPL':
+                df['EodBroker'] = 'SRSPL'
+                df['EodExpiry'] = pd.to_datetime(df['EodExpiry'], dayfirst=True).dt.date
+                df = df[
+                    ['EodBroker', 'EodUnderlying', 'EodExpiry', 'EodStrike', 'EodOptionType', 'EodNetQuantity', 'buyQty',
+                     'buyValue', 'sellQty', 'sellValue', 'PreFinalNetQty']]
+                write_notis_postgredb(df=df, table_name=n_tbl_srspl_trade_data, truncate_required=True)
+                eod_df = read_data_db(for_table=n_tbl_notis_eod_net_pos_cp_noncp)
+                eod_df = eod_df.query("EodBroker != 'SRSPL'")
+                concat_df = pd.concat([eod_df, df], ignore_index=True)
+                concat_df['EodExpiry'] = pd.to_datetime(concat_df['EodExpiry'], dayfirst=True).dt.date
+                concat_df.fillna(0, inplace=True)
+                if today in concat_df.EodExpiry.unique():
+                    concat_df = analyze_expired_instruments(grouped_final_eod=concat_df)
+                write_notis_postgredb(df=concat_df, table_name=n_tbl_notis_eod_net_pos_cp_noncp, truncate_required=True)
+            elif for_table == 'nnf' or for_table == 'nnf'.upper():
+                df.columns = df.columns.str.replace(' ', '', regex=True)
+                col_list = ['NNFID', 'TerminalID', 'TerminalName', 'UserID', 'SubGroup', 'MainGroup', 'NeatID']
+                df = df[col_list]
+                # df = df.loc[:, ~df.columns.str.startswith('Un')]
+                df.dropna(how='all', inplace=True)
+                df = df.drop_duplicates()
+                write_notis_postgredb(df=df, table_name=n_tbl_notis_nnf_data, truncate_required=True)
         except Exception as e:
             raise HTTPException(
                 status_code=400,
                 detail='File format not supported.'
             )
-        # return PlainTextResponse(
-        #     status_code=200,
-        #     content='File Uploaded successfully.'
-        # )
         return JSONResponse("File Uploaded successfully")
     
     def calc_nifty_future_oi(self, for_date=Query()):
@@ -637,6 +606,12 @@ class ServiceApp:
         grouped_eod['EodExpiry'] = grouped_eod['EodExpiry'].astype(str)
         json_data = grouped_eod.to_json(orient='records')
         return JSONResponse(json_data, media_type='application/json')
+    
+    def get_nnf_table(self):
+        nnf_df = read_data_db(for_table=n_tbl_notis_nnf_data)
+        nnf_df.fillna(0, inplace=True)
+        json_data = nnf_df.to_json(orient='records')
+        return Response(content=json_data, media_type='application/json')
 
 service = ServiceApp()
 app = service.app

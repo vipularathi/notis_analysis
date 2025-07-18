@@ -191,27 +191,16 @@ warnings.filterwarnings('ignore')
 o=0
 from common import logger, bse_dir, write_notis_data, today
 def read_data_db_1(nnf=False, for_table='ENetMIS', from_time:str='', to_time:str='', from_source=False):
-    if not nnf and for_table == 'ENetMIS':
+    if not nnf and for_table == 'BSE_ENetMIS':
         # Sql connection parameters
         sql_server = "rms.ar.db"
         sql_database = "ENetMIS"
         sql_username = "notice_user"
         sql_password = "Notice@2024"
         if not from_time:
-            sql_query = "SELECT * FROM [ENetMIS].[dbo].[NSE_FO_AA100_view]"
+            sql_query = f"SELECT * FROM [ENetMIS].[dbo].[BSE_FO_AA100_view] where scid like 'SENSEX%' or scid like 'BANKEX%'"
         else:
-            sql_query = f"SELECT * FROM [ENetMIS].[dbo].[NSE_FO_AA100_view] WHERE CreateDate BETWEEN '{from_time}' AND '{to_time}';"
-        # if from_source:
-        #     sql_query = f"""
-        #                     WITH CTE AS (
-        #                         SELECT *,
-        #                                ROW_NUMBER() OVER (ORDER BY (SELECT NULL)) AS RowNum
-        #                         FROM [ENetMIS].[dbo].[NSE_FO_AA100_view]
-        #                     )
-        #                     SELECT *
-        #                     FROM CTE
-        #                     WHERE RowNum > {offset} AND RowNum <= {offset + page_size};
-        #                     """
+            sql_query = f"SELECT * FROM [ENetMIS].[dbo].[BSE_FO_AA100_view] WHERE CreateDate BETWEEN '{from_time}' AND '{to_time}';"
         try:
             sql_connection_string = (
                 f"DRIVER={{ODBC Driver 17 for SQL Server}};"
@@ -280,12 +269,12 @@ def read_data_db_1(nnf=False, for_table='ENetMIS', from_time:str='', to_time:str
         logger.info(f"Data fetched from {for_table} table. Shape:{df.shape}")
         return df
 
-df_bse = read_data_db_1(for_table='TradeHist')
+df_bse = read_data_db_1(for_table='BSE_ENetMIS')
 # df_bse = df_bse.query("mnmTransactionType != 'L'")
 # df_bse.replace('',0, inplace=True)
-df_bse.columns = [re.sub(r'mnm|\s','',each) for each in df_bse.columns]
-df_bse.ExpiryDate = df_bse.ExpiryDate.apply(lambda x:pd.to_datetime(x, unit='s').date().strftime('%d/%m/%Y'))
-df_bse.ExpiryDate = df_bse.ExpiryDate.apply(lambda x: x if x.endswith('2025') else '')
+# df_bse.columns = [re.sub(r'mnm|\s','',each) for each in df_bse.columns]
+# df_bse.ExpiryDate = df_bse.ExpiryDate.apply(lambda x:pd.to_datetime(x, unit='s').date().strftime('%d/%m/%Y'))
+# df_bse.ExpiryDate = df_bse.ExpiryDate.apply(lambda x: x if x.endswith('2025') else '')
 write_notis_data(df=df_bse,filepath=os.path.join(bse_dir,f'BSE_TRADE_DATA_ALL_{today.strftime("%d%b%Y").upper()}.xlsx'))
 write_notis_data(df=df_bse,filepath=os.path.join(rf"C:\Users\vipulanand\Documents\Anand Rathi Financial Services Ltd (Synced)\OneDrive - Anand Rathi Financial Services Ltd\notis_files\BSE",f'BSE_TRADE_DATA_ALL_{today.strftime("%d%b%Y").upper()}.xlsx'))
 p=0

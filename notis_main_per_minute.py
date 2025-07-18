@@ -35,19 +35,45 @@ def calc_rate(row):
 def get_bse_trade_data(from_time, to_time):
     global main_mod_bse_df
     pivot_df = pd.DataFrame()
-    df_bse = read_data_db(for_table='TradeHist', from_time=from_time, to_time=to_time)
-    if df_bse is None or df_bse.empty:
-        logger.info(f'No BSE trade from {from_time.split(" ")[1]} to {to_time.split(" ")[1]} hence skipping')
+    # df_bse1 = read_data_db(for_table='BSE_ENetMIS', from_time=from_time, to_time=to_time)
+    df_bse1 = read_data_db(for_table='BSE_ENetMIS')
+    if df_bse1 is None or df_bse1.empty:
+        logger.info(f'No BSE trade from {from_time} to {to_time} hence skipping')
         return pivot_df
-    logger.info(f'BSE trade data fetched from {from_time.split(" ")[1]} to {to_time.split(" ")[1]}, shape:{df_bse.shape}')
-    modified_bse_df = BSEUtility.bse_modify_file(df_bse)
-    write_notis_postgredb(df=modified_bse_df,table_name=n_tbl_bse_trade_data)
+    logger.info(f'BSE trade data fetched from {from_time} to {to_time}, shape:{df_bse1.shape}')
+    modified_bse_df1 = BSEUtility.bse_modify_file_v2(df_bse1)
+    modified_bse_df1.TraderID = modified_bse_df1.TraderID.astype(np.int64)
+    
+    df_bse2 = read_data_db(for_table='TradeHist')
+    # df_bse2 = read_data_db(for_table='TradeHist', from_time=from_time, to_time=to_time)
+    modified_bse_df2 = BSEUtility.bse_modify_file(df_bse2)
+    modified_bse_df2 = modified_bse_df2[['TerminalID','TradingSymbol','FillSize','TransactionType','ExchUser','Underlying', 'Strike', 'OptionType', 'Expiry']]
+    modified_bse_df2.ExchUser = modified_bse_df2.ExchUser.astype(np.int64)
+    modified_bse_df2.ExchUser = modified_bse_df2.ExchUser % 10000
+    grouped_modified_bse_df2 = (
+        modified_bse_df2
+        .groupby(['ExchUser', 'TradingSymbol', 'FillSize', 'TransactionType',
+                  'Underlying', 'Strike', 'OptionType', 'Expiry'], as_index=False)
+        .agg({'TerminalID': 'first'})
+    )
+    modified_bse_df = pd.merge(modified_bse_df1, grouped_modified_bse_df2,
+                               left_on=['TraderID', 'TradingSymbol', 'FillSize', 'TransactionType','Underlying', 'Strike', 'OptionType', 'Expiry'],
+                               right_on=['ExchUser', 'TradingSymbol', 'FillSize', 'TransactionType','Underlying', 'Strike', 'OptionType', 'Expiry'],
+                               how='left'
+                               )
+    modified_bse_df['TerminalID'] = np.where(modified_bse_df['TraderID'] == 1011, '945440A',
+                                             modified_bse_df['TerminalID'])
+    modified_bse_df.drop(columns=['ExchUser'], axis=1, inplace=True)
+    modified_bse_df.fillna(0, inplace=True)
+    # write_notis_postgredb(df=modified_bse_df, table_name=n_tbl_bse_trade_data)
+    write_notis_postgredb(df=modified_bse_df,table_name=n_tbl_bse_trade_data, truncate_required=True)
     logger.info(f'length of main_mod_bse_df before concat is {main_mod_bse_df.shape}')
-    main_mod_bse_df = pd.concat([main_mod_bse_df,modified_bse_df],ignore_index=True)
+    # main_mod_bse_df = pd.concat([main_mod_bse_df,modified_bse_df],ignore_index=True)
+    main_mod_bse_df = modified_bse_df.copy()
     logger.info(f'length of main_mod_bse_df after concat is {main_mod_bse_df.shape}')
     main_mod_bse_df['trdQtyPrc'] = main_mod_bse_df['FillSize']*(main_mod_bse_df['FillPrice']/100)
     pivot_df = main_mod_bse_df.pivot_table(
-        index=['Broker', 'Underlying', 'Expiry', 'Strike', 'OptionType'],
+        index=['Broker', 'Underlying', 'Expiry', 'Strike', 'OptionType', 'TerminalID','TraderID'],
         columns=['TransactionType'],
         values=['FillSize', 'trdQtyPrc'],
         aggfunc={'FillSize': 'sum', 'trdQtyPrc': 'sum'},
@@ -155,21 +181,41 @@ def find_net_pos(nse_pivot_df, bse_pivot_df):
         return
     else:
         #EOD_CP_NONCP
-        eod_tablename = f'NOTIS_EOD_NET_POS_CP_NONCP_{today.strftime("%Y-%m-%d")}'  # NOTIS_EOD_NET_POS_CP_NONCP_2025-03-17
-        final_eod = read_data_db(for_table=eod_tablename)
-        underlying_list = ['NIFTY', 'BANKNIFTY', 'MIDCPNIFTY', 'FINNIFTY', 'SENSEX', 'BANKEX']
-        final_eod = final_eod.query("EodUnderlying in @underlying_list")
-        logger.info(f'final_eod before calculation: {final_eod.shape}')
-        final_eod.EodExpiry = pd.to_datetime(final_eod.EodExpiry, dayfirst=True, format='mixed').dt.date
-        if not nse_pivot_df.empty:
-            cp_noncp_nse_df = NSEUtility.calc_eod_cp_noncp(nse_pivot_df)
-        else:
-            cp_noncp_nse_df = final_eod.query("EodUnderlying != 'SENSEX' and EodBroker != 'SRSPL'")
-        if not bse_pivot_df.empty:
-            cp_noncp_bse_df = BSEUtility.calc_bse_eod_net_pos(bse_pivot_df)
-        else:
-            bse_underlying_list = ['SENSEX', 'BANKEX']
-            cp_noncp_bse_df = final_eod.query("EodUnderlying in @bse_underlying_list and EodBroker != 'SRSPL'")
+        # eod_tablename = f'NOTIS_EOD_NET_POS_CP_NONCP_{yesterday.strftime("%Y-%m-%d")}'  # NOTIS_EOD_NET_POS_CP_NONCP_2025-03-17
+        # final_eod = read_data_db(for_table=eod_tablename)
+        # eod_tablename1 = f'NOTIS_EOD_NET_POS_CP_NONCP_{today.strftime("%Y-%m-%d")}'  #
+        # # NOTIS_EOD_NET_POS_CP_NONCP_2025-03-17
+        # final_eod1 = read_data_db(for_table=eod_tablename1)
+        # underlying_list = ['NIFTY', 'BANKNIFTY', 'MIDCPNIFTY', 'FINNIFTY', 'SENSEX', 'BANKEX']
+        # final_eod = final_eod.query("EodUnderlying in @underlying_list")
+        # logger.info(f'final_eod before calculation: {final_eod.shape}')
+        # final_eod.EodExpiry = pd.to_datetime(final_eod.EodExpiry, dayfirst=True, format='mixed').dt.date
+        # if not nse_pivot_df.empty:
+        #     cp_noncp_nse_df = NSEUtility.calc_eod_cp_noncp(nse_pivot_df)
+        # else:
+        #     bse_underlying_list = ['SENSEX', 'BANKEX']
+        #     cp_noncp_nse_df = final_eod1.query("EodUnderlying not in @bse_underlying_list and EodBroker != 'SRSPL' "
+        #                                        "and EodExpiry >= @today")
+        #     # cp_noncp_nse_df = final_eod.query("EodUnderlying not in @bse_underlying_list and EodBroker != 'SRSPL' and EodExpiry >= @today and FinalNetQty != 0")
+        #     # cp_noncp_nse_df['EodNetQuantity'] = cp_noncp_nse_df['FinalNetQty']
+        #     # cp_noncp_nse_df['PreFinalNetQty'] = cp_noncp_nse_df['FinalNetQty']
+        #     # exclude_columns = ['EodBroker', 'EodUnderlying', 'EodExpiry', 'EodStrike', 'EodOptionType',
+        #     #                    'EodNetQuantity', 'PreFinalNetQty', 'FinalNetQty']
+        #     # cp_noncp_nse_df.loc[:, ~cp_noncp_nse_df.columns.isin(exclude_columns)] = 0
+        #     # cp_noncp_nse_df = cp_noncp_nse_df.query('FinalNetQty != 0')
+        # if not bse_pivot_df.empty:
+        #     cp_noncp_bse_df = BSEUtility.calc_bse_eod_net_pos(bse_pivot_df)
+        # else:
+        #     bse_underlying_list = ['SENSEX', 'BANKEX']
+        #     cp_noncp_bse_df = final_eod.query("EodUnderlying in @bse_underlying_list and EodBroker != 'SRSPL' and EodExpiry >= @today and FinalNetQty != 0")
+        #     cp_noncp_bse_df['EodNetQuantity'] = cp_noncp_bse_df['FinalNetQty']
+        #     cp_noncp_bse_df['PreFinalNetQty'] = cp_noncp_bse_df['FinalNetQty']
+        #     exclude_columns = ['EodBroker', 'EodUnderlying', 'EodExpiry', 'EodStrike', 'EodOptionType',
+        #                        'EodNetQuantity','PreFinalNetQty','FinalNetQty']
+        #     cp_noncp_bse_df.loc[:, ~cp_noncp_bse_df.columns.isin(exclude_columns)] = 0
+        #     cp_noncp_bse_df = cp_noncp_bse_df.query('FinalNetQty != 0')
+        cp_noncp_nse_df = NSEUtility.calc_eod_cp_noncp(nse_pivot_df)
+        cp_noncp_bse_df = BSEUtility.calc_bse_eod_net_pos(bse_pivot_df)
         # srspl_df = final_eod.query("EodBroker == 'SRSPL'")
         final_eod = pd.concat([cp_noncp_nse_df, cp_noncp_bse_df], ignore_index=True)
         # final_eod = pd.concat([pre_final_eod,srspl_df], ignore_index=True)
@@ -214,7 +260,7 @@ if __name__ == '__main__':
         stt = datetime.now().replace(hour=9, minute=15)
         ett = datetime.now().replace(hour=15, minute=35)
         actual_start_time = datetime.now()
-        logger.info(f'test started at {datetime.now()}')
+        logger.info(f'Notis Backend started at {datetime.now()}')
         if actual_start_time > stt and actual_start_time < ett:
             recover = True
         while datetime.now() < stt:
@@ -227,8 +273,8 @@ if __name__ == '__main__':
                     logger.info('in recover')
                     table_list = [n_tbl_test_mod, n_tbl_test_raw, n_tbl_test_cp_noncp, n_tbl_test_net_pos_desk,
                                   n_tbl_test_net_pos_nnf, n_tbl_test_bse]
-                    # for each in table_list:
-                    #     truncate_tables(each)
+                    for each in table_list:
+                        truncate_tables(each)
                     nse_from_time = stt.replace(second=0).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
                     nse_to_time = now.replace(second=0).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
                     bse_from_time = stt.replace(second=0).strftime('%d-%b-%Y %H:%M:%S')

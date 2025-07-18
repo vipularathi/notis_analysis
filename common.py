@@ -40,7 +40,8 @@ dir_list = [bhav_dir, modified_dir, table_dir, eod_input_dir, bse_dir, logs_dir,
 status = [os.makedirs(_dir, exist_ok=True) for _dir in dir_list if not os.path.exists(_dir)]
 
 engine = create_engine(engine_str, pool_size = 20, max_overflow = 10, pool_pre_ping=True, pool_recycle=900)
-
+stored_from_time = None
+sql_time_query = None
 def define_logger():
     # Logging Definitions
     log_lvl = logging.DEBUG
@@ -61,9 +62,8 @@ def define_logger():
     # logger.propagate = False  # Removes AWS Level Logging as it tracks root propagation as well
     return _logger
 def read_data_db(nnf=False, for_table='ENetMIS', from_time:str='', to_time:str='', from_source=False):
-    global engine
+    global engine, stored_from_time, sql_time_query
     if not nnf and for_table == 'ENetMIS':
-        # Sql connection parameters
         sql_server = "rms.ar.db"
         sql_database = "ENetMIS"
         sql_username = "notice_user"
@@ -99,35 +99,35 @@ def read_data_db(nnf=False, for_table='ENetMIS', from_time:str='', to_time:str='
         sql_userid = 'Pos_User'
         sql_paswd = 'Pass@Word'
         if not from_time:
-            logger.info(f'Fetching today\'s BSE trade data till now.')
+            # logger.info(f'Fetching today\'s BSE trade data till now.')
             sql_query = (
                 f"select mnmFillPrice,mnmSegment, mnmTradingSymbol,mnmTransactionType,mnmAccountId,mnmUser , mnmFillSize, "
-                f"mnmSymbolName, mnmExpiryDate, mnmOptionType, mnmStrikePrice, mnmAvgPrice, mnmExecutingBroker, mnmExchangeTime "
+                f"mnmSymbolName, mnmExpiryDate, mnmOptionType, mnmStrikePrice, mnmAvgPrice, mnmExecutingBroker, mnmExchangeTime, mnmExchUser "
                 f"from [OMNE_ARD_PRD].[dbo].[TradeHist] "
                 f"where mnmExchSeg = 'bse_fo' "
                 f"and (mnmAccountId = 'AA100' or mnmAccountId = 'CPAA100')")
             sql_query2 = (
                 f"select mnmFillPrice,mnmSegment, mnmTradingSymbol,mnmTransactionType,mnmAccountId,mnmUser , mnmFillSize, "
-                f"mnmSymbolName, mnmExpiryDate, mnmOptionType, mnmStrikePrice, mnmAvgPrice, mnmExecutingBroker, mnmExchangeTime "
+                f"mnmSymbolName, mnmExpiryDate, mnmOptionType, mnmStrikePrice, mnmAvgPrice, mnmExecutingBroker, mnmExchangeTime, mnmExchUser "
                 f"from [OMNE_ARD_PRD_HNI].[dbo].[TradeHist] "
                 f"where mnmExchSeg = 'bse_fo' "
                 f"and (mnmAccountId = 'AA100' or mnmAccountId = 'CPAA100')")
         else:
-            logger.info(f'Fetching BSE trade data from {from_time} to {to_time}')
+            # logger.info(f'Fetching BSE trade data from {from_time} to {to_time}')
             sql_query = (
                 f"select mnmFillPrice,mnmSegment, mnmTradingSymbol,mnmTransactionType,mnmAccountId,mnmUser , mnmFillSize, "
-                f"mnmSymbolName, mnmExpiryDate, mnmOptionType, mnmStrikePrice, mnmAvgPrice, mnmExecutingBroker, mnmExchangeTime "
+                f"mnmSymbolName, mnmExpiryDate, mnmOptionType, mnmStrikePrice, mnmAvgPrice, mnmExecutingBroker, mnmExchangeTime, mnmExchUser "
                 f"from [OMNE_ARD_PRD].[dbo].[TradeHist] "
                 f"where mnmExchSeg = 'bse_fo' "
-                f"and mnmExchangeTime between \'{from_time}\' and \'{to_time}\' "
+                f"and CAST(mnmExchangeTime as TIME) between '{from_time}' and '{to_time}' "
                 f"and (mnmAccountId = 'AA100' or mnmAccountId = 'CPAA100')")
             sql_query2 = (
                 f"select mnmFillPrice,mnmSegment, mnmTradingSymbol,mnmTransactionType,mnmAccountId,mnmUser , mnmFillSize, "
-                f"mnmSymbolName, mnmExpiryDate, mnmOptionType, mnmStrikePrice, mnmAvgPrice, mnmExecutingBroker, mnmExchangeTime "
+                f"mnmSymbolName, mnmExpiryDate, mnmOptionType, mnmStrikePrice, mnmAvgPrice, mnmExecutingBroker, mnmExchangeTime, mnmExchUser "
                 f"from [OMNE_ARD_PRD_HNI].[dbo].[TradeHist] "
                 f"where mnmExchSeg = 'bse_fo' "
-                f"and mnmExchangeTime between \'{from_time}\' and \'{to_time}\' "
-                f"and (mnmAccountId = 'AA100' or mnmAccountId = 'CPAA100')")
+                f"and CAST(mnmExchangeTime as TIME) between '{from_time}' and '{to_time}' "
+                f"and mnmAccountId in ('AA100','CPAA100')")
         try:
             sql_engine_str = (
                 f"DRIVER={{ODBC Driver 17 for SQL Server}};"
@@ -197,15 +197,35 @@ def read_data_db(nnf=False, for_table='ENetMIS', from_time:str='', to_time:str='
         except (pyodbc.Error, psycopg2.Error) as e:
             logger.info(f'Error in fetching data: {e}')
     elif not nnf and for_table == 'BSE_ENetMIS':
-        # Sql connection parameters
         sql_server = "rms.ar.db"
         sql_database = "ENetMIS"
         sql_username = "notice_user"
         sql_password = "Notice@2024"
         if not from_time:
-            sql_query = "SELECT * FROM [ENetMIS].[dbo].[BSE_FO_AA100_view]"
+            sql_query = (
+                f"SELECT * FROM [ENetMIS].[dbo].[BSE_FO_AA100_view] "
+                f"where (scid like 'SENSEX%' or scid like 'BANKEX%') "
+            )
         else:
-            sql_query = f"SELECT * FROM [ENetMIS].[dbo].[BSE_FO_AA100_view]"
+            logger.info(f'Fetching BSE trade data from {from_time} to {to_time}')
+            if stored_from_time is not None:
+                stored_from_time = pd.to_datetime(stored_from_time, dayfirst=True).strftime('%H:%M:%S')
+            else:
+                stored_from_time = pd.to_datetime(from_time, dayfirst=True).strftime('%H:%M:%S')
+            # from_time = pd.to_datetime(from_time, dayfirst=True).strftime('%H:%M:%S')
+            to_time = pd.to_datetime(to_time, dayfirst=True).strftime('%H:%M:%S')
+            sql_time_query = (
+                f"SELECT DISTINCT [time] as hh_mm "
+                f"from [ENETMIS].[dbo].[BSE_FO_AA100_view] "
+                f"order by hh_mm "
+                f"desc"
+            )
+            sql_query = (
+                f"SELECT * FROM [ENetMIS].[dbo].[BSE_FO_AA100_view] "
+                f"where (scid like 'SENSEX%' or scid like 'BANKEX%') "
+                f"and CAST([time] as TIME) > '{stored_from_time}' "
+                f"and CAST([time] as TIME) <= '{to_time}'"
+            )
         try:
             sql_connection_string = (
                 f"DRIVER={{ODBC Driver 17 for SQL Server}};"
@@ -215,9 +235,24 @@ def read_data_db(nnf=False, for_table='ENetMIS', from_time:str='', to_time:str='
                 f"PWD={sql_password}"
             )
             with pyodbc.connect(sql_connection_string) as sql_conn:
-                df = pd.read_sql_query(sql_query, sql_conn)
-            logger.info(f"Data fetched from SQL Server. Shape:{df.shape}")
-            return df
+                if from_time:
+                    time_df = pd.read_sql_query(sql_time_query, sql_conn)
+                    if time_df is not None and not time_df.empty:
+                        if pd.to_datetime(stored_from_time, dayfirst=True).time() != pd.to_datetime(
+                          time_df['hh_mm'].iloc[0]).time():
+                            print(f'Stored time before= {stored_from_time}, time_df={time_df["hh_mm"].iloc[0]},'
+                                  f'to_time={to_time}')
+                            df = pd.read_sql_query(sql_query, sql_conn)
+                            stored_from_time = time_df['hh_mm'].iloc[0]
+                            print(f'Stored time after= {stored_from_time}, time_df={time_df["hh_mm"].iloc[0]}, '
+                                  f'to_time={to_time}')
+                            logger.info(f"Data fetched from BSE SQL Server. Shape:{df.shape}")
+                            return df
+                else:
+                    df = pd.read_sql_query(sql_query, sql_conn)
+                    logger.info(f"Data fetched from BSE SQL Server. Shape:{df.shape}")
+                    return df
+            return pd.DataFrame()
         except (pyodbc.Error, psycopg2.Error) as e:
             logger.info("Error occurred:", e)
     elif not nnf and for_table !='ENetMIS':
@@ -225,17 +260,18 @@ def read_data_db(nnf=False, for_table='ENetMIS', from_time:str='', to_time:str='
             df = pd.read_sql_table(for_table, con=conn)
         logger.info(f"Data fetched from {for_table} table. Shape:{df.shape}")
         return df
-    
 
 def read_notis_file(filepath):
     wb = load_workbook(filepath, read_only=True)
     sheet = wb.active
     total_rows = sheet.max_row
     logger.info('Reading Notis file...')
-    pbar = progressbar.ProgressBar(max_value=total_rows, widgets=[progressbar.Percentage(), ' ',
-                                                           progressbar.Bar(marker='=', left='[', right=']'),
-                                                           progressbar.ETA()])
-
+    pbar = progressbar.ProgressBar(
+        max_value=total_rows,
+        widgets=[
+            progressbar.Percentage(), ' ', progressbar.Bar(marker='=', left='[', right=']'), progressbar.ETA()
+        ]
+    )
     data = []
     pbar.update(0)
     for i, row in enumerate(sheet.iter_rows(values_only=True), start=1):
@@ -482,7 +518,8 @@ def analyze_expired_instruments(grouped_final_eod):
     grouped_final_eod.loc[mask, 'ExpiredSpot_close'] = grouped_final_eod['EodUnderlying'].map(spot_dict)
     grouped_final_eod.loc[mask, 'ExpiredRate'] = grouped_final_eod.loc[mask].apply(calc_rate, axis=1)
     grouped_final_eod.loc[mask, 'ExpiredAssn_value'] = (grouped_final_eod.loc[mask, 'PreFinalNetQty'] * grouped_final_eod.loc[mask, 'ExpiredRate'])
-    grouped_final_eod.loc[mask, 'ExpiredSellValue'] = np.where(grouped_final_eod.loc[mask, 'PreFinalNetQty'] > 0,grouped_final_eod.loc[mask, 'ExpiredAssn_value'], 0)
+    grouped_final_eod.loc[mask, 'ExpiredSellValue'] = np.where(grouped_final_eod.loc[mask, 'PreFinalNetQty'] > 0,
+                                                               abs(grouped_final_eod.loc[mask, 'ExpiredAssn_value']), 0)
     grouped_final_eod.loc[mask, 'ExpiredBuyValue'] = np.where(grouped_final_eod.loc[mask, 'PreFinalNetQty'] < 0,abs(grouped_final_eod.loc[mask, 'ExpiredAssn_value']), 0)
     grouped_final_eod.loc[mask, 'ExpiredQty'] = -1 * grouped_final_eod.loc[mask, 'PreFinalNetQty']
     return grouped_final_eod

@@ -27,7 +27,7 @@ import sys
 import re
 import pyodbc
 import psycopg2
-
+from common import test_dir
 # today = datetime(year=2025, month=1, day=24).date()
 # yesterday = datetime(year=2025, month=1, day=23).date()
 pd.set_option('display.max_columns', None)
@@ -1993,84 +1993,199 @@ p=0
 #         print(f'Error: {e}')
 # download_bhavcopy()
 r=0
-#SRC2
-import pandas as pd
-import requests, json, os
-from datetime import datetime
-from sqlalchemy import create_engine
-from common import read_data_db, test_dir
-from db_config import inhouse_engine_str
-
-root_dir = os.getcwd()
-
-def get_src2_trade():
-    server_ip = "192.168.50.68"
-    adminusername = "user3_rms"
-    adminpassword = "user3_rms"
-    userid = 201
-    
-    def get_token():
-        url = f"http://{server_ip}:8010/v1/loginrms"
-        payload = json.dumps({
-            "username": adminusername,
-            "password": adminpassword
-        })
-        headers = {
-            'accept': 'application/json',
-            'Content-Type': 'application/json'
-        }
-        
-        response = requests.request("POST", url, headers=headers, data=payload)
-        response_msg = response.json()
-        authtoken = response_msg.get("token")
-        return authtoken
-    
-    def get_algo2_trades():
-        url = f"http://{server_ip}:8010/v1/dcNetposition?user_id={userid}"
-        payload = {}
-        headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
-                          'AppleWebKit/537.36 (KHTML, like Gecko) '
-                          'Chrome/137.0.0.0 Safari/537.36',
-            'Accept': 'application/json',
-            'auth-token': get_token()
-        }
-        response = requests.request("GET", url, headers=headers, data=payload)
-        
-        if response.status_code == 200:
-            response = response.json()
-            data = response['data']
-            df = pd.DataFrame(data)
-            return df
-        else:
-            return pd.DataFrame()
-    
-    algo2_df = get_algo2_trades()
-    if not algo2_df.empty:
-        algo2_df.rename(columns={'strikePrice': 'StrikePrice'}, inplace=True)
-        # print(f'SRC2\n{algo2_df}')
-        print('data fetched from src2(68 server)')
-        return algo2_df
-    else:
-        print('No Algo2 trades.')
-        return pd.DataFrame()
-
-# SRC1
-def get_src1_trade():
-    inhouse_engine = create_engine(inhouse_engine_str, pool_size = 20, max_overflow = 10, pool_pre_ping=True, pool_recycle=900)
-    with inhouse_engine.begin() as conn:
-        df = pd.read_sql_table('netPositionBSE', con=conn)
-        print('data fetched from src1(inhouse db)')
-        df.createdAt = df.createdAt.astype(str)
-        df.updatedAt = df.updatedAt.astype(str)
-    return df
-
-def get_src3_trade():
-    df_src3 = read_data_db(for_table='BSE_ENetMIS')
-    print('data fetched from src3(RMS)')
-    return df_src3
-
-src1_df = get_src1_trade()
-src2_df = get_src2_trade()
-src3_df = get_src3_trade()
+# #SRC2
+# import pandas as pd
+# import requests, json, os
+# from datetime import datetime
+# from sqlalchemy import create_engine
+# from common import read_data_db, test_dir
+# from db_config import inhouse_engine_str
+#
+# root_dir = os.getcwd()
+#
+# def get_src2_trade():
+#     server_ip = "192.168.50.68"
+#     adminusername = "user3_rms"
+#     adminpassword = "user3_rms"
+#     userid = 201
+#
+#     def get_token():
+#         url = f"http://{server_ip}:8010/v1/loginrms"
+#         payload = json.dumps({
+#             "username": adminusername,
+#             "password": adminpassword
+#         })
+#         headers = {
+#             'accept': 'application/json',
+#             'Content-Type': 'application/json'
+#         }
+#
+#         response = requests.request("POST", url, headers=headers, data=payload)
+#         response_msg = response.json()
+#         authtoken = response_msg.get("token")
+#         return authtoken
+#
+#     def get_algo2_trades():
+#         url = f"http://{server_ip}:8010/v1/dcNetposition?user_id={userid}"
+#         payload = {}
+#         headers = {
+#             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
+#                           'AppleWebKit/537.36 (KHTML, like Gecko) '
+#                           'Chrome/137.0.0.0 Safari/537.36',
+#             'Accept': 'application/json',
+#             'auth-token': get_token()
+#         }
+#         response = requests.request("GET", url, headers=headers, data=payload)
+#
+#         if response.status_code == 200:
+#             response = response.json()
+#             data = response['data']
+#             df = pd.DataFrame(data)
+#             return df
+#         else:
+#             return pd.DataFrame()
+#
+#     algo2_df = get_algo2_trades()
+#     if not algo2_df.empty:
+#         algo2_df.rename(columns={'strikePrice': 'StrikePrice'}, inplace=True)
+#         # print(f'SRC2\n{algo2_df}')
+#         print('data fetched from src2(68 server)')
+#         return algo2_df
+#     else:
+#         print('No Algo2 trades.')
+#         return pd.DataFrame()
+#
+# # SRC1
+# def get_src1_trade():
+#     inhouse_engine = create_engine(inhouse_engine_str, pool_size = 20, max_overflow = 10, pool_pre_ping=True, pool_recycle=900)
+#     with inhouse_engine.begin() as conn:
+#         df = pd.read_sql_table('netPositionBSE', con=conn)
+#         print('data fetched from src1(inhouse db)')
+#         df.createdAt = df.createdAt.astype(str)
+#         df.updatedAt = df.updatedAt.astype(str)
+#     return df
+#
+# def get_src3_trade():
+#     df_src3 = read_data_db(for_table='BSE_ENetMIS')
+#     print('data fetched from src3(RMS)')
+#     return df_src3
+#
+# src1_df = get_src1_trade()
+# src2_df = get_src2_trade()
+# src3_df = get_src3_trade()
 w=0
+# from common import read_data_db, write_notis_postgredb, today, yesterday
+# # n_tbl_bse_trade_data = f'BSE_TRADE_DATA_{today}'
+#
+# # bse_df = read_data_db(for_table=n_tbl_bse_trade_data)
+# # write_notis_postgredb(table_name=n_tbl_bse_trade_data,truncate_required=True)
+# # tradehist_db = read_data_db(for_table='TradeHist')
+# from_time = '14-07-2025 09:15:00'
+# # to_time = '14-07-2025 15:12:00'
+# to_time = datetime.now().replace(second=0, microsecond=0).strftime('%d-%m-%Y %H:%M:%S')
+# rms_db = read_data_db(for_table='BSE_ENetMIS', from_time=from_time, to_time=to_time)
+# trd_df = read_data_db(for_table='TradeHist', from_time=from_time, to_time=to_time)
+o=0
+# def calc_bse_eod_net_pos(desk_bse_df,for_unde):
+#     if for_unde == 'BSE':
+#         underlying_list = ['SENSEX','BANKEX']
+#     else:
+#         underlying_list = ['NIFTY', 'BANKNIFTY', 'MIDCPNIFTY', 'FINNIFTY']
+#     yest_eod_df = read_data_db(for_table=f'NOTIS_EOD_NET_POS_CP_NONCP_{yesterday.strftime("%Y-%m-%d")}')
+#     yest_eod_df.EodExpiry = pd.to_datetime(yest_eod_df.EodExpiry, dayfirst=True, format='mixed').dt.date
+#
+#     yest_eod_df = yest_eod_df.query("EodUnderlying in @underlying_list and EodExpiry >= @today and EodBroker != "
+#                                     "'SRSPL' and FinalNetQty != 0")
+#     yest_eod_df['EodNetQuantity'] = yest_eod_df['FinalNetQty']
+#     yest_eod_df['PreFinalNetQty'] = yest_eod_df['FinalNetQty']
+#     exclude_columns = ['EodBroker', 'EodUnderlying', 'EodExpiry', 'EodStrike', 'EodOptionType',
+#                        'EodNetQuantity', 'PreFinalNetQty', 'FinalNetQty']
+#     yest_eod_df.loc[:, ~yest_eod_df.columns.isin(exclude_columns)] = 0
+#     yest_eod_df = yest_eod_df.query('FinalNetQty != 0')
+#
+#     today_eod_df = read_data_db(for_table=f'NOTIS_EOD_NET_POS_CP_NONCP_{today.strftime("%Y-%m-%d")}')
+#     today_eod_df.EodExpiry = pd.to_datetime(today_eod_df.EodExpiry, dayfirst=True, format='mixed').dt.date
+#     today_eod_df = today_eod_df.query("EodUnderlying in @underlying_list and EodExpiry >= @today and EodBroker != 'SRSPl'")
+#
+#     if len(desk_bse_df) == 0 or desk_bse_df.empty:
+#         if today_eod_df.empty or len(today_eod_df) == 0:
+#             return yest_eod_df
+#         return today_eod_df
+#     yest_eod_df.columns = [re.sub(rf'Eod|\s|Expired', '', each) for each in yest_eod_df.columns]
+#     yest_eod_df.Expiry = pd.to_datetime(yest_eod_df.Expiry, dayfirst=True, format='mixed').dt.date
+#     yest_eod_df.drop(
+#         columns=['NetQuantity', 'buyQty', 'buyAvgPrice', 'buyValue', 'sellQty', 'sellAvgPrice', 'sellValue',
+#                  'PreFinalNetQty', 'Spot_close', 'Rate', 'Assn_value', 'SellValue', 'BuyValue', 'Qty'],
+#         inplace=True
+#     )
+#     yest_eod_df.rename(columns={'FinalNetQty': 'NetQuantity'}, inplace=True)
+#     yest_eod_df = yest_eod_df.add_prefix('Eod')
+#     yest_eod_df = yest_eod_df.query("EodUnderlying in @underlying_list and EodExpiry >= @today and EodNetQuantity != 0 "
+#                           "and EodBroker != 'SRSPL'")
+#     grouped_eod_df = yest_eod_df.groupby(by=['EodBroker', 'EodUnderlying', 'EodExpiry', 'EodStrike', 'EodOptionType'],
+#                                     as_index=False).agg({'EodNetQuantity': 'sum'})
+#     grouped_eod_df = grouped_eod_df.query("EodNetQuantity != 0")
+#     grouped_eod_df = grouped_eod_df.drop_duplicates()
+#     # ============================================================================================
+#     desk_bse_df.Expiry = pd.to_datetime(desk_bse_df.Expiry, dayfirst=True, format='mixed').dt.date
+#     grouped_desk_df = desk_bse_df.groupby(by=['Broker', 'Underlying', 'Expiry', 'Strike', 'OptionType'],
+#                                           as_index=False).agg({
+#         'BuyQty': 'sum', 'SellQty': 'sum', 'buyAvgPrice': 'mean', 'sellAvgPrice': 'mean',
+#         'buyValue': 'sum', 'sellValue': 'sum'
+#     })
+#     grouped_desk_df['IntradayVolume'] = grouped_desk_df['BuyQty'] - grouped_desk_df['SellQty']
+#     if len(grouped_eod_df) > len(grouped_desk_df):
+#         merged_df = grouped_eod_df.merge(
+#             grouped_desk_df,
+#             left_on=['EodBroker', 'EodUnderlying', 'EodExpiry', 'EodStrike', 'EodOptionType'],
+#             right_on=['Broker', 'Underlying', 'Expiry', 'Strike', 'OptionType'],
+#             how='outer'
+#         )
+#     else:
+#         merged_df = grouped_desk_df.merge(
+#             grouped_eod_df,
+#             right_on=['EodBroker', 'EodUnderlying', 'EodExpiry', 'EodStrike', 'EodOptionType'],
+#             left_on=['Broker', 'Underlying', 'Expiry', 'Strike', 'OptionType'],
+#             how='outer'
+#         )
+#     merged_df.fillna(0, inplace=True)
+#     merged_df.drop_duplicates(inplace=True)
+#     # ============================================================================================
+#     coltd1 = ['EodBroker', 'EodUnderlying', 'EodExpiry', 'EodStrike', 'EodOptionType']
+#     coltd2 = ['Broker', 'Underlying', 'Expiry', 'Strike', 'OptionType']
+#     for i in range(len(coltd1)):
+#         merged_df.loc[merged_df[coltd1[i]] == 0, coltd1[i]] = merged_df[coltd2[i]]
+#         merged_df.loc[merged_df[coltd2[i]] == 0, coltd2[i]] = merged_df[coltd1[i]]
+#     merged_df['FinalNetQty'] = merged_df['EodNetQuantity'] + merged_df['IntradayVolume']
+#     merged_df.drop(columns=['Broker', 'Underlying', 'Expiry', 'Strike', 'OptionType'], inplace=True)
+#     # ============================================================================================
+#     col_to_int = ['BuyQty', 'SellQty']
+#     for col in col_to_int:
+#         merged_df[col] = merged_df[col].astype(np.int64)
+#     merged_df.rename(columns={'BuyQty': 'buyQty', 'SellQty': 'sellQty'}, inplace=True)
+#     print(f'length of cp noncp for {today} is {merged_df.shape}')
+#     return merged_df
+y=0
+sql_server = "rms.ar.db"
+sql_database = "ENetMIS"
+sql_username = "notice_user"
+sql_password = "Notice@2024"
+sql_query = (
+    f"SELECT DISTINCT LEFT(LTRIM(RTRIM([time])), 5) AS hh_mm "
+    f"from [ENETMIS].[dbo].[BSE_FO_AA100_view] "
+    f"order by hh_mm desc"
+)
+try:
+    sql_connection_string = (
+        f"DRIVER={{ODBC Driver 17 for SQL Server}};"
+        f"SERVER={sql_server};"
+        f"DATABASE={sql_database};"
+        f"UID={sql_username};"
+        f"PWD={sql_password}"
+    )
+    with pyodbc.connect(sql_connection_string) as sql_conn:
+        df = pd.read_sql_query(sql_query, sql_conn)
+    print(f"Data fetched from SQL Server. Shape:{df.shape}")
+except (pyodbc.Error, psycopg2.Error) as e:
+    print("Error occurred:", e)
+t=0

@@ -302,6 +302,7 @@ n_tbl_bse_trade_data = f"BSE_TRADE_DATA_{today}"
 s_tbl_add = Table(
     n_tbl_bse_trade_data, metadata,
     Column("TerminalID", String(50)),
+    Column("TraderID", String(50)),
     Column("Underlying", String(50)),
     Column("Expiry", String(50)),
     Column("OptionType", String(50)),
