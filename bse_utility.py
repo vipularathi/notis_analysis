@@ -1,13 +1,37 @@
-import re, warnings
+import re, warnings, calendar
 import pandas as pd
 import numpy as np
 from datetime import datetime
 
-from common import (today,yesterday,write_notis_postgredb,
-                    write_notis_data, bse_dir, get_date_from_non_jiffy,
-                    read_file, read_data_db, logger)
+from common import (today, yesterday, holidays_25,
+                    read_file, read_data_db)
 
 warnings.filterwarnings('ignore')
+
+
+def convert_expiry(val):
+    if re.fullmatch(r'\d{5}', val):
+        val = val[:2] + '0' + val[2:]
+        return datetime.strptime(val, '%y%m%d').date()
+    elif re.fullmatch(r'\d{6}', val):
+        return datetime.strptime(val, '%y%m%d').date()
+    elif re.fullmatch(r'\d{2}[A-Z]{3}', val):
+        # Find last tuesday(SENSEX) weekday=1
+        year = 2000 + int(val[:2])
+        month = datetime.strptime(val[2:], '%b').month
+        start_date = datetime.today().replace(day=1).date()
+        end_date = datetime(year=year, month=month, day=calendar.monthrange(year=year, month=month)[1]).date()
+        
+        b_days = pd.bdate_range(start=start_date, end=end_date, freq='C', weekmask='1111100',
+                                holidays=holidays_25).date.tolist()
+        # last_tuesday = find_tuesday(year=year, month=month)
+        offset = (end_date.weekday() - 1) % 7
+        last_tues = end_date.replace(day=end_date.day - offset)
+        if last_tues in b_days:
+            return last_tues
+        else:
+            b_days = [each for each in b_days if each < last_tues]
+            return b_days[-1]
 
 class BSEUtility:
     @staticmethod
@@ -31,29 +55,16 @@ class BSEUtility:
         return bse_raw_df
     @staticmethod
     def bse_modify_file_v2(bse_raw_df):
-        def convert_expiry(val):
-            if val == '25JUL':
-                return pd.to_datetime('2025-07-15').date()
-            elif len(val) == 5:
-                val=val[:2]+'0'+val[2:]
-            elif len(val) != 6:
-                return None
-            return datetime.strptime(val,'%y%m%d').date()
-            # if re.fullmatch(rf'\d{5}', val):
-            #     return val[:2]+'0'+val[2:]
-            # elif re.fullmatch(rf'\d{6}', val):
-            #     return datetime.strptime(val,'%y%m%d').date()
-            # elif re.fullmatch(rf'\d{2}[A-Z]{3}', val):
-            #     raw_dt = datetime.strptime(val, '%y%b%d')
-            
         pattern = r'^([A-Z]+)(\d{5}|\d{6}|\d{2}[A-Z]{3})(\d{5})([A-Z]{2})$'
         bse_raw_df[['Underlying','temp_expiry','Strike','OptionType']] = bse_raw_df['scid'].str.extract(pattern)
         bse_raw_df['Expiry'] = bse_raw_df['temp_expiry'].apply(convert_expiry)
         bse_raw_df['Segment'] = 'FO'
         bse_raw_df['SymbolName'] = 'BSXOPT'
         bse_raw_df['AvgPrice'] = bse_raw_df['rt']
-        bse_raw_df['ExecutingBroker'] = 0
-        bse_raw_df['Broker'] = 'non CP'
+        # bse_raw_df['ExecutingBroker'] = 0
+        # bse_raw_df['Broker'] = 'non CP'
+        bse_raw_df['Broker'] = np.where(bse_raw_df['CpCode'], 'CP', 'non CP')
+        
         bse_raw_df.rename(
             columns={'rt':'FillPrice','buy/sell':'TransactionType','clid':'AccountId','tdrid':'TraderID',
                      'qty':'FillSize','scid':'TradingSymbol'},
@@ -76,34 +87,10 @@ class BSEUtility:
     
     @staticmethod
     def calc_bse_eod_net_pos(desk_bse_df):
-        # eod_df = read_data_db(for_table=f'NOTIS_EOD_NET_POS_CP_NONCP_{yesterday.strftime("%Y-%m-%d")}')
-        # # eod_df = eod_df.replace(' ', '', regex=True)
-        # # if len(desk_bse_df) == 0:
-        # #     eod_df.EodExpiry = pd.to_datetime(eod_df.EodExpiry, dayfirst=True, format='mixed').dt.date
-        # #     eod_df = eod_df.query("EodUnderlying == 'SENSEX' and EodExpiry >= @today and FinalNetQty != 0")
-        # #     grouped_eod_df = eod_df.groupby(
-        # #         by=['EodBroker', 'EodUnderlying', 'EodExpiry', 'EodStrike', 'EodOptionType'],
-        # #         as_index=False).agg({'FinalNetQty': 'sum'})
-        # #     return grouped_eod_df
-        # eod_df.columns = [re.sub(rf'Eod|\s|Expired', '', each) for each in eod_df.columns]
-        # eod_df.Expiry = pd.to_datetime(eod_df.Expiry, dayfirst=True, format='mixed').dt.date
-        # eod_df.drop(
-        #     columns=['NetQuantity', 'buyQty', 'buyAvgPrice', 'buyValue','sellQty', 'sellAvgPrice', 'sellValue',
-        #              'PreFinalNetQty','Spot_close','Rate','Assn_value','SellValue','BuyValue','Qty'],
-        #     inplace=True
-        # )
-        # eod_df.rename(columns={'FinalNetQty': 'NetQuantity'}, inplace=True)
-        # eod_df = eod_df.add_prefix('Eod')
-        # bse_underlying_list = ['SENSEX','BANKEX']
-        # eod_df = eod_df.query("EodUnderlying in @bse_underlying_list and EodExpiry >= @today and EodNetQuantity != 0 "
-        #                       "and EodBroker != 'SRSPL'")
-        # grouped_eod_df = eod_df.groupby(by=['EodBroker', 'EodUnderlying', 'EodExpiry', 'EodStrike', 'EodOptionType'],
-        #                                 as_index=False).agg({'EodNetQuantity': 'sum'})
         underlying_list = ['SENSEX','BANKEX']
         yest_eod_df = read_data_db(for_table=f'NOTIS_EOD_NET_POS_CP_NONCP_{yesterday.strftime("%Y-%m-%d")}')
         yest_eod_df.EodExpiry = pd.to_datetime(yest_eod_df.EodExpiry, dayfirst=True, format='mixed').dt.date
-        yest_eod_df = yest_eod_df.query("EodUnderlying in @underlying_list and EodExpiry >= @today and EodBroker not "
-                                        "in ['SRSPL','BAJAJ'] and FinalNetQty != 0")
+        yest_eod_df = yest_eod_df.query("EodUnderlying in @underlying_list and EodExpiry >= @today and FinalNetQty != 0 and EodBroker in ['CP','non CP']")
         yest_eod_df['EodNetQuantity'] = yest_eod_df['FinalNetQty']
         yest_eod_df['PreFinalNetQty'] = yest_eod_df['FinalNetQty']
         exclude_columns = ['EodBroker', 'EodUnderlying', 'EodExpiry', 'EodStrike', 'EodOptionType',
@@ -113,8 +100,7 @@ class BSEUtility:
         
         today_eod_df = read_data_db(for_table=f'NOTIS_EOD_NET_POS_CP_NONCP_{today.strftime("%Y-%m-%d")}')
         today_eod_df.EodExpiry = pd.to_datetime(today_eod_df.EodExpiry, dayfirst=True, format='mixed').dt.date
-        today_eod_df = today_eod_df.query(
-            "EodUnderlying in @underlying_list and EodExpiry >= @today and EodBroker not in ['SRSPL','BAJAJ']")
+        today_eod_df = today_eod_df.query("EodUnderlying in @underlying_list and EodExpiry >= @today and EodBroker in ['CP','non CP']")
         
         if len(desk_bse_df) == 0 or desk_bse_df.empty:
             if today_eod_df.empty or len(today_eod_df) == 0:
@@ -130,8 +116,7 @@ class BSEUtility:
         yest_eod_df.rename(columns={'FinalNetQty': 'NetQuantity'}, inplace=True)
         yest_eod_df = yest_eod_df.add_prefix('Eod')
         yest_eod_df = yest_eod_df.query(
-            "EodUnderlying in @underlying_list and EodExpiry >= @today and EodNetQuantity != 0 "
-            "and EodBroker not in ['SRSPL','BAJAJ']")
+            "EodUnderlying in @underlying_list and EodExpiry >= @today and EodNetQuantity != 0 and EodBroker in ['CP','non CP']")
         grouped_eod_df = yest_eod_df.groupby(
             by=['EodBroker', 'EodUnderlying', 'EodExpiry', 'EodStrike', 'EodOptionType'],
             as_index=False).agg({'EodNetQuantity': 'sum'})
@@ -206,3 +191,29 @@ class BSEUtility:
 
             concat_eod_df = pd.concat([eod_df, truncated_sent_df], ignore_index=True)
             # write_notis_postgredb()
+            
+    @staticmethod
+    def calc_bse_deal_sheet(pivot_df):
+        pivot_df = pivot_df.copy()
+        grouped_pivot_df = pd.DataFrame()
+        if not pivot_df.empty or len(pivot_df) != 0:
+            pivot_df.rename(
+                columns={'buyMax':'BuyMax','sellMax':'SellMax',
+                         'buyMin':'BuyMin','sellMin':'SellMin',
+                         'buyValue':'BuyValue','sellValue':'SellValue'},
+                inplace=True
+            )
+            grouped_pivot_df = pivot_df.groupby(
+                by=['Broker', 'Underlying', 'Expiry', 'Strike', 'OptionType'],
+                as_index=False).agg(
+                {'BuyMax': 'max', 'SellMax': 'max',
+                 'BuyMin': lambda x: x[x > 0].min() if any(x > 0) else 0,
+                 'SellMin': lambda x: x[x > 0].min() if any(x > 0) else 0,
+                 'BuyQty': 'sum','SellQty': 'sum',
+                 'BuyValue':'sum','SellValue':'sum'}
+            )
+            div_100_list = ['BuyMax', 'SellMax', 'BuyMin', 'SellMin']
+            for each in div_100_list:
+                grouped_pivot_df[each] = grouped_pivot_df[each].astype(np.float64)
+                grouped_pivot_df[each] = grouped_pivot_df[each] / 100
+        return grouped_pivot_df

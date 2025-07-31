@@ -2166,26 +2166,324 @@ o=0
 #     print(f'length of cp noncp for {today} is {merged_df.shape}')
 #     return merged_df
 y=0
-sql_server = "rms.ar.db"
-sql_database = "ENetMIS"
-sql_username = "notice_user"
-sql_password = "Notice@2024"
-sql_query = (
-    f"SELECT DISTINCT LEFT(LTRIM(RTRIM([time])), 5) AS hh_mm "
-    f"from [ENETMIS].[dbo].[BSE_FO_AA100_view] "
-    f"order by hh_mm desc"
-)
-try:
-    sql_connection_string = (
-        f"DRIVER={{ODBC Driver 17 for SQL Server}};"
-        f"SERVER={sql_server};"
-        f"DATABASE={sql_database};"
-        f"UID={sql_username};"
-        f"PWD={sql_password}"
-    )
-    with pyodbc.connect(sql_connection_string) as sql_conn:
-        df = pd.read_sql_query(sql_query, sql_conn)
-    print(f"Data fetched from SQL Server. Shape:{df.shape}")
-except (pyodbc.Error, psycopg2.Error) as e:
-    print("Error occurred:", e)
+# sql_server = "rms.ar.db"
+# sql_database = "ENetMIS"
+# sql_username = "notice_user"
+# sql_password = "Notice@2024"
+# sql_query = (
+#     f"SELECT DISTINCT LEFT(LTRIM(RTRIM([time])), 5) AS hh_mm "
+#     f"from [ENETMIS].[dbo].[BSE_FO_AA100_view] "
+#     f"order by hh_mm desc"
+# )
+# try:
+#     sql_connection_string = (
+#         f"DRIVER={{ODBC Driver 17 for SQL Server}};"
+#         f"SERVER={sql_server};"
+#         f"DATABASE={sql_database};"
+#         f"UID={sql_username};"
+#         f"PWD={sql_password}"
+#     )
+#     with pyodbc.connect(sql_connection_string) as sql_conn:
+#         df = pd.read_sql_query(sql_query, sql_conn)
+#     print(f"Data fetched from SQL Server. Shape:{df.shape}")
+# except (pyodbc.Error, psycopg2.Error) as e:
+#     print("Error occurred:", e)
 t=0
+# # Finding last tuesday(SENSEX)
+# import calendar
+# from common import holidays_25, read_data_db
+# from Untitled_bse_utility import BSEUtility
+#
+# # today = datetime.today().date()
+# # b_days = pd.bdate_range(start=today - timedelta(days=45), end=today + timedelta(days=45),freq='C',weekmask='1111100',
+# #                         holidays=holidays_25).date.tolist()
+# # def find_tuesday(year,month):
+# #     last_day = date(year=year, month=month, day=calendar.monthrange(year=year, month=month)[1])
+# #     offset = (last_day.weekday() -1) % 7
+# #     last_tues = last_day.replace(day=last_day.day-offset)
+# #     b_days = [each for each in b_days if each.month == last_tues.month]
+# #     if last_tues in b_days:
+# #         return last_tues
+# #     else:
+# #         b_days = [each for each in b_days if each < last_tues]
+# #         return b_days[-1]
+# # # ltues = find_tuesday(year=2025,month=7)
+#
+# def conv_exp(val):
+#     if re.fullmatch(r'\d{6}', val):
+#         return datetime.strptime(val,'%y%m%d').date()
+#     elif re.fullmatch(r'\d{5}', val):
+#         fulldate = val[:2]+'0'+val[2:]
+#         return datetime.strptime(fulldate, '%y%m%d').date()
+#     elif re.fullmatch(r'\d{2}[A-Z]{3}', val):
+#         year = 2000+int(val[:2])
+#         month = datetime.strptime(val[2:],'%b').month
+#         start_date = datetime.today().date()
+#         end_date = datetime(year=year,month=month,day=calendar.monthrange(year=year,month=month)[1]).date()
+#         b_days = pd.bdate_range(start=start_date,end=end_date,freq='C',weekmask='1111100',
+#                                 holidays=holidays_25).date.tolist()
+#         # Finding last wednesday, weekday=2
+#         offset = (end_date.weekday() - 2) % 7
+#         last_wed = end_date.replace(day=end_date.day - offset)
+#         if last_wed in b_days:
+#             return last_wed
+#         else:
+#             b_days = [each for each in b_days if each < last_wed]
+#             return b_days[-1]
+# res = conv_exp('25AUG')
+u=0
+# # fetch annualized volatility
+# from common import (today,yesterday, read_file, volt_dir, find_spot,
+#                     read_data_db, holidays_25)
+# from db_config import n_tbl_notis_eod_net_pos_cp_noncp
+# import mibian
+#
+# def calc_dte(row):
+#     # if row['EodExpiry'] == pd.to_datetime('2025-07-24').date():
+#     #     return 1
+#     # else:
+#     #     bdays_left = pd.bdate_range(start=today, end=row['EodExpiry'],freq='C',weekmask='1111100', holidays=holidays_25)
+#     #     actual_bdays_left = len(bdays_left) - 1
+#     #     return actual_bdays_left
+#     bdays_left = pd.bdate_range(start=today, end=row['EodExpiry'], freq='C', weekmask='1111100', holidays=holidays_25)
+#     actual_bdays_left = len(bdays_left)
+#     return actual_bdays_left
+# def get_delta(row):
+#     int_rate,annual_div = 5.5,0
+#     # if row['EodExpiry'] == pd.to_datetime('2025-07-31').date() and row['EodOptionType'] == 'CE':
+#     #     p=0
+#     if row['EodOptionType'] == 'CE':
+#         calc = mibian.Me(
+#             [row['spot'],row['EodStrike'],int_rate,annual_div,row['dte']],
+#             volatility=row['volatility']
+#         )
+#         return calc.callDelta
+#     elif row['EodOptionType'] == 'PE':
+#         calc = mibian.Me(
+#             [row['spot'], row['EodStrike'],int_rate,annual_div,row['dte']],
+#             volatility=row['volatility']
+#         )
+#         return calc.putDelta
+#     else:
+#         return 1.0
+#
+# sym_list = ['NIFTY', 'BANKNIFTY', 'FINNIFTY', 'MIDCPNIFTY', 'SENSEX', 'BANKEX']
+# eod_df = read_data_db(for_table=n_tbl_notis_eod_net_pos_cp_noncp)
+# col_keep = ['EodBroker','EodUnderlying','EodExpiry','EodStrike','EodOptionType','PreFinalNetQty']
+# # eod_df.columns = [col for col in col_keep if col in eod_df.columns]
+# eod_df.drop(columns=[col for col in eod_df.columns if col not in col_keep], inplace=True)
+# eod_df['EodExpiry'] = pd.to_datetime(eod_df['EodExpiry'], dayfirst=True).dt.date
+# volt_df = read_file(os.path.join(volt_dir, f'FOVOLT_{yesterday.strftime("%d%m%Y")}.csv'))
+# volt_df.columns = [re.sub(r'\s','',each) for each in volt_df.columns]
+# volt_df.rename(columns = {'ApplicableAnnualisedVolatility(N)=Max(ForL)':'AnnualizedReturn'}, inplace=True)
+# volt_df = volt_df.iloc[:,[1,-1]].query("Symbol in @sym_list")
+# spot_dict = find_spot()
+# volt_dict = dict(zip(volt_df['Symbol'],volt_df['AnnualizedReturn']))
+# eod_df['spot'] = eod_df['EodUnderlying'].map(spot_dict)
+# eod_df['volatility'] = eod_df['EodUnderlying'].map(volt_dict)
+# eod_df['volatility'] = eod_df['volatility'].astype(np.float64)
+# eod_df['volatility'] = eod_df['volatility'] * 100
+# eod_df['dte'] = eod_df.apply(calc_dte, axis=1)
+# mask = eod_df['EodOptionType'] == 'XX'
+# eod_df.loc[mask,'volatility'] = 1
+# eod_df['deltaPerUnit'] = eod_df.apply(get_delta, axis=1).astype(np.float64)
+# eod_df['deltaQty'] = eod_df['PreFinalNetQty'] * eod_df['deltaPerUnit']
+# eod_df['deltaExposure(in Cr)'] = (eod_df['spot'] * eod_df['deltaQty']) / 10_000_000
+# # mask = (eod_df['EodOptionType'] == 'CE' | eod_df['EodOptionType'] == 'PE')
+# mask = eod_df['EodOptionType'].isin(['CE','PE'])
+# eod_df.loc[mask,'EodOptionType'] = 'CE_PE'
+# # for summerisation
+# final_eod_df = pd.DataFrame()
+# for each in ['XX','CE_PE']:
+#     temp_eod_df = eod_df.query("EodOptionType == @each")
+#     grouped_temp_eod_df = temp_eod_df.groupby(by=['EodOptionType','EodBroker','EodUnderlying'], as_index=False)['deltaExposure(in Cr)'].agg(
+#         {'Long':lambda x:x[x>0].sum(),'Short':lambda x: x[x<0].sum(),'Net':'sum'}
+#     )
+#     total_dict = {
+#         'EodOptionType':'',
+#         'EodBroker':'Total',
+#         'EodUnderlying':'',
+#         'Long':grouped_temp_eod_df['Long'].sum(),
+#         'Short':grouped_temp_eod_df['Short'].sum(),
+#         'Net':grouped_temp_eod_df['Net'].sum()
+#     }
+#     grouped_temp_eod_df = pd.concat([grouped_temp_eod_df,pd.DataFrame([total_dict])], ignore_index=True)
+#     final_eod_df = pd.concat([final_eod_df,grouped_temp_eod_df], ignore_index=True)
+# # combined_dict = {
+# #     'EodOptionType':'Combined',
+# #     'EodBroker':'Total',
+# #     'Long':grouped_temp_eod_df['Long'].sum(),
+# #     'Short':grouped_temp_eod_df['Short'].sum(),
+# #     'Net':grouped_temp_eod_df['Net'].sum()
+# # }
+# for each in ['deltaExposure(in Cr)','deltaQty']:
+#     grouped_df = eod_df.groupby(by=['EodBroker','EodUnderlying'], as_index=False)[each].agg(
+#             {'Long':lambda x: x[x>0].sum(),'Short':lambda x: x[x<0].sum(),'Net':'sum'}
+#         )
+#     if each == 'deltaExposure(in Cr)':
+#         use = 'Combined'
+#         grouped_df['EodOptionType'] = 'Combined'
+#     else:
+#         use = 'DeltaQty'
+#         grouped_df['EodOptionType'] = 'DeltaQty'
+#     total_dict = {
+#         'EodOptionType':use,
+#         'EodBroker':'Total',
+#         'EodUnderlying':'',
+#         'Long':grouped_df['Long'].sum(),
+#         'Short':grouped_df['Short'].sum(),
+#         'Net':grouped_df['Net'].sum()
+#     }
+#     grouped_df = pd.concat([grouped_df,pd.DataFrame([total_dict])], ignore_index=False)
+#     # grouped_df.fillna('',inplace=True)
+#     final_eod_df = pd.concat([final_eod_df,grouped_df], ignore_index=False)
+u=0
+# import random
+# random_number = random.randint(1, 135)
+# print("Random number:", random_number)
+y=0
+import re, os, progressbar, pyodbc, warnings, psycopg2, time, mibian, math
+import pandas as pd
+import numpy as np
+from datetime import datetime, timedelta, timezone
+from py_vollib.black_scholes.greeks.analytical import delta
+from common import read_file, volt_dir, find_spot, holidays_25, holidays_26, read_data_db, yesterday
+
+today = yesterday
+# yesterday = today - timedelta(days=1)
+# a=find_spot()
+# i=0
+def calc_dte(row):
+    total_holidays = holidays_25 + holidays_26
+    bdays_left = pd.bdate_range(start=today, end=row['EodExpiry'], freq='C', weekmask='1111100', holidays=total_holidays)
+    actual_bdays_left = len(bdays_left)
+    return actual_bdays_left
+def get_delta(row):
+    int_rate = 5.5
+    annual_div = 0.0
+    # if row['EodExpiry'] == pd.to_datetime('2025-07-31').date() and row['EodOptionType'] == 'CE':
+    #     p=0
+    spot = row['spot']
+    strike = row['EodStrike']
+    dte = row['dte']
+    # dte = (row['EodExpiry'] - today).days
+    vol = float(row['volatility'])
+    if row['EodOptionType'] == 'XX':
+        return 1.0
+    calc = mibian.BS(
+        [spot, strike, int_rate, dte],
+        volatility=vol
+    )
+    return calc.callDelta if row['EodOptionType'] == 'CE' else calc.putDelta
+    # if row['EodOptionType'] == 'CE':
+    #     # calc = mibian.BS(
+    #     #     [row['spot'],row['EodStrike'],int_rate,row['dte']],
+    #     #     volatility=row['volatility']
+    #     # )
+    #     return calc.callDelta
+    # else:
+    #     # calc = mibian.BS(
+    #     #     [row['spot'], row['EodStrike'],int_rate,row['dte']],
+    #     #     volatility=row['volatility']
+    #     # )
+    #     return calc.putDelta
+    # # else:
+    # #     return 1.0
+
+def get_delta_vollib(row):
+    int_rate = 0.055
+    spot= row['spot']
+    strike = row['EodStrike']
+    dte = ((row['EodExpiry']-today).days)/365
+    vol = row['volatility'] / 100
+    if row['EodOptionType'] == 'XX':
+        return 1.0
+    elif row['EodOptionType'] == 'CE':
+        d = delta('c',spot,strike,dte,int_rate,vol)
+        return d
+    else:
+        d = delta('p',spot,strike,dte,int_rate,vol)
+        return d
+
+def calc_delta(eod_df):
+    eod_df = eod_df.copy()
+    # eod_df['EodExpiry'] = pd.to_datetime(eod_df['EodExpiry'], dayfirst=True).dt.date
+    sym_list = ['NIFTY', 'BANKNIFTY', 'FINNIFTY', 'MIDCPNIFTY', 'SENSEX', 'BANKEX']
+    col_keep = ['EodBroker', 'EodUnderlying', 'EodExpiry', 'EodStrike', 'EodOptionType', 'PreFinalNetQty']
+    eod_df.drop(columns=[col for col in eod_df.columns if col not in col_keep], inplace=True)
+    volt_df = read_file(os.path.join(volt_dir, f'FOVOLT_{today.strftime("%d%m%Y")}.csv'))
+    volt_df.columns = [re.sub(r'\s', '', each) for each in volt_df.columns]
+    volt_df.rename(columns={'ApplicableAnnualisedVolatility(N)=Max(ForL)': 'AnnualizedReturn'}, inplace=True)
+    volt_df = volt_df.iloc[:, [1, -1]].query("Symbol in @sym_list")
+    volt_df = volt_df.applymap(lambda x:re.sub(r'\s+','',x) if isinstance(x,str) else x)
+    volt_df['AnnualizedReturn'] = volt_df['AnnualizedReturn'].astype(np.float64)
+    # volt_df = volt_df.reset_index()
+    # spot_dict = find_spot()
+    spot_dict = {
+        'NIFTY':24855.05,
+        'BANKNIFTY':56150.7,
+        'SENSEX':81481.86
+    }
+    volt_dict = dict(zip(volt_df['Symbol'], volt_df['AnnualizedReturn']))
+    eod_df['spot'] = eod_df['EodUnderlying'].map(spot_dict)
+    eod_df['volatility'] = eod_df['EodUnderlying'].map(volt_dict)
+    eod_df['volatility'] = eod_df['volatility'].astype(np.float64)
+    eod_df['volatility'] = eod_df['volatility'] * 100
+    # eod_df['dte'] = eod_df.apply(calc_dte, axis=1)
+    # eod_df['cal_dte'] = (eod_df['EodExpiry'] - today).days
+    eod_df['dte'] = eod_df['EodExpiry'].apply(lambda x: (x-today).days)
+    mask = eod_df['EodOptionType'] == 'XX'
+    eod_df.loc[mask, 'volatility'] = 1
+    eod_df['deltaPerUnit'] = eod_df.apply(get_delta, axis=1).astype(np.float64)
+    eod_df['deltaQty'] = (eod_df['PreFinalNetQty'] * eod_df['deltaPerUnit'])
+    eod_df['deltaExposure(in Cr)'] = ((eod_df['spot'] * eod_df['deltaQty']) / 10_000_000)
+    eod_df.to_excel(os.path.join(test_dir, f'eod_delta{datetime.today().strftime("%H%M")}.xlsx'), index=False)
+    mask = eod_df['EodOptionType'].isin(['CE', 'PE'])
+    eod_df.loc[mask, 'EodOptionType'] = 'CE_PE'
+    final_eod_df = pd.DataFrame()
+    for each in ['XX', 'CE_PE']:
+        temp_eod_df = eod_df.query("EodOptionType == @each")
+        grouped_temp_eod_df = temp_eod_df.groupby(by=['EodOptionType', 'EodBroker', 'EodUnderlying'], as_index=False)[
+            'deltaExposure(in Cr)'].agg(
+            {'Long': lambda x: x[x > 0].sum(), 'Short': lambda x: x[x < 0].sum(), 'Net': 'sum'}
+        )
+        total_dict = {
+            'EodOptionType': '',
+            'EodBroker': 'Total',
+            'EodUnderlying': '',
+            'Long': grouped_temp_eod_df['Long'].sum(),
+            'Short': grouped_temp_eod_df['Short'].sum(),
+            'Net': grouped_temp_eod_df['Net'].sum()
+        }
+        grouped_temp_eod_df = pd.concat([grouped_temp_eod_df, pd.DataFrame([total_dict])], ignore_index=True)
+        final_eod_df = pd.concat([final_eod_df, grouped_temp_eod_df], ignore_index=True)
+    for each in ['deltaExposure(in Cr)', 'deltaQty']:
+        grouped_df = eod_df.groupby(by=['EodBroker', 'EodUnderlying'], as_index=False)[each].agg(
+            {'Long': lambda x: x[x > 0].sum(), 'Short': lambda x: x[x < 0].sum(), 'Net': 'sum'}
+        )
+        if each == 'deltaExposure(in Cr)':
+            use = 'Combined'
+            grouped_df['EodOptionType'] = 'Combined'
+        else:
+            use = 'DeltaQty'
+            grouped_df['EodOptionType'] = 'DeltaQty'
+            grouped_df['Long'] = grouped_df['Long'] / 100000
+            grouped_df['Short'] = grouped_df['Short'] / 100000
+            grouped_df['Net'] = grouped_df['Net'] / 100000
+        total_dict = {
+            'EodOptionType': use,
+            'EodBroker': 'Total',
+            'EodUnderlying': '',
+            'Long': grouped_df['Long'].sum(),
+            'Short': grouped_df['Short'].sum(),
+            'Net': grouped_df['Net'].sum()
+        }
+        grouped_df = pd.concat([grouped_df, pd.DataFrame([total_dict])], ignore_index=False)
+        final_eod_df = pd.concat([final_eod_df, grouped_df], ignore_index=False)
+    return final_eod_df
+
+# yest_eod_df = read_data_db(for_table=f"NOTIS_EOD_NET_POS_CP_NONCP_{today}")
+yest_eod_df = pd.read_excel(rf"D:\notis_analysis\input_data\eodnetposcp_2025-07-30.xlsx", index_col=False)
+delta_df = calc_delta(yest_eod_df)
+delta_df.to_excel(os.path.join(test_dir, f'delta{datetime.today().strftime("%H%M")}.xlsx'), index=False)
+p=0

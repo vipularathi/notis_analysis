@@ -12,15 +12,14 @@ from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse, StreamingResponse, FileResponse, PlainTextResponse
 from fastapi.middleware.cors import CORSMiddleware
 
-from db_config import (n_tbl_notis_trade_book, s_tbl_notis_trade_book,
-                       n_tbl_notis_raw_data, s_tbl_notis_raw_data,
-                       n_tbl_notis_nnf_data, s_tbl_notis_nnf_data,
+from db_config import (n_tbl_notis_trade_book, n_tbl_notis_raw_data,
+                       n_tbl_notis_nnf_data,n_tbl_notis_delta_table,
                         n_tbl_srspl_trade_data, n_tbl_notis_eod_net_pos_cp_noncp,
                        engine_str, notis_engine_str, bse_engine_str)
 from common import (get_date_from_non_jiffy,get_date_from_jiffy,
                     read_data_db, read_notis_file, read_file,
                     write_notis_data, write_notis_postgredb,
-                    analyze_expired_instruments,
+                    analyze_expired_instruments, calc_delta,
                     today, yesterday, bhav_dir,
                     logger, volt_dir, zipped_dir)
 
@@ -103,6 +102,10 @@ class ServiceApp:
             tablename = f'NOTIS_EOD_NET_POS_CP_NONCP_{today}' if for_dt == today else f'NOTIS_EOD_NET_POS_CP_NONCP_{for_dt.strftime("%Y-%m-%d")}'
         elif for_table == f'bsetradebook':
             tablename = f'BSE_TRADE_DATA_{today.strftime("%Y-%m-%d")}' if for_dt == today else f'BSE_TRADE_DATA_{for_dt.strftime("%Y-%m-%d")}'
+        elif for_table == f'delta':
+            tablename = f'NOTIS_DELTA_{for_dt.strftime("%Y-%m-%d")}'
+        elif for_table == f'deal':
+            tablename = f'NOTIS_DEAL_SHEET_{for_dt.strftime("%Y-%m-%d")}'
         if for_table == 'eodnetposcp':
             query = text(rf'Select "EodBroker","EodUnderlying","EodExpiry","EodStrike","EodOptionType","EodNetQuantity","buyQty","buyValue","sellQty","sellValue",'
                          rf'"PreFinalNetQty","ExpiredSpot_close","ExpiredRate","ExpiredAssn_value","ExpiredSellValue","ExpiredBuyValue","ExpiredQty","FinalNetQty" '
@@ -149,6 +152,10 @@ class ServiceApp:
             tablename = f'NOTIS_EOD_NET_POS_CP_NONCP_{today}' if for_dt == today else f'NOTIS_EOD_NET_POS_CP_NONCP_{for_dt.strftime("%Y-%m-%d")}'
         elif for_table == f'bsetradebook':
             tablename = f'BSE_TRADE_DATA_{today.strftime("%Y-%m-%d")}' if for_dt == today else f'BSE_TRADE_DATA_{for_dt.strftime("%Y-%m-%d")}'
+        elif for_table == f'delta':
+            tablename = f'NOTIS_DELTA_{for_dt.strftime("%Y-%m-%d")}'
+        elif for_table == f'deal':
+            tablename = f'NOTIS_DEAL_SHEET_{for_dt.strftime("%Y-%m-%d")}'
         # logger.info(f'tablename is {tablename}')
         if for_dt == today:
             zip_path = os.path.join(zipped_dir, f'zipped_{tablename}_{for_dt}.xlsx.gz')
@@ -513,14 +520,19 @@ class ServiceApp:
         json_data = pivot_df.to_json(orient='records')
         if not pivot_df.empty:
             return Response(content=json_data, media_type='application/json')
-
-    def get_oi(self, for_date=Query()):
+    
+    def get_oi(self, for_date=Query(), summary:bool=Query()):
         # for_date = datetime.today().date().strftime('%Y-%m-%d')
         # table_to_read = f'NOTIS_EOD_NET_POS_CP_NONCP_{for_date}'
         eod_df = read_data_db(for_table=n_tbl_notis_eod_net_pos_cp_noncp)
         eod_df.columns = [re.sub(r'Eod|\s', '', each) for each in eod_df.columns]
-        grouped_df = eod_df.groupby(by=['Broker', 'Underlying', 'Expiry'], as_index=False).agg(
-            {'PreFinalNetQty': lambda x: x.abs().sum()})
+        if not summary:
+            grouped_df = eod_df.groupby(by=['Broker', 'Underlying', 'Expiry'], as_index=False).agg(
+                {'PreFinalNetQty': lambda x: x.abs().sum()})
+        else:
+            grouped_df = eod_df.groupby(by=['Underlying'], as_index=False).agg(
+                {'PreFinalNetQty':lambda x:x.abs().sum()}
+            )
         json_data = grouped_df.to_json(orient='records')
         return Response(json_data, media_type='application/json')
     
@@ -538,20 +550,42 @@ class ServiceApp:
             else:
                 df = pd.read_excel(buffer)
             if for_table == 'SRSPL'.lower() or for_table == 'SRSPL':
-                df['EodBroker'] = 'SRSPL'
                 df['EodExpiry'] = pd.to_datetime(df['EodExpiry'], dayfirst=True).dt.date
                 df = df[
                     ['EodBroker', 'EodUnderlying', 'EodExpiry', 'EodStrike', 'EodOptionType', 'EodNetQuantity', 'buyQty',
-                     'buyValue', 'sellQty', 'sellValue', 'PreFinalNetQty']]
+                     'buyValue', 'sellQty', 'sellValue', 'PreFinalNetQty']
+                ]
                 write_notis_postgredb(df=df, table_name=n_tbl_srspl_trade_data, truncate_required=True)
-                eod_df = read_data_db(for_table=n_tbl_notis_eod_net_pos_cp_noncp)
-                eod_df = eod_df.query("EodBroker != 'SRSPL'")
-                concat_df = pd.concat([eod_df, df], ignore_index=True)
-                concat_df['EodExpiry'] = pd.to_datetime(concat_df['EodExpiry'], dayfirst=True).dt.date
-                concat_df.fillna(0, inplace=True)
-                if today in concat_df.EodExpiry.unique():
-                    concat_df = analyze_expired_instruments(grouped_final_eod=concat_df)
-                write_notis_postgredb(df=concat_df, table_name=n_tbl_notis_eod_net_pos_cp_noncp, truncate_required=True)
+                if datetime.today().time() > datetime.strptime('15:35:00','%H:%M:%S').time():
+                    eod_df = read_data_db(for_table=n_tbl_notis_eod_net_pos_cp_noncp)
+                    orig_eod_df = eod_df.query("EodBroker in ['CP','non CP']")
+                    eod_df = eod_df.query("EodBroker not in ['CP','non CP']")
+                    concat_df = pd.concat([eod_df, df], ignore_index=True)
+                    concat_df['EodExpiry'] = pd.to_datetime(concat_df['EodExpiry'], dayfirst=True).dt.date
+                    concat_df.fillna(0, inplace=True)
+                    grouped_eod_df = concat_df.groupby(
+                        by=['EodBroker', 'EodUnderlying', 'EodExpiry', 'EodStrike', 'EodOptionType'],
+                        as_index=False).agg(
+                        {'EodNetQuantity': 'last', 'buyQty': 'sum', 'buyValue': 'sum',
+                         'sellQty': 'sum', 'sellValue': 'sum', 'PreFinalNetQty': 'sum'}
+                    )
+                    grouped_eod_df.fillna(0, inplace=True)
+                    grouped_eod_df['PreFinalNetQty'] = (
+                      grouped_eod_df['EodNetQuantity'] + grouped_eod_df['buyQty'] -
+                      grouped_eod_df['sellQty']
+                    )
+                    grouped_eod_df['ExpiredSpot_close'] = 0.0
+                    grouped_eod_df['ExpiredRate'] = 0.0
+                    grouped_eod_df['ExpiredAssn_value'] = 0.0
+                    grouped_eod_df['ExpiredSellValue'] = 0.0
+                    grouped_eod_df['ExpiredBuyValue'] = 0.0
+                    grouped_eod_df['ExpiredQty'] = 0.0
+                    if today in grouped_eod_df.EodExpiry.unique():
+                        grouped_eod_df = analyze_expired_instruments(grouped_final_eod=grouped_eod_df)
+                    final_eod_df = pd.concat([orig_eod_df,grouped_eod_df], ignore_index=True)
+                    write_notis_postgredb(df=final_eod_df, table_name=n_tbl_notis_eod_net_pos_cp_noncp, truncate_required=True)
+                    delta_df = calc_delta(final_eod_df)
+                    write_notis_postgredb(df=delta_df, table_name=n_tbl_notis_delta_table, truncate_required=True)
             elif for_table == 'nnf' or for_table == 'nnf'.upper():
                 df.columns = df.columns.str.replace(' ', '', regex=True)
                 col_list = ['NNFID', 'TerminalID', 'TerminalName', 'UserID', 'SubGroup', 'MainGroup', 'NeatID']

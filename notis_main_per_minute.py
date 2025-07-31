@@ -1,4 +1,4 @@
-import os, warnings, time, requests
+import os, warnings, time, requests, mibian, re, scipy
 import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta, timezone
@@ -6,11 +6,12 @@ from datetime import datetime, timedelta, timezone
 from db_config import (engine_str,
                        n_tbl_notis_trade_book,n_tbl_notis_raw_data,n_tbl_bse_trade_data,
                        n_tbl_notis_eod_net_pos_cp_noncp,n_tbl_notis_desk_wise_net_position,
-                       n_tbl_notis_nnf_data, n_tbl_notis_nnf_wise_net_position, n_tbl_srspl_trade_data)
+                       n_tbl_notis_nnf_data, n_tbl_notis_nnf_wise_net_position, n_tbl_srspl_trade_data,
+                       n_tbl_notis_delta_table)
 from common import (get_date_from_non_jiffy, get_date_from_jiffy,
-                    today, yesterday,
-                    root_dir, logger, find_spot, analyze_expired_instruments,
-                    read_data_db, write_notis_postgredb, truncate_tables)
+                    today, yesterday, holidays_25,
+                    root_dir, volt_dir, logger, find_spot, analyze_expired_instruments,
+                    read_data_db, read_file, write_notis_postgredb, truncate_tables)
 from nse_utility import NSEUtility
 from bse_utility import BSEUtility
 
@@ -26,17 +27,103 @@ n_tbl_test_bse = n_tbl_bse_trade_data
 main_mod_df = pd.DataFrame()
 main_mod_bse_df = pd.DataFrame()
 
+def calc_dte(row):
+    bdays_left = pd.bdate_range(start=today, end=row['EodExpiry'], freq='C', weekmask='1111100', holidays=holidays_25)
+    actual_bdays_left = len(bdays_left)
+    return actual_bdays_left
+def get_delta(row):
+    int_rate,annual_div = 5.5,0
+    spot = row['spot']
+    strike = row['EodStrike']
+    dte = row['dte']
+    # dte = (row['EodExpiry'] - today).days
+    vol = row['volatility']
+    if row['EodOptionType'] == 'XX':
+        return 1.0
+    calc = mibian.BS(
+        [spot, strike, int_rate, dte],
+        volatility=vol
+    )
+    return calc.callDelta if row['EodOptionType'] == 'CE' else calc.putDelta
 def calc_rate(row):
     if row['EodOptionType'] == 'PE':
         return max(row['EodStrike']-row['ExpiredSpot_close'], 0)
     else:
         return max(row['ExpiredSpot_close']-row['EodStrike'], 0)
-
+def calc_delta(eod_df):
+    eod_df = eod_df.copy()
+    sym_list = ['NIFTY', 'BANKNIFTY', 'FINNIFTY', 'MIDCPNIFTY', 'SENSEX', 'BANKEX']
+    col_keep = ['EodBroker', 'EodUnderlying', 'EodExpiry', 'EodStrike', 'EodOptionType', 'PreFinalNetQty']
+    eod_df.drop(columns=[col for col in eod_df.columns if col not in col_keep], inplace=True)
+    volt_df = read_file(os.path.join(volt_dir, f'FOVOLT_{yesterday.strftime("%d%m%Y")}.csv'))
+    volt_df.columns = [re.sub(r'\s', '', each) for each in volt_df.columns]
+    volt_df.rename(columns={'ApplicableAnnualisedVolatility(N)=Max(ForL)': 'AnnualizedReturn'}, inplace=True)
+    volt_df = volt_df.iloc[:, [1, -1]].query("Symbol in @sym_list")
+    volt_df = volt_df.applymap(lambda x: re.sub(r'\s+', '', x) if isinstance(x, str) else x)
+    volt_df['AnnualizedReturn'] = volt_df['AnnualizedReturn'].astype(np.float64)
+    spot_dict = find_spot()
+    volt_dict = dict(zip(volt_df['Symbol'], volt_df['AnnualizedReturn']))
+    eod_df['spot'] = eod_df['EodUnderlying'].map(spot_dict)
+    eod_df['volatility'] = eod_df['EodUnderlying'].map(volt_dict)
+    eod_df['volatility'] = eod_df['volatility'].astype(np.float64)
+    eod_df['volatility'] = eod_df['volatility'] * 100
+    eod_df['dte'] = eod_df['EodExpiry'].apply(lambda x: (x-today).days)
+    mask = eod_df['EodOptionType'] == 'XX'
+    eod_df.loc[mask, 'volatility'] = 1
+    eod_df['deltaPerUnit'] = eod_df.apply(get_delta, axis=1).astype(np.float64)
+    eod_df['deltaQty'] = eod_df['PreFinalNetQty'] * eod_df['deltaPerUnit']
+    eod_df['deltaExposure(in Cr)'] = (eod_df['spot'] * eod_df['deltaQty']) / 10_000_000
+    mask = eod_df['EodOptionType'].isin(['CE', 'PE'])
+    eod_df.loc[mask, 'EodOptionType'] = 'CE_PE'
+    final_eod_df = pd.DataFrame()
+    for each in ['XX', 'CE_PE']:
+        temp_eod_df = eod_df.query("EodOptionType == @each")
+        grouped_temp_eod_df = temp_eod_df.groupby(
+            by=['EodOptionType', 'EodBroker', 'EodUnderlying'],
+            as_index=False
+        )['deltaExposure(in Cr)'].agg(
+            {'Long': lambda x: x[x > 0].sum(), 'Short': lambda x: x[x < 0].sum(), 'Net': 'sum'}
+        )
+        total_dict = {
+            'EodOptionType': '',
+            'EodBroker': 'Total',
+            'EodUnderlying': '',
+            'Long': grouped_temp_eod_df['Long'].sum(),
+            'Short': grouped_temp_eod_df['Short'].sum(),
+            'Net': grouped_temp_eod_df['Net'].sum()
+        }
+        grouped_temp_eod_df = pd.concat([grouped_temp_eod_df, pd.DataFrame([total_dict])], ignore_index=True)
+        final_eod_df = pd.concat([final_eod_df, grouped_temp_eod_df], ignore_index=True)
+    for each in ['deltaExposure(in Cr)', 'deltaQty']:
+        grouped_df = eod_df.groupby(by=['EodBroker', 'EodUnderlying'], as_index=False)[each].agg(
+            {'Long': lambda x: x[x > 0].sum(), 'Short': lambda x: x[x < 0].sum(), 'Net': 'sum'}
+        )
+        if each == 'deltaExposure(in Cr)':
+            use = 'Combined'
+            grouped_df['EodOptionType'] = 'Combined'
+        else:
+            use = 'DeltaQty'
+            grouped_df['EodOptionType'] = 'DeltaQty'
+            grouped_df['Long'] = grouped_df['Long'] / 100000
+            grouped_df['Short'] = grouped_df['Short'] / 100000
+            grouped_df['Net'] = grouped_df['Net'] / 100000
+        total_dict = {
+            'EodOptionType': use,
+            'EodBroker': 'Total',
+            'EodUnderlying': '',
+            'Long': grouped_df['Long'].sum(),
+            'Short': grouped_df['Short'].sum(),
+            'Net': grouped_df['Net'].sum()
+        }
+        grouped_df = pd.concat([grouped_df, pd.DataFrame([total_dict])], ignore_index=False)
+        final_eod_df = pd.concat([final_eod_df, grouped_df], ignore_index=False)
+    return final_eod_df
+# ===================================================================================================
 def get_bse_trade_data(from_time, to_time):
     global main_mod_bse_df
     pivot_df = pd.DataFrame()
-    # df_bse1 = read_data_db(for_table='BSE_ENetMIS', from_time=from_time, to_time=to_time)
-    df_bse1 = read_data_db(for_table='BSE_ENetMIS')
+    df_bse1 = read_data_db(for_table='BSE_ENetMIS', from_time=from_time, to_time=to_time)
+    # df_bse1 = read_data_db(for_table='BSE_ENetMIS')
     if df_bse1 is None or df_bse1.empty:
         logger.info(f'No BSE trade from {from_time} to {to_time} hence skipping')
         return pivot_df
@@ -61,15 +148,13 @@ def get_bse_trade_data(from_time, to_time):
                                right_on=['ExchUser', 'TradingSymbol', 'FillSize', 'TransactionType','Underlying', 'Strike', 'OptionType', 'Expiry'],
                                how='left'
                                )
-    modified_bse_df['TerminalID'] = np.where(modified_bse_df['TraderID'] == 1011, '945440A',
-                                             modified_bse_df['TerminalID'])
+    modified_bse_df['TerminalID'] = np.where(modified_bse_df['TraderID'] == 1011, '945440A', modified_bse_df['TerminalID'])
     modified_bse_df.drop(columns=['ExchUser'], axis=1, inplace=True)
     modified_bse_df.fillna(0, inplace=True)
-    # write_notis_postgredb(df=modified_bse_df, table_name=n_tbl_bse_trade_data)
-    write_notis_postgredb(df=modified_bse_df,table_name=n_tbl_bse_trade_data, truncate_required=True)
+    write_notis_postgredb(df=modified_bse_df,table_name=n_tbl_bse_trade_data)
     logger.info(f'length of main_mod_bse_df before concat is {main_mod_bse_df.shape}')
-    # main_mod_bse_df = pd.concat([main_mod_bse_df,modified_bse_df],ignore_index=True)
-    main_mod_bse_df = modified_bse_df.copy()
+    main_mod_bse_df = pd.concat([main_mod_bse_df,modified_bse_df],ignore_index=True)
+    # main_mod_bse_df = modified_bse_df.copy()
     logger.info(f'length of main_mod_bse_df after concat is {main_mod_bse_df.shape}')
     main_mod_bse_df['trdQtyPrc'] = main_mod_bse_df['FillSize']*(main_mod_bse_df['FillPrice']/100)
     pivot_df = main_mod_bse_df.pivot_table(
@@ -116,16 +201,7 @@ def get_nse_trade(from_time, to_time):
     write_notis_postgredb(df_db, table_name=n_tbl_test_raw, raw=True)
     nnf_file_path = os.path.join(root_dir, "Final_NNF_ID.xlsx")
     readable_mod_time = datetime.fromtimestamp(os.path.getmtime(nnf_file_path))
-    if readable_mod_time.date() == today: # Check if the NNF file is modified today or not
-        logger.info(f'New NNF Data found, modifying the nnf data in db . . .')
-        df_nnf = pd.read_excel(nnf_file_path, index_col=False)
-        df_nnf = df_nnf.loc[:, ~df_nnf.columns.str.startswith('Un')]
-        df_nnf.columns = df_nnf.columns.str.replace(' ', '', regex=True)
-        df_nnf.dropna(how='all', inplace=True)
-        df_nnf = df_nnf.drop_duplicates()
-        write_notis_postgredb(df_nnf, table_name=n_tbl_notis_nnf_data, truncate_required=True)
-    else:
-        df_nnf = read_data_db(nnf=True, for_table=n_tbl_notis_nnf_data)
+    df_nnf = read_data_db(nnf=True, for_table=n_tbl_notis_nnf_data)
     df_nnf = df_nnf.drop_duplicates()
     modified_df = NSEUtility.modify_file(df_db, df_nnf)
     write_notis_postgredb(modified_df, table_name=n_tbl_test_mod)
@@ -180,40 +256,6 @@ def find_net_pos(nse_pivot_df, bse_pivot_df):
     if nse_pivot_df.empty and bse_pivot_df.empty:
         return
     else:
-        #EOD_CP_NONCP
-        # eod_tablename = f'NOTIS_EOD_NET_POS_CP_NONCP_{yesterday.strftime("%Y-%m-%d")}'  # NOTIS_EOD_NET_POS_CP_NONCP_2025-03-17
-        # final_eod = read_data_db(for_table=eod_tablename)
-        # eod_tablename1 = f'NOTIS_EOD_NET_POS_CP_NONCP_{today.strftime("%Y-%m-%d")}'  #
-        # # NOTIS_EOD_NET_POS_CP_NONCP_2025-03-17
-        # final_eod1 = read_data_db(for_table=eod_tablename1)
-        # underlying_list = ['NIFTY', 'BANKNIFTY', 'MIDCPNIFTY', 'FINNIFTY', 'SENSEX', 'BANKEX']
-        # final_eod = final_eod.query("EodUnderlying in @underlying_list")
-        # logger.info(f'final_eod before calculation: {final_eod.shape}')
-        # final_eod.EodExpiry = pd.to_datetime(final_eod.EodExpiry, dayfirst=True, format='mixed').dt.date
-        # if not nse_pivot_df.empty:
-        #     cp_noncp_nse_df = NSEUtility.calc_eod_cp_noncp(nse_pivot_df)
-        # else:
-        #     bse_underlying_list = ['SENSEX', 'BANKEX']
-        #     cp_noncp_nse_df = final_eod1.query("EodUnderlying not in @bse_underlying_list and EodBroker != 'SRSPL' "
-        #                                        "and EodExpiry >= @today")
-        #     # cp_noncp_nse_df = final_eod.query("EodUnderlying not in @bse_underlying_list and EodBroker != 'SRSPL' and EodExpiry >= @today and FinalNetQty != 0")
-        #     # cp_noncp_nse_df['EodNetQuantity'] = cp_noncp_nse_df['FinalNetQty']
-        #     # cp_noncp_nse_df['PreFinalNetQty'] = cp_noncp_nse_df['FinalNetQty']
-        #     # exclude_columns = ['EodBroker', 'EodUnderlying', 'EodExpiry', 'EodStrike', 'EodOptionType',
-        #     #                    'EodNetQuantity', 'PreFinalNetQty', 'FinalNetQty']
-        #     # cp_noncp_nse_df.loc[:, ~cp_noncp_nse_df.columns.isin(exclude_columns)] = 0
-        #     # cp_noncp_nse_df = cp_noncp_nse_df.query('FinalNetQty != 0')
-        # if not bse_pivot_df.empty:
-        #     cp_noncp_bse_df = BSEUtility.calc_bse_eod_net_pos(bse_pivot_df)
-        # else:
-        #     bse_underlying_list = ['SENSEX', 'BANKEX']
-        #     cp_noncp_bse_df = final_eod.query("EodUnderlying in @bse_underlying_list and EodBroker != 'SRSPL' and EodExpiry >= @today and FinalNetQty != 0")
-        #     cp_noncp_bse_df['EodNetQuantity'] = cp_noncp_bse_df['FinalNetQty']
-        #     cp_noncp_bse_df['PreFinalNetQty'] = cp_noncp_bse_df['FinalNetQty']
-        #     exclude_columns = ['EodBroker', 'EodUnderlying', 'EodExpiry', 'EodStrike', 'EodOptionType',
-        #                        'EodNetQuantity','PreFinalNetQty','FinalNetQty']
-        #     cp_noncp_bse_df.loc[:, ~cp_noncp_bse_df.columns.isin(exclude_columns)] = 0
-        #     cp_noncp_bse_df = cp_noncp_bse_df.query('FinalNetQty != 0')
         cp_noncp_nse_df = NSEUtility.calc_eod_cp_noncp(nse_pivot_df)
         cp_noncp_bse_df = BSEUtility.calc_bse_eod_net_pos(bse_pivot_df)
         # srspl_df = final_eod.query("EodBroker == 'SRSPL'")
@@ -236,10 +278,33 @@ def find_net_pos(nse_pivot_df, bse_pivot_df):
                                                               masked_df['buyValue'] / masked_df['buyQty'], 0)
         grouped_final_eod.loc[mask, 'sellAvgPrice'] = np.where(masked_df['sellQty'] > 0,
                                                                masked_df['sellValue'] / masked_df['sellQty'], 0)
-        srspl_df = read_data_db(for_table=n_tbl_srspl_trade_data)
-        grouped_final_eod = pd.concat([grouped_final_eod, srspl_df], ignore_index=True)
+        today_srspl_df = read_data_db(for_table=n_tbl_srspl_trade_data)
+        yest_srspl_df = read_data_db(for_table=f"NOTIS_EOD_NET_POS_CP_NONCP_{yesterday}")
+        yest_srspl_df['EodExpiry'] = pd.to_datetime(yest_srspl_df['EodExpiry'], dayfirst=True).dt.date
+        yest_srspl_df = yest_srspl_df.query("EodBroker not in ['CP','non CP'] and FinalNetQty != 0 and EodExpiry >= @today")
+        yest_srspl_df['EodNetQuantity'] = yest_srspl_df['FinalNetQty']
+        yest_srspl_df['PreFinalNetQty'] = yest_srspl_df['FinalNetQty']
+        not_to_zero = ['EodBroker', 'EodUnderlying', 'EodStrike', 'EodOptionType', 'EodExpiry', 'EodNetQuantity']
+        yest_srspl_df.loc[:, ~yest_srspl_df.columns.isin(not_to_zero)] = 0
+        yest_srspl_df = yest_srspl_df[today_srspl_df.columns.tolist()]
+        final_srspl_df = pd.concat([yest_srspl_df, today_srspl_df], ignore_index=True)
+        final_srspl_df.fillna(0, inplace=True)
+        final_srspl_df['EodExpiry'] = pd.to_datetime(final_srspl_df['EodExpiry'], dayfirst=True).dt.date
+        grouped_srspl_df = final_srspl_df.groupby(
+            by=['EodBroker', 'EodUnderlying', 'EodExpiry', 'EodStrike','EodOptionType'],
+            as_index=False).agg(
+            {'EodNetQuantity': 'last', 'buyQty': 'sum', 'buyValue': 'sum', 'sellQty': 'sum', 'sellValue': 'sum',
+             'PreFinalNetQty': 'sum'}
+        )
+        grouped_srspl_df.fillna(0, inplace=True)
+        grouped_final_eod = pd.concat([grouped_final_eod, grouped_srspl_df], ignore_index=True)
+        grouped_final_eod['PreFinalNetQty'] = (grouped_final_eod['EodNetQuantity'] + grouped_final_eod['buyQty'] -
+                                              grouped_final_eod['sellQty'])
         grouped_final_eod['EodExpiry'] = pd.to_datetime(grouped_final_eod['EodExpiry'], dayfirst=True).dt.date
-        grouped_final_eod.fillna(0, inplace=True)
+        delta_df = calc_delta(grouped_final_eod)
+        write_notis_postgredb(df=delta_df, table_name=n_tbl_notis_delta_table, truncate_required=True)
+        # ===============================================================================================================
+        # grouped_final_eod.fillna(0, inplace=True)
         grouped_final_eod['ExpiredSpot_close'] = 0.0
         grouped_final_eod['ExpiredRate'] = 0.0
         grouped_final_eod['ExpiredAssn_value'] = 0.0
@@ -268,7 +333,7 @@ if __name__ == '__main__':
         while datetime.now() < ett:
             now = datetime.now()
             if now.second == 1:
-                print('in if')
+                print('\nin if')
                 if recover:
                     logger.info('in recover')
                     table_list = [n_tbl_test_mod, n_tbl_test_raw, n_tbl_test_cp_noncp, n_tbl_test_net_pos_desk,

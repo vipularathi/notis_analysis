@@ -103,8 +103,7 @@ class NSEUtility:
         yest_eod_df = read_data_db(for_table=f'NOTIS_EOD_NET_POS_CP_NONCP_{yesterday.strftime("%Y-%m-%d")}')
         yest_eod_df.EodExpiry = pd.to_datetime(yest_eod_df.EodExpiry, dayfirst=True, format='mixed').dt.date
         
-        yest_eod_df = yest_eod_df.query("EodUnderlying in @underlying_list and EodExpiry >= @today and EodBroker not "
-                                        "in ['SRSPL','BAJAJ'] and FinalNetQty != 0")
+        yest_eod_df = yest_eod_df.query("EodUnderlying in @underlying_list and EodExpiry >= @today and FinalNetQty != 0 and EodBroker in ['CP','non CP']")
         yest_eod_df['EodNetQuantity'] = yest_eod_df['FinalNetQty']
         yest_eod_df['PreFinalNetQty'] = yest_eod_df['FinalNetQty']
         exclude_columns = ['EodBroker', 'EodUnderlying', 'EodExpiry', 'EodStrike', 'EodOptionType',
@@ -115,7 +114,7 @@ class NSEUtility:
         today_eod_df = read_data_db(for_table=f'NOTIS_EOD_NET_POS_CP_NONCP_{today.strftime("%Y-%m-%d")}')
         today_eod_df.EodExpiry = pd.to_datetime(today_eod_df.EodExpiry, dayfirst=True, format='mixed').dt.date
         today_eod_df = today_eod_df.query(
-            "EodUnderlying in @underlying_list and EodExpiry >= @today and EodBroker not in ['SRSPL','BAJAJ']"
+            "EodUnderlying in @underlying_list and EodExpiry >= @today and EodBroker in ['CP','non CP']"
         )
         if len(desk_db_df) == 0 or desk_db_df.empty:
             if today_eod_df.empty or len(today_eod_df) == 0:
@@ -131,8 +130,7 @@ class NSEUtility:
         yest_eod_df.rename(columns={'FinalNetQty': 'NetQuantity'}, inplace=True)
         yest_eod_df = yest_eod_df.add_prefix('Eod')
         yest_eod_df = yest_eod_df.query(
-            "EodUnderlying in @underlying_list and EodExpiry >= @today and EodNetQuantity != 0 "
-            "and EodBroker not in ['SRSPL','BAJAJ']")
+            "EodUnderlying in @underlying_list and EodExpiry >= @today and EodNetQuantity != 0 and EodBroker in ['CP','non CP']")
         grouped_eod = yest_eod_df.groupby(
             by=['EodBroker', 'EodUnderlying', 'EodExpiry', 'EodStrike', 'EodOptionType'],
             as_index=False).agg({'EodNetQuantity': 'sum'})
@@ -176,3 +174,29 @@ class NSEUtility:
         nnf_db_df = pivot_df.groupby(by=['ctclid', 'symbol', 'expiryDate', 'strikePrice', 'optionType']).agg({'buyAvgQty':'sum','buyAvgPrice':'mean','sellAvgQty':'sum','sellAvgPrice':'mean'}).reset_index()
         nnf_db_df.rename(columns={'ctclid':'nnfID'}, inplace=True)
         return nnf_db_df
+    
+    @staticmethod
+    def calc_nse_deal_sheet(pivot_df):
+        pivot_df = pivot_df.copy()
+        grouped_df = pd.DataFrame()
+        if not pivot_df.empty or len(pivot_df) != 0:
+            pivot_df.rename(
+                columns=
+                {'broker':'Broker','symbol':'Underlying','expiryDate':'Expiry','strikePrice':'Strike',
+                 'optionType':'OptionType','buyAvgQty':'BuyQty','sellAvgQty':'SellQty',
+                 'buyValue':'BuyValue','sellValue':'SellValue'},
+                inplace=True)
+            grouped_df = pivot_df.groupby(
+                by=['Broker', 'Underlying', 'Expiry', 'Strike', 'OptionType'],
+                as_index=False).agg(
+                {'BuyMax':'max','SellMax':'max',
+                 'BuyMin':lambda x: x[x > 0].min() if any(x > 0) else 0,
+                 'SellMin':lambda x: x[x > 0].min() if any(x > 0) else 0,
+                 'BuyQty':'sum','SellQty':'sum',
+                 'BuyValue':'sum','SellValue':'sum'}
+            )
+            div_100_list = ['BuyMax','SellMax','BuyMin','SellMin']
+            for each in div_100_list:
+                grouped_df[each] = grouped_df[each].astype(np.float64)
+                grouped_df[each] = grouped_df[each] / 100
+        return grouped_df
