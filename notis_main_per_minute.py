@@ -67,7 +67,7 @@ def calc_delta(eod_df):
     eod_df['volatility'] = eod_df['EodUnderlying'].map(volt_dict)
     eod_df['volatility'] = eod_df['volatility'].astype(np.float64)
     eod_df['volatility'] = eod_df['volatility'] * 100
-    eod_df['dte'] = eod_df['EodExpiry'].apply(lambda x: (x-today).days)
+    eod_df['dte'] = eod_df['EodExpiry'].apply(lambda x: (x-today).days if x != today else 1)
     mask = eod_df['EodOptionType'] == 'XX'
     eod_df.loc[mask, 'volatility'] = 1
     eod_df['deltaPerUnit'] = eod_df.apply(get_delta, axis=1).astype(np.float64)
@@ -85,7 +85,7 @@ def calc_delta(eod_df):
             {'Long': lambda x: x[x > 0].sum(), 'Short': lambda x: x[x < 0].sum(), 'Net': 'sum'}
         )
         total_dict = {
-            'EodOptionType': '',
+            'EodOptionType': each,
             'EodBroker': 'Total',
             'EodUnderlying': '',
             'Long': grouped_temp_eod_df['Long'].sum(),
@@ -186,7 +186,7 @@ def get_bse_trade_data(from_time, to_time):
         lambda row: row['SellTrdQtyPrc'] / row['SellQty'] if row['SellQty'] > 0 else 0.0, axis=1)
     # pivot_df.drop(columns=['BuyTrdQtyPrc', 'SellTrdQtyPrc'], inplace=True)
     pivot_df.rename(columns={'BuyTrdQtyPrc':'buyValue','SellTrdQtyPrc':'sellValue'}, inplace=True)
-    pivot_df['IntradayVolume'] = pivot_df.BuyQty - pivot_df.SellQty
+    # pivot_df['IntradayVolume'] = pivot_df.BuyQty - pivot_df.SellQty
     # pivot_df = pivot_df.round(2)
     return pivot_df
 
@@ -234,14 +234,12 @@ def get_nse_trade(from_time, to_time):
                                            axis=1)
     pivot_df['SellAvgPrc'] = pivot_df.apply(
         lambda row: row['SellTrdQtyPrc'] / row['SellQty'] if row['SellQty'] > 0 else 0.0, axis=1)
-    # pivot_df.drop(columns=['BuyTrdQtyPrc', 'SellTrdQtyPrc'], inplace=True)
 
     pivot_df.rename(columns={'MainGroup': 'mainGroup', 'SubGroup': 'subGroup', 'sym': 'symbol', 'expDt': 'expiryDate',
                              'strPrc': 'strikePrice', 'optType': 'optionType', 'BuyQty': 'buyAvgQty', 'BuyAvgPrc': 'buyAvgPrice','BuyTrdQtyPrc':'buyValue',
                              'SellQty': 'sellAvgQty', 'SellAvgPrc': 'sellAvgPrice', 'SellTrdQtyPrc':'sellValue'},
                     inplace=True)
     pivot_df.volume = pivot_df.buyAvgQty - pivot_df.sellAvgQty
-    # pivot_df = pivot_df.round(2)
     return pivot_df
 
 def find_net_pos(nse_pivot_df, bse_pivot_df):
@@ -261,14 +259,14 @@ def find_net_pos(nse_pivot_df, bse_pivot_df):
         # srspl_df = final_eod.query("EodBroker == 'SRSPL'")
         final_eod = pd.concat([cp_noncp_nse_df, cp_noncp_bse_df], ignore_index=True)
         # final_eod = pd.concat([pre_final_eod,srspl_df], ignore_index=True)
-        to_int = ['EodStrike','EodNetQuantity', 'buyQty', 'sellQty', 'IntradayVolume', 'FinalNetQty']
+        to_int = ['EodStrike','EodNetQuantity', 'buyQty', 'sellQty', 'FinalNetQty']
         final_eod.fillna(0, inplace=True)
         for each in to_int:
             final_eod[each] = final_eod[each].astype(np.int64)
         grouped_final_eod = final_eod.groupby(by=['EodBroker', 'EodUnderlying', 'EodExpiry', 'EodStrike', 'EodOptionType'],
                                               as_index=False).agg({
             'EodNetQuantity': 'sum', 'buyQty': 'sum', 'buyAvgPrice': 'mean', 'buyValue': 'sum',
-            'sellQty': 'sum', 'sellAvgPrice': 'mean', 'sellValue': 'sum', 'IntradayVolume': 'sum', 'FinalNetQty': 'sum'
+            'sellQty': 'sum', 'sellAvgPrice': 'mean', 'sellValue': 'sum', 'FinalNetQty': 'sum'
         })
         grouped_final_eod['PreFinalNetQty'] = (grouped_final_eod['EodNetQuantity'] + grouped_final_eod['buyQty'] -
                                                grouped_final_eod['sellQty'])
@@ -288,6 +286,7 @@ def find_net_pos(nse_pivot_df, bse_pivot_df):
         yest_srspl_df.loc[:, ~yest_srspl_df.columns.isin(not_to_zero)] = 0
         yest_srspl_df = yest_srspl_df[today_srspl_df.columns.tolist()]
         final_srspl_df = pd.concat([yest_srspl_df, today_srspl_df], ignore_index=True)
+        # final_srspl_df = today_srspl_df.copy()
         final_srspl_df.fillna(0, inplace=True)
         final_srspl_df['EodExpiry'] = pd.to_datetime(final_srspl_df['EodExpiry'], dayfirst=True).dt.date
         grouped_srspl_df = final_srspl_df.groupby(
@@ -304,7 +303,6 @@ def find_net_pos(nse_pivot_df, bse_pivot_df):
         delta_df = calc_delta(grouped_final_eod)
         write_notis_postgredb(df=delta_df, table_name=n_tbl_notis_delta_table, truncate_required=True)
         # ===============================================================================================================
-        # grouped_final_eod.fillna(0, inplace=True)
         grouped_final_eod['ExpiredSpot_close'] = 0.0
         grouped_final_eod['ExpiredRate'] = 0.0
         grouped_final_eod['ExpiredAssn_value'] = 0.0
@@ -314,7 +312,7 @@ def find_net_pos(nse_pivot_df, bse_pivot_df):
         if today in grouped_final_eod['EodExpiry'].unique():
             grouped_final_eod = analyze_expired_instruments(grouped_final_eod=grouped_final_eod)
         grouped_final_eod['FinalNetQty'] = grouped_final_eod['PreFinalNetQty'] + grouped_final_eod['ExpiredQty']
-        grouped_final_eod.drop(columns=['IntradayVolume'], inplace=True)
+        # grouped_final_eod.drop(columns=['IntradayVolume'], inplace=True)
         logger.info(f'final_eod after calculation: {grouped_final_eod.shape}')
         write_notis_postgredb(grouped_final_eod, table_name=n_tbl_notis_eod_net_pos_cp_noncp, truncate_required=True)
 

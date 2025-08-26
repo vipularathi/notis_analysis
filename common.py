@@ -9,7 +9,8 @@ from logging.handlers import TimedRotatingFileHandler
 from db_config import (engine_str,
                        n_tbl_notis_trade_book, s_tbl_notis_trade_book,
                        n_tbl_notis_raw_data, s_tbl_notis_raw_data,
-                       n_tbl_notis_nnf_data, s_tbl_notis_nnf_data)
+                       n_tbl_notis_nnf_data, s_tbl_notis_nnf_data,
+                       n_tbl_spot_data)
 
 holidays_25 = ['2025-02-26', '2025-03-14', '2025-03-31', '2025-04-10', '2025-04-14', '2025-04-18', '2025-05-01', '2025-08-15', '2025-08-27', '2025-10-02', '2025-10-21', '2025-10-22', '2025-11-05', '2025-12-25']
 holidays_26 = ['2026-01-26', '2026-03-06', '2026-03-20', '2026-04-03', '2026-04-10', '2026-04-14', '2026-05-01', '2026-07-17', '2026-08-15', '2026-08-28', '2026-10-02', '2026-10-19', '2026-11-09', '2026-12-25']
@@ -460,11 +461,11 @@ def get_date_from_non_jiffy_new(dt_val):
     return formatted_date
 
 def download_bhavcopy():
-    host = '192.168.112.81'
-    username = 'greek'
-    password = 'greeksoft'
+    host = '192.168.112.219'
+    username = 'oaauser'
+    password = 'Rathi@123'
     filename = f"regularNSEBhavcopy_{today.strftime('%d%m%Y')}.csv"  # sample=regularBhavcopy_13022025
-    remote_path = rf'/home/greek/NSE_BSE_Broadcast/NSE/Bhavcopy/Files/{filename}'
+    remote_path = rf'/home/oaauser/NSE_BSE_Broadcast/NSE_BSE_Bhavcopy_Files/{filename}'
     local_path = os.path.join(bhav_dir, filename)
     try:
         transport = paramiko.Transport((host, 22))
@@ -495,10 +496,11 @@ def find_spot():
         'esegment': '["1"]',
         'oi': '["1"]'
     }
+    proxies = {"http": None, "https": None}
     for each in index_list:
         headers[f"inst_name"] = f'["{each}"]'
         try:
-            response = requests.get(url=url, headers=headers)
+            response = requests.get(url=url, headers=headers, proxies=proxies)
             if response.status_code == 200:
                 for index, index_value in response.json().items():
                     # spot_list.append({index:f'{index_value[2]}'})
@@ -574,51 +576,205 @@ def get_delta(row):
     )
     return calc.callDelta if row['EodOptionType'] == 'CE' else calc.putDelta
 
+# def calc_delta(eod_df):
+#     delta_df = eod_df.copy()
+#     delta_df['EodExpiry'] = pd.to_datetime(delta_df['EodExpiry'], dayfirst=True).dt.date
+#     sym_list = ['NIFTY', 'BANKNIFTY', 'FINNIFTY', 'MIDCPNIFTY', 'SENSEX', 'BANKEX']
+#     col_keep = ['EodBroker', 'EodUnderlying', 'EodExpiry', 'EodStrike', 'EodOptionType', 'PreFinalNetQty']
+#     delta_df.drop(columns=[col for col in delta_df.columns if col not in col_keep], inplace=True)
+#     if datetime.now() < datetime.today().replace(hour=16,minute=50,second=0,microsecond=0):
+#         volt_df = read_file(os.path.join(volt_dir, f'FOVOLT_{yesterday.strftime("%d%m%Y")}.csv'))
+#         spot_dict = find_spot()
+#     else:
+#         delta_df = delta_df.query("EodExpiry != @today")
+#         volt_df = read_file(os.path.join(volt_dir, f'FOVOLT_{today.strftime("%d%m%Y")}.csv'))
+#         spot_df = read_data_db(for_table=n_tbl_spot_data)
+#         spot_dict = spot_df.to_dict(orient='records')[0]
+#     volt_df.columns = [re.sub(r'\s', '', each) for each in volt_df.columns]
+#     volt_df.rename(columns={'ApplicableAnnualisedVolatility(N)=Max(ForL)': 'AnnualizedReturn'}, inplace=True)
+#     volt_df = volt_df.iloc[:, [1, -1]].query("Symbol in @sym_list")
+#     volt_df = volt_df.applymap(lambda x: re.sub(r'\s+', '', x) if isinstance(x, str) else x)
+#     volt_df['AnnualizedReturn'] = volt_df['AnnualizedReturn'].astype(np.float64)
+#     # spot_dict = find_spot()
+#     volt_dict = dict(zip(volt_df['Symbol'], volt_df['AnnualizedReturn']))
+#     delta_df['spot'] = delta_df['EodUnderlying'].map(spot_dict)
+#     delta_df['volatility'] = delta_df['EodUnderlying'].map(volt_dict)
+#     delta_df['volatility'] = delta_df['volatility'].astype(np.float64)
+#     delta_df['volatility'] = delta_df['volatility'] * 100
+#     delta_df['dte'] = delta_df['EodExpiry'].apply(lambda x: (x-today).days)
+#     mask = delta_df['EodExpiry'] == today
+#     delta_df.loc[mask,'dte'] = 1
+#     mask = delta_df['EodOptionType'] == 'XX'
+#     delta_df.loc[mask, 'volatility'] = 1
+#     delta_df['deltaPerUnit'] = delta_df.apply(get_delta, axis=1).astype(np.float64)
+#     delta_df['deltaQty'] = (delta_df['PreFinalNetQty'] * delta_df['deltaPerUnit'])
+#     delta_df['deltaExposure(in Cr)'] = (delta_df['spot'] * delta_df['deltaQty']) / 10_000_000
+#     # mask = delta_df['EodOptionType'].isin(['CE', 'PE'])
+#     # delta_df.loc[mask, 'EodOptionType'] = 'CE_PE'
+#     # final_delta_df = pd.DataFrame()
+#     # for each in ['XX', 'CE_PE']:
+#     #     temp_delta_df = delta_df.query("EodOptionType == @each")
+#     #     grouped_temp_delta_df = temp_delta_df.groupby(by=['EodOptionType', 'EodBroker', 'EodUnderlying'], as_index=False)[
+#     #         'deltaExposure(in Cr)'].agg(
+#     #         {'Long': lambda x: x[x > 0].sum(), 'Short': lambda x: x[x < 0].sum(), 'Net': 'sum'}
+#     #     )
+#     #     total_dict = {
+#     #         'EodOptionType': each,
+#     #         'EodBroker': 'Total',
+#     #         'EodUnderlying': '0',
+#     #         'Long': grouped_temp_delta_df['Long'].sum(),
+#     #         'Short': grouped_temp_delta_df['Short'].sum(),
+#     #         'Net': grouped_temp_delta_df['Net'].sum()
+#     #     }
+#     #     grouped_temp_delta_df = pd.concat([grouped_temp_delta_df, pd.DataFrame([total_dict])], ignore_index=True)
+#     #     final_delta_df = pd.concat([final_delta_df, grouped_temp_delta_df], ignore_index=True)
+#     # for each in ['deltaExposure(in Cr)', 'deltaQty']:
+#     #     grouped_df = delta_df.groupby(by=['EodBroker', 'EodUnderlying'], as_index=False)[each].agg(
+#     #         {'Long': lambda x: x[x > 0].sum(), 'Short': lambda x: x[x < 0].sum(), 'Net': 'sum'}
+#     #     )
+#     #     if each == 'deltaExposure(in Cr)':
+#     #         use = 'Combined'
+#     #         grouped_df['EodOptionType'] = 'Combined'
+#     #     else:
+#     #         use = 'DeltaQty'
+#     #         grouped_df['EodOptionType'] = 'DeltaQty'
+#     #         grouped_df['Long'] = grouped_df['Long'] / 100000
+#     #         grouped_df['Short'] = grouped_df['Short'] / 100000
+#     #         grouped_df['Net'] = grouped_df['Net'] / 100000
+#     #     total_dict = {
+#     #         'EodOptionType': use,
+#     #         'EodBroker': 'Total',
+#     #         'EodUnderlying': '0',
+#     #         'Long': grouped_df['Long'].sum(),
+#     #         'Short': grouped_df['Short'].sum(),
+#     #         'Net': grouped_df['Net'].sum()
+#     #     }
+#     #     grouped_df = pd.concat([grouped_df, pd.DataFrame([total_dict])], ignore_index=False)
+#     #     final_delta_df = pd.concat([final_delta_df, grouped_df], ignore_index=False)
+#     delta_df1 = delta_df.copy()
+#     # delta_df1.to_excel(os.path.join(test_dir, f'eod_delta_{today}_{datetime.today().strftime("%H%M")}.xlsx'),index=False)
+#     final_delta_df = pd.DataFrame()
+#     mask = delta_df1['EodOptionType'].isin(['CE', 'PE'])
+#     delta_df1.loc[mask, 'EodOptionType'] = 'CE_PE'
+#     for each in ['XX', 'CE_PE']:
+#         temp_delta_df1 = delta_df1.query("EodOptionType == @each")
+#         grouped_temp_delta_df1 = \
+#         temp_delta_df1.groupby(by=['EodOptionType', 'EodBroker', 'EodUnderlying'], as_index=False)[
+#             'deltaExposure(in Cr)'].agg(
+#             {'Long': lambda x: x[x > 0].sum(), 'Short': lambda x: x[x < 0].sum(), 'Net': 'sum'}
+#         )
+#         total_dict = {
+#             'EodOptionType': each,
+#             'EodBroker': 'Total',
+#
+#             'Long': grouped_temp_delta_df1['Long'].sum(),
+#             'Short': grouped_temp_delta_df1['Short'].sum(),
+#             'Net': grouped_temp_delta_df1['Net'].sum()
+#         }
+#         grouped_temp_delta_df1 = pd.concat([grouped_temp_delta_df1, pd.DataFrame([total_dict])], ignore_index=True)
+#         final_delta_df = pd.concat([final_delta_df, grouped_temp_delta_df1], ignore_index=True)
+#     for each in ['deltaExposure(in Cr)', 'deltaQty']:
+#         grouped_df = delta_df1.groupby(by=['EodBroker', 'EodUnderlying'], as_index=False)[each].agg(
+#             {'Long': lambda x: x[x > 0].sum(), 'Short': lambda x: x[x < 0].sum(), 'Net': 'sum'}
+#         )
+#         if each == 'deltaExposure(in Cr)':
+#             use = 'Combined'
+#             grouped_df['EodOptionType'] = 'Combined'
+#         else:
+#             use = 'DeltaQty'
+#             grouped_df['EodOptionType'] = 'DeltaQty'
+#             grouped_df['Long'] = grouped_df['Long'] / 100000
+#             grouped_df['Short'] = grouped_df['Short'] / 100000
+#             grouped_df['Net'] = grouped_df['Net'] / 100000
+#         total_dict = {
+#             'EodOptionType': use,
+#             'EodBroker': 'Total',
+#
+#             'Long': grouped_df['Long'].sum(),
+#             'Short': grouped_df['Short'].sum(),
+#             'Net': grouped_df['Net'].sum()
+#         }
+#         grouped_df = pd.concat([grouped_df, pd.DataFrame([total_dict])], ignore_index=False)
+#         final_delta_df = pd.concat([final_delta_df, grouped_df], ignore_index=False)
+#     delta_df2 = delta_df.copy()
+#     for each in ['deltaExposure(in Cr)', 'deltaQty']:
+#         grouped_df = delta_df2.groupby(by=['EodUnderlying'], as_index=False)[each].agg(
+#             {'Long': lambda x: x[x > 0].sum(), 'Short': lambda x: x[x < 0].sum(), 'Net': 'sum'}
+#         )
+#         if each == 'deltaExposure(in Cr)':
+#             use = 'Underlying Combined'
+#         else:
+#             use = 'Underlying DeltaQty'
+#             grouped_df['Long'] = grouped_df['Long'] / 100000
+#             grouped_df['Short'] = grouped_df['Short'] / 100000
+#             grouped_df['Net'] = grouped_df['Net'] / 100000
+#         grouped_df['EodOptionType'] = use
+#         total_dict = {
+#             'EodOptionType': use,
+#             'EodBroker': 'Total',
+#             'Long': grouped_df['Long'].sum(),
+#             'Short': grouped_df['Short'].sum(),
+#             'Net': grouped_df['Net'].sum()
+#         }
+#         grouped_df = pd.concat([grouped_df, pd.DataFrame([total_dict])], ignore_index=True)
+#         final_delta_df = pd.concat([final_delta_df, grouped_df], ignore_index=True)
+#     return final_delta_df
 def calc_delta(eod_df):
-    eod_df = eod_df.copy()
-    # eod_df['EodExpiry'] = pd.to_datetime(eod_df['EodExpiry'], dayfirst=True).dt.date
+    delta_df = eod_df.copy()
+    delta_df['EodExpiry'] = pd.to_datetime(delta_df['EodExpiry'], dayfirst=True).dt.date
     sym_list = ['NIFTY', 'BANKNIFTY', 'FINNIFTY', 'MIDCPNIFTY', 'SENSEX', 'BANKEX']
     col_keep = ['EodBroker', 'EodUnderlying', 'EodExpiry', 'EodStrike', 'EodOptionType', 'PreFinalNetQty']
-    eod_df.drop(columns=[col for col in eod_df.columns if col not in col_keep], inplace=True)
-    volt_df = read_file(os.path.join(volt_dir, f'FOVOLT_{today.strftime("%d%m%Y")}.csv'))
+    delta_df.drop(columns=[col for col in delta_df.columns if col not in col_keep], inplace=True)
+    if datetime.now() < datetime.today().replace(hour=16, minute=50, second=0, microsecond=0):
+        volt_df = read_file(os.path.join(volt_dir, f'FOVOLT_{yesterday.strftime("%d%m%Y")}.csv'))
+        spot_dict = find_spot()
+    else:
+        delta_df = delta_df.query("EodExpiry != @today")
+        volt_df = read_file(os.path.join(volt_dir, f'FOVOLT_{today.strftime("%d%m%Y")}.csv'))
+        spot_df = read_data_db(for_table=n_tbl_spot_data)
+        spot_dict = spot_df.to_dict(orient='records')[0]
     volt_df.columns = [re.sub(r'\s', '', each) for each in volt_df.columns]
     volt_df.rename(columns={'ApplicableAnnualisedVolatility(N)=Max(ForL)': 'AnnualizedReturn'}, inplace=True)
     volt_df = volt_df.iloc[:, [1, -1]].query("Symbol in @sym_list")
     volt_df = volt_df.applymap(lambda x: re.sub(r'\s+', '', x) if isinstance(x, str) else x)
     volt_df['AnnualizedReturn'] = volt_df['AnnualizedReturn'].astype(np.float64)
-    spot_dict = find_spot()
+    # spot_dict = find_spot()
     volt_dict = dict(zip(volt_df['Symbol'], volt_df['AnnualizedReturn']))
-    eod_df['spot'] = eod_df['EodUnderlying'].map(spot_dict)
-    eod_df['volatility'] = eod_df['EodUnderlying'].map(volt_dict)
-    eod_df['volatility'] = eod_df['volatility'].astype(np.float64)
-    eod_df['volatility'] = eod_df['volatility'] * 100
-    eod_df['dte'] = eod_df['EodExpiry'].apply(lambda x: ((x-today).days) + 1)
-    mask = eod_df['EodOptionType'] == 'XX'
-    eod_df.loc[mask, 'volatility'] = 1
-    eod_df['deltaPerUnit'] = eod_df.apply(get_delta, axis=1).astype(np.float64)
-    eod_df['deltaQty'] = (eod_df['PreFinalNetQty'] * eod_df['deltaPerUnit'])
-    eod_df['deltaExposure(in Cr)'] = ((eod_df['spot'] * eod_df['deltaQty']) / 10_000_000)
-    mask = eod_df['EodOptionType'].isin(['CE', 'PE'])
-    eod_df.loc[mask, 'EodOptionType'] = 'CE_PE'
-    final_eod_df = pd.DataFrame()
+    delta_df['spot'] = delta_df['EodUnderlying'].map(spot_dict)
+    delta_df['volatility'] = delta_df['EodUnderlying'].map(volt_dict)
+    delta_df['volatility'] = delta_df['volatility'].astype(np.float64)
+    delta_df['volatility'] = delta_df['volatility'] * 100
+    delta_df['dte'] = delta_df['EodExpiry'].apply(lambda x: (x - today).days)
+    mask = delta_df['EodExpiry'] == today
+    delta_df.loc[mask, 'dte'] = 1
+    mask = delta_df['EodOptionType'] == 'XX'
+    delta_df.loc[mask, 'volatility'] = 1
+    delta_df['deltaPerUnit'] = delta_df.apply(get_delta, axis=1).astype(np.float64)
+    delta_df['deltaQty'] = (delta_df['PreFinalNetQty'] * delta_df['deltaPerUnit'])
+    delta_df['deltaExposure(in Cr)'] = (delta_df['spot'] * delta_df['deltaQty']) / 10_000_000
+    delta_df1 = delta_df.copy()
+    final_delta_df = pd.DataFrame()
+    mask = delta_df1['EodOptionType'].isin(['CE', 'PE'])
+    delta_df1.loc[mask, 'EodOptionType'] = 'CE_PE'
     for each in ['XX', 'CE_PE']:
-        temp_eod_df = eod_df.query("EodOptionType == @each")
-        grouped_temp_eod_df = temp_eod_df.groupby(by=['EodOptionType', 'EodBroker', 'EodUnderlying'], as_index=False)[
+        temp_delta_df1 = delta_df1.query("EodOptionType == @each")
+        grouped_temp_delta_df1 = \
+        temp_delta_df1.groupby(by=['EodOptionType', 'EodBroker', 'EodUnderlying'], as_index=False)[
             'deltaExposure(in Cr)'].agg(
             {'Long': lambda x: x[x > 0].sum(), 'Short': lambda x: x[x < 0].sum(), 'Net': 'sum'}
         )
         total_dict = {
-            'EodOptionType': '',
+            'EodOptionType': each,
             'EodBroker': 'Total',
-            'EodUnderlying': '',
-            'Long': grouped_temp_eod_df['Long'].sum(),
-            'Short': grouped_temp_eod_df['Short'].sum(),
-            'Net': grouped_temp_eod_df['Net'].sum()
+            
+            'Long': grouped_temp_delta_df1['Long'].sum(),
+            'Short': grouped_temp_delta_df1['Short'].sum(),
+            'Net': grouped_temp_delta_df1['Net'].sum()
         }
-        grouped_temp_eod_df = pd.concat([grouped_temp_eod_df, pd.DataFrame([total_dict])], ignore_index=True)
-        final_eod_df = pd.concat([final_eod_df, grouped_temp_eod_df], ignore_index=True)
+        grouped_temp_delta_df1 = pd.concat([grouped_temp_delta_df1, pd.DataFrame([total_dict])], ignore_index=True)
+        final_delta_df = pd.concat([final_delta_df, grouped_temp_delta_df1], ignore_index=True)
     for each in ['deltaExposure(in Cr)', 'deltaQty']:
-        grouped_df = eod_df.groupby(by=['EodBroker', 'EodUnderlying'], as_index=False)[each].agg(
+        grouped_df = delta_df1.groupby(by=['EodBroker', 'EodUnderlying'], as_index=False)[each].agg(
             {'Long': lambda x: x[x > 0].sum(), 'Short': lambda x: x[x < 0].sum(), 'Net': 'sum'}
         )
         if each == 'deltaExposure(in Cr)':
@@ -633,13 +789,35 @@ def calc_delta(eod_df):
         total_dict = {
             'EodOptionType': use,
             'EodBroker': 'Total',
-            'EodUnderlying': '',
+            
             'Long': grouped_df['Long'].sum(),
             'Short': grouped_df['Short'].sum(),
             'Net': grouped_df['Net'].sum()
         }
         grouped_df = pd.concat([grouped_df, pd.DataFrame([total_dict])], ignore_index=False)
-        final_eod_df = pd.concat([final_eod_df, grouped_df], ignore_index=False)
-    return final_eod_df
+        final_delta_df = pd.concat([final_delta_df, grouped_df], ignore_index=False)
+    delta_df2 = delta_df.copy()
+    for each in ['deltaExposure(in Cr)', 'deltaQty']:
+        grouped_df = delta_df2.groupby(by=['EodUnderlying'], as_index=False)[each].agg(
+            {'Long': lambda x: x[x > 0].sum(), 'Short': lambda x: x[x < 0].sum(), 'Net': 'sum'}
+        )
+        if each == 'deltaExposure(in Cr)':
+            use = 'Underlying Combined'
+        else:
+            use = 'Underlying DeltaQty'
+            grouped_df['Long'] = grouped_df['Long'] / 100000
+            grouped_df['Short'] = grouped_df['Short'] / 100000
+            grouped_df['Net'] = grouped_df['Net'] / 100000
+        grouped_df['EodOptionType'] = use
+        total_dict = {
+            'EodOptionType': use,
+            'EodBroker': 'Total',
+            'Long': grouped_df['Long'].sum(),
+            'Short': grouped_df['Short'].sum(),
+            'Net': grouped_df['Net'].sum()
+        }
+        grouped_df = pd.concat([grouped_df, pd.DataFrame([total_dict])], ignore_index=True)
+        final_delta_df = pd.concat([final_delta_df, grouped_df], ignore_index=True)
+    return final_delta_df
 
 logger = define_logger()

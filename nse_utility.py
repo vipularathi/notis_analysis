@@ -195,8 +195,11 @@ class NSEUtility:
                  'BuyQty':'sum','SellQty':'sum',
                  'BuyValue':'sum','SellValue':'sum'}
             )
-            div_100_list = ['BuyMax','SellMax','BuyMin','SellMin']
+            div_100_list = ['Strike','BuyMax','SellMax','BuyMin','SellMin']
             for each in div_100_list:
                 grouped_df[each] = grouped_df[each].astype(np.float64)
                 grouped_df[each] = grouped_df[each] / 100
+            # grouped_df['Strike'] = np.where(grouped_df['OptionType'] == 'XX', 0, grouped_df['Strike'])
+            mask = grouped_df['OptionType'] == 'XX'
+            grouped_df.loc[mask,'Strike'] = 0
         return grouped_df

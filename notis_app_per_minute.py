@@ -583,6 +583,8 @@ class ServiceApp:
                     if today in grouped_eod_df.EodExpiry.unique():
                         grouped_eod_df = analyze_expired_instruments(grouped_final_eod=grouped_eod_df)
                     final_eod_df = pd.concat([orig_eod_df,grouped_eod_df], ignore_index=True)
+                    final_eod_df['FinalNetQty'] = final_eod_df['PreFinalNetQty'] + final_eod_df['ExpiredQty']
+                    final_eod_df['EodExpiry'] = pd.to_datetime(final_eod_df['EodExpiry'], dayfirst=True).dt.date
                     write_notis_postgredb(df=final_eod_df, table_name=n_tbl_notis_eod_net_pos_cp_noncp, truncate_required=True)
                     delta_df = calc_delta(final_eod_df)
                     write_notis_postgredb(df=delta_df, table_name=n_tbl_notis_delta_table, truncate_required=True)
@@ -610,7 +612,8 @@ class ServiceApp:
         grouped_eod.fillna(0, inplace=True)
         grouped_eod['OI'] = grouped_eod['PreFinalNetQty'].abs()
         for each in grouped_eod['EodBroker'].unique():
-            mask = (grouped_eod['EodBroker'] == each) & (grouped_eod['EodExpiry'] == sorted(grouped_eod['EodExpiry'].unique())[-1])
+            each_last_exp = sorted(grouped_eod.query("EodBroker == @each")['EodExpiry'])[-1]
+            mask = (grouped_eod['EodBroker'] == each) & (grouped_eod['EodExpiry'] == each_last_exp)
             total_oi = grouped_eod.query("EodBroker == @each")['OI'].abs().sum()
             grouped_eod.loc[mask, 'OI Total'] = total_oi
         grouped_eod.fillna(0, inplace=True)
@@ -625,18 +628,25 @@ class ServiceApp:
         bhav_df['BhavExpiry'] = bhav_df['BhavExpiry'].apply(lambda x: pd.to_datetime(get_date_from_non_jiffy(x)).date())
         for broker in grouped_eod.EodBroker.unique():
             sum_oi = 0
-            mask=None
+            mask = None
             for index in grouped_eod.query("EodBroker == @broker")['EodUnderlying'].unique():
-                for last_exp in sorted(grouped_eod.query("EodBroker == @broker and EodUnderlying == @index")['EodExpiry'].unique()):
-                # last_exp = sorted(grouped_eod.query("EodBroker == @broker and EodUnderlying == @index")['EodExpiry'].unique())[-1]
-                    mask = (grouped_eod['EodBroker'] == broker) & (grouped_eod['EodUnderlying'] == index) & (grouped_eod['EodExpiry'] == last_exp)
-                    prev_oi = bhav_df.query("BhavSymbol == @index and BhavExpiry == @last_exp and BhavInstrumentname == 'FUTIDX'")['BhavOpeninterest'].unique()[0]
+                fut_last_exp = sorted(grouped_eod.query("EodBroker == @broker and EodUnderlying == @index")[
+                                       'EodExpiry'])[-1]
+                mask = (grouped_eod['EodBroker'] == broker) & (grouped_eod['EodUnderlying'] == index) & (
+                  grouped_eod['EodExpiry'] == fut_last_exp)
+                for each_exp in sorted(grouped_eod.query("EodBroker == @broker and EodUnderlying == @index")[
+                                        'EodExpiry'].unique()):
+                    prev_oi = bhav_df.query(
+                        "BhavSymbol == @index and BhavExpiry == @each_exp and BhavInstrumentname == 'FUTIDX'")[
+                        'BhavOpeninterest'].unique()[0]
                     sum_oi += prev_oi
-                grouped_eod.loc[mask,'Fut OI(T-1)'] = sum_oi
-        grouped_eod.replace('nan',0,inplace=True)
+            grouped_eod.loc[mask, 'Fut OI(T-1)'] = sum_oi
+        grouped_eod.replace('nan', 0, inplace=True)
         grouped_eod.fillna(0, inplace=True)
         grouped_eod['Fut OI(T-1)'] = pd.to_numeric(grouped_eod['Fut OI(T-1)'], errors='coerce')
-        grouped_eod['%MktShare'] = grouped_eod.apply(lambda row: row['OI Total']/row['Fut OI(T-1)'] if row['Fut OI(T-1)'] != 0 else 0, axis=1)
+        grouped_eod['%MktShare'] = grouped_eod.apply(
+            lambda row: row['OI Total'] / row['Fut OI(T-1)'] if row['Fut OI(T-1)'] != 0 else 0, axis=1
+        )
         grouped_eod['EodExpiry'] = grouped_eod['EodExpiry'].astype(str)
         json_data = grouped_eod.to_json(orient='records')
         return JSONResponse(json_data, media_type='application/json')

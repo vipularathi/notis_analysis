@@ -10,6 +10,7 @@ warnings.filterwarnings('ignore')
 
 
 def convert_expiry(val):
+    # print(val)
     if re.fullmatch(r'\d{5}', val):
         val = val[:2] + '0' + val[2:]
         return datetime.strptime(val, '%y%m%d').date()
@@ -25,12 +26,12 @@ def convert_expiry(val):
         b_days = pd.bdate_range(start=start_date, end=end_date, freq='C', weekmask='1111100',
                                 holidays=holidays_25).date.tolist()
         # last_tuesday = find_tuesday(year=year, month=month)
-        offset = (end_date.weekday() - 1) % 7
-        last_tues = end_date.replace(day=end_date.day - offset)
-        if last_tues in b_days:
-            return last_tues
+        offset = (end_date.weekday() - 3) % 7
+        last_thu = end_date.replace(day=end_date.day - offset)
+        if last_thu in b_days:
+            return last_thu
         else:
-            b_days = [each for each in b_days if each < last_tues]
+            b_days = [each for each in b_days if each < last_thu]
             return b_days[-1]
 
 class BSEUtility:
@@ -55,8 +56,11 @@ class BSEUtility:
         return bse_raw_df
     @staticmethod
     def bse_modify_file_v2(bse_raw_df):
-        pattern = r'^([A-Z]+)(\d{5}|\d{6}|\d{2}[A-Z]{3})(\d{5})([A-Z]{2})$'
+        pattern = r'^([A-Z]+)(\d{5}|\d{6}|\d{2}[A-Z]{3})(\d{5})?([A-Z]{2}|[A-Z]{3})$'
         bse_raw_df[['Underlying','temp_expiry','Strike','OptionType']] = bse_raw_df['scid'].str.extract(pattern)
+        mask = bse_raw_df['OptionType'] == 'FUT'
+        bse_raw_df.loc[mask,'Strike'] = 0
+        bse_raw_df.loc[mask,'OptionType'] = 'XX'
         bse_raw_df['Expiry'] = bse_raw_df['temp_expiry'].apply(convert_expiry)
         bse_raw_df['Segment'] = 'FO'
         bse_raw_df['SymbolName'] = 'BSXOPT'
