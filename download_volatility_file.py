@@ -69,11 +69,11 @@ def login():
         logger.info(f"Login failed. Status code: {response.status_code}, Message: {response.text}")
 
 def change_delta():
-    eod_df = read_data_db(for_table=n_tbl_notis_eod_net_pos_cp_noncp)
+    eod_df = read_data_db(for_table=f"NOTIS_EOD_NET_POS_CP_NONCP_{today}")
     eod_df['EodExpiry'] = pd.to_datetime(eod_df['EodExpiry'], dayfirst=True).dt.date
     delta_df = calc_delta(eod_df)
     logger.info("New delta table made with today's volatility file")
-    write_notis_postgredb(df=delta_df,table_name=n_tbl_notis_delta_table,truncate_required=True)
+    write_notis_postgredb(df=delta_df,table_name=f"NOTIS_DELTA_{today}",truncate_required=True)
     delta_df.to_excel(os.path.join(table_dir, f'delta_{today}_final.xlsx'), index=False)
 
 def download_volatility_file():

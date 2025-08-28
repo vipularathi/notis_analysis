@@ -536,7 +536,8 @@ class ServiceApp:
         json_data = grouped_df.to_json(orient='records')
         return Response(json_data, media_type='application/json')
     
-    def upload_data(self, for_date=Query(), file: UploadFile = File(...), for_table:str=Query()):
+    def upload_data(self, for_date=Query(), file: UploadFile = File(...), for_table:str=Query(),
+                    use_carryover:bool=Query()):
         # for_date = datetime.today().date().strftime('%Y-%m-%d')
         # table_to_read = f'NOTIS_EOD_NET_POS_CP_NONCP_{for_date}'
         filename = file.filename.lower()
@@ -556,6 +557,11 @@ class ServiceApp:
                      'buyValue', 'sellQty', 'sellValue', 'PreFinalNetQty']
                 ]
                 write_notis_postgredb(df=df, table_name=n_tbl_srspl_trade_data, truncate_required=True)
+                if use_carryover:
+                    df = read_data_db(for_table=f'NOTIS_EOD_NET_POS_CP_NONCP_{yesterday}')
+                    df = df.query("EodBroker in ['CP','non CP']")
+                    write_notis_postgredb(df=df, table_name=f'NOTIS_EOD_NET_POS_CP_NONCP_{yesterday}',
+                                          truncate_required=True)
                 if datetime.today().time() > datetime.strptime('15:35:00','%H:%M:%S').time():
                     eod_df = read_data_db(for_table=n_tbl_notis_eod_net_pos_cp_noncp)
                     orig_eod_df = eod_df.query("EodBroker in ['CP','non CP']")

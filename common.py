@@ -752,6 +752,7 @@ def calc_delta(eod_df):
     delta_df['deltaPerUnit'] = delta_df.apply(get_delta, axis=1).astype(np.float64)
     delta_df['deltaQty'] = (delta_df['PreFinalNetQty'] * delta_df['deltaPerUnit'])
     delta_df['deltaExposure(in Cr)'] = (delta_df['spot'] * delta_df['deltaQty']) / 10_000_000
+    delta_df.to_excel(os.path.join(table_dir,f'pre_delta_{today}.xlsx'), index=False)
     delta_df1 = delta_df.copy()
     final_delta_df = pd.DataFrame()
     mask = delta_df1['EodOptionType'].isin(['CE', 'PE'])
