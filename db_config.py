@@ -28,7 +28,15 @@ bse_sql_userid = 'Pos_User'
 bse_sql_paswd = 'Pass@Word'
 bse_encoded_password = quote(bse_sql_paswd)
 
+inhouse_sql_host = '192.168.50.68'
+inhouse_sql_port = '5432'
+inhouse_sql_user = 'readonlybsefodc'
+inhouse_sql_pass = 'readonlybsefodc'
+inhouse_sql_database = 'bsefodc'
+
 engine_str = f"postgresql+psycopg2://{pg_user}:{pg_pass}@{pg_host}:{pg_port}/{db_name}"
+inhouse_engine_str = f'postgresql+psycopg2://{inhouse_sql_user}:{inhouse_sql_pass}@{inhouse_sql_host}:{inhouse_sql_port}/{inhouse_sql_database}'
+
 notis_engine_str = (
     f"mssql+pyodbc://{notis_sql_username}:{notis_encoded_password}"
     f"@{notis_sql_server}/{notis_sql_database}"
@@ -46,13 +54,6 @@ bse_engine_str = (
     f"@{bse_sql_server},{bse_sql_port}/{bse_sql_db}"
     f"?driver=ODBC+Driver+17+for+SQL+Server"
 )
-# bse_engine_str = (
-#     f"DRIVER={{ODBC Driver 17 for SQL Server}};"
-#     f"SERVER={bse_sql_server},{bse_sql_port};"
-#     f"DATABASE={bse_sql_db};"
-#     f"UID={bse_sql_userid};"
-#     f"PWD={bse_encoded_password};"
-# )
 
 metadata = MetaData()
 
@@ -164,75 +165,15 @@ s_tbl_notis_nnf_data = Table(
     Column("NeatID", BigInteger)
 )
 
-# # n_tbl_notis_desk_wise_final_net_position = f"NOTIS_DESK_WISE_FINAL_NET_POSITION_{datetime(year=2025, month=1, day=8).date().strftime('%Y-%m-%d')}"
-# n_tbl_notis_datewise_net_position = f"NOTIS_NET_POSITION_{datetime.now().date().strftime('%Y-%m-%d')}"
-# s_tbl_notis_datewise_net_position = Table(
-#     n_tbl_notis_datewise_net_position, metadata,
-#     Column("Underlying", String(50)),
-#     Column("Strike", BigInteger),
-#     Column("OptionType", String(2)),
-#     Column("Expiry", String(50)),
-#     Column("Long", BigInteger, nullable=True),
-#     Column("Short", BigInteger, nullable=True),
-#     Column("ClosingQty", BigInteger, nullable=True),
-#     Column("ClosingPrice", BigInteger),
-#     Column("SubGroup", String(50)),
-#     Column("MainGroup", String(50)),
-# )
-
-# n_tbl_notis_desk_wise_net_position = f"NOTIS_DESK_WISE_EOD_POSITION_{datetime.now().date().strftime('%Y-%m-%d')}"
-# s_tbl_notis_desk_wise_net_position = Table(
-#     n_tbl_notis_desk_wise_net_position, metadata,
-#     Column("EodUnderlying", String(50)),
-#     Column("EodStrike", Float),
-#     Column("EodOptionType", String(10)),
-#     Column("EodExpiry", String(50)),
-#     Column("EodLong", BigInteger),
-#     Column("EodShort", BigInteger),
-#     Column("EodClosingQty", BigInteger),
-#     Column("EodClosingPrice", Float),
-#     Column("EodSubGroup", String(50)),
-#     Column("EodMainGroup", String(50)),
-#     Column("BuyQty", BigInteger),
-#     Column("buyAvgPrice", Float),
-#     Column("SellQty", BigInteger),
-#     Column("sellAvgPrice", Float),
-#     Column("volume", BigInteger),
-#     Column("ClosingQty", BigInteger),
-#     Column("ClosingPrice", Float),
-#     Column("Long", BigInteger),
-#     Column("Short", BigInteger),
-#     Column("IntradayPnL", Float, nullable=True),
-#     Column("expired", Boolean, nullable=True),
-#     Column("Spot", Float, nullable=True),
-#     Column("ExpRate", Float, nullable=True),
-#     Column("ExpBuyQty", BigInteger, nullable=True),
-#     Column("ExpBuyRate", Float, nullable=True),
-#     Column("ExpSellQty", BigInteger, nullable=True),
-#     Column("ExpSellRate", Float, nullable=True),
-#     Column("ExpBuyValue", Float, nullable=True),
-#     Column("ExpSellValue", Float, nullable=True)
-# )
-
-# n_tbl_notis_net_position = f"NOTIS_NET_POSITION"
-# s_tbl_notis_net_position = Table(
-#     n_tbl_notis_net_position, metadata,
-#     Column("EodUnderlying", String(50)),
-#     Column("EodStrike", BigInteger),
-#     Column("EodOptionType", String(2)),
-#     Column("EodExpiry", String(50)),
-#     Column("EodLong", BigInteger, nullable=True),
-#     Column("EodShort", BigInteger, nullable=True),
-#     Column("EodClosingQty", BigInteger, nullable=True),
-#     Column("EodClosingPrice", BigInteger, nullable=True),
-#     Column("EodSubGroup", String(50)),
-#     Column("EodMainGroup", String(50)),
-#     Column("BuyQty", BigInteger, nullable=True),
-#     Column("SellQty", BigInteger, nullable=True),
-#     Column("volume", BigInteger, nullable=True),
-#     Column("ClosingQty", BigInteger, nullable=True),
-#     Column("ClosingPrice", BigInteger)
-# )
+n_tbl_spot_data = "spot_data"
+s_tbl_spot_data = Table(
+    n_tbl_spot_data, metadata,
+    Column("NIFTY", Float, nullable=True),
+    Column("BANKNIFTY", Float, nullable=True),
+    Column("FINNIFTY", Float, nullable=True),
+    Column("MIDCPNIFTY", Float, nullable=True),
+    Column("SENSEX", Float, nullable=True)
+)
 
 n_tbl_notis_eod_net_pos_cp_noncp = f"NOTIS_EOD_NET_POS_CP_NONCP_{today}"
 # n_tbl_notis_eod_net_pos_cp_noncp = f"NOTIS_EOD_NET_POS_CP_NONCP_{datetime(year=2025,month=3,day=13).date().strftime('%Y-%m-%d')}"
@@ -276,31 +217,11 @@ s_tbl_srspl_trade = Table(
     Column("PreFinalNetQty", BigInteger)
 )
 
-# n_tbl_test_notis_eod_net_pos_cp_noncp = f"TEST_NOTIS_EOD_NET_POS_CP_NONCP_{today}"
-# # n_tbl_notis_eod_net_pos_cp_noncp = f"NOTIS_EOD_NET_POS_CP_NONCP_{datetime(year=2025,month=3,day=13).date().strftime('%Y-%m-%d')}"
-# s_tbl_test_notis_eod_net_pos_cp_noncp = Table(
-#     n_tbl_test_notis_eod_net_pos_cp_noncp, metadata,
-#     Column("EodBroker", String(50)),
-#     Column("EodUnderlying", String(50)),
-#     Column("EodExpiry", String(50)),
-#     Column("EodStrike", BigInteger),
-#     Column("EodOptionType", String(50)),
-#     Column("EodNetQuantity", BigInteger),
-#     Column("EodClosingPrice", BigInteger),
-#     Column("buyQty", BigInteger,nullable=True),
-#     Column("buyAvgPrice", BigInteger,nullable=True),
-#     Column("sellQty", BigInteger,nullable=True),
-#     Column("sellAvgPrice", BigInteger,nullable=True),
-#     Column("IntradayVolume", BigInteger,nullable=True),
-#     Column("FinalNetQty", BigInteger),
-#     Column("FinalSettlementPrice", BigInteger, nullable=True)
-# )
-
-# n_tbl_bse_trade_data = f"BSE_TRADE_DATA_{datetime(year=2025, month=3, day=17).date().strftime('%Y-%m-%d')}"
 n_tbl_bse_trade_data = f"BSE_TRADE_DATA_{today}"
 s_tbl_add = Table(
     n_tbl_bse_trade_data, metadata,
     Column("TerminalID", String(50)),
+    Column("TraderID", String(50)),
     Column("Underlying", String(50)),
     Column("Expiry", String(50)),
     Column("OptionType", String(50)),
@@ -314,7 +235,7 @@ s_tbl_add = Table(
     Column("Segment", String(50)),
     Column("TradingSymbol", String(50)),
     Column("SymbolName", String(50)),
-    Column("ExecutingBroker", String(50)),
+    Column("CpCode", String(50)),
     Column("ExchangeTime", String(50))
 )
 
@@ -331,6 +252,35 @@ s_tbl_add_notis = Table(
     Column("expiryDate", String(50)),
     Column("strikePrice", BigInteger),
     Column("optionType", String(50))
+)
+
+n_tbl_notis_delta_table = f"NOTIS_DELTA_{today}"
+s_tbl_notis_delta_table = Table(
+    n_tbl_notis_delta_table, metadata,
+    Column("EodOptionType", String(50)),
+    Column("EodBroker", String(50)),
+    Column("EodUnderlying", String(50)),
+    Column("Long", Float, nullable=True),
+    Column("Short", Float, nullable=True),
+    Column("Net", Float, nullable=True)
+)
+
+n_tbl_notis_deal_sheet = f"NOTIS_DEAL_SHEET_{today}"
+s_tbl_notis_deal_sheet = Table(
+    n_tbl_notis_deal_sheet, metadata,
+    Column("Broker", String(50)),
+    Column("Underlying", String(50)),
+    Column("Expiry", String(20)),
+    Column("Strike", BigInteger),
+    Column("OptionType", String(10)),
+    Column("BuyQty", BigInteger),
+    Column("BuyValue", Float),
+    Column("BuyMax", Float),
+    Column("BuyMin", Float),
+    Column("SellQty", BigInteger),
+    Column("SellValue", Float),
+    Column("SellMax", Float),
+    Column("SellMin", Float),
 )
 
 n_tbl_notis_nnf_wise_net_position = f"NOTIS_NNF_WISE_NET_POSITION_{today}"
