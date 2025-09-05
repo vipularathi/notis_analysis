@@ -8,14 +8,19 @@ from common import (volt_dir,table_dir,
                     read_data_db, write_notis_postgredb, read_file)
 from db_config import n_tbl_notis_delta_table,n_tbl_notis_eod_net_pos_cp_noncp, n_tbl_spot_data
 
-today = pd.to_datetime('26-08-2025', dayfirst=True).date()
+warnings.filterwarnings('ignore')
+# today = pd.to_datetime('02-09-2025', dayfirst=True).date()
 # yesterday = today - timedelta(days=1)
 
-spot_dict = {
-    'NIFTY':24855.05,
-    'BANKNIFTY':56150.7,
-    'SENSEX':81481.86
-}
+# if running on a random day, spot of that random day
+# spot_dict = {
+#     'NIFTY':24579.6,
+#     'BANKNIFTY':53661,
+#     'SENSEX':80157.88
+# }
+# if running before the start of next day
+# spot_df = read_data_db(for_table=n_tbl_spot_data)
+# spot_dict = spot_df.to_dict(orient='records')[0]
 
 def get_delta(row):
     int_rate,annual_div = 5.5,0
@@ -36,24 +41,13 @@ def calc_delta(eod_df):
     sym_list = ['NIFTY', 'BANKNIFTY', 'FINNIFTY', 'MIDCPNIFTY', 'SENSEX', 'BANKEX']
     col_keep = ['EodBroker', 'EodUnderlying', 'EodExpiry', 'EodStrike', 'EodOptionType', 'PreFinalNetQty']
     delta_df.drop(columns=[col for col in delta_df.columns if col not in col_keep], inplace=True)
-    # if datetime.now() < datetime.today().replace(hour=16, minute=50, second=0, microsecond=0):
-    #     volt_df = read_file(os.path.join(volt_dir, f'FOVOLT_{yesterday.strftime("%d%m%Y")}.csv'))
-    #     spot_dict = find_spot()
-    # else:
-    #     delta_df = delta_df.query("EodExpiry != @today")
-    #     volt_df = read_file(os.path.join(volt_dir, f'FOVOLT_{today.strftime("%d%m%Y")}.csv'))
-    #     spot_df = read_data_db(for_table=n_tbl_spot_data)
-    #     spot_dict = spot_df.to_dict(orient='records')[0]
     delta_df = delta_df.query("EodExpiry != @today")
     volt_df = read_file(os.path.join(volt_dir, f'FOVOLT_{today.strftime("%d%m%Y")}.csv'))
-    # spot_df = read_data_db(for_table=n_tbl_spot_data)
-    # spot_dict = spot_df.to_dict(orient='records')[0]
     volt_df.columns = [re.sub(r'\s', '', each) for each in volt_df.columns]
     volt_df.rename(columns={'ApplicableAnnualisedVolatility(N)=Max(ForL)': 'AnnualizedReturn'}, inplace=True)
     volt_df = volt_df.iloc[:, [1, -1]].query("Symbol in @sym_list")
     volt_df = volt_df.applymap(lambda x: re.sub(r'\s+', '', x) if isinstance(x, str) else x)
     volt_df['AnnualizedReturn'] = volt_df['AnnualizedReturn'].astype(np.float64)
-    # spot_dict = find_spot()
     volt_dict = dict(zip(volt_df['Symbol'], volt_df['AnnualizedReturn']))
     delta_df['spot'] = delta_df['EodUnderlying'].map(spot_dict)
     delta_df['volatility'] = delta_df['EodUnderlying'].map(volt_dict)
@@ -82,7 +76,6 @@ def calc_delta(eod_df):
         total_dict = {
             'EodOptionType': each,
             'EodBroker': 'Total',
-            
             'Long': grouped_temp_delta_df1['Long'].sum(),
             'Short': grouped_temp_delta_df1['Short'].sum(),
             'Net': grouped_temp_delta_df1['Net'].sum()
@@ -105,7 +98,6 @@ def calc_delta(eod_df):
         total_dict = {
             'EodOptionType': use,
             'EodBroker': 'Total',
-            
             'Long': grouped_df['Long'].sum(),
             'Short': grouped_df['Short'].sum(),
             'Net': grouped_df['Net'].sum()
@@ -140,5 +132,5 @@ eod_df = read_data_db(for_table=f"NOTIS_EOD_NET_POS_CP_NONCP_{today}")
 eod_df['EodExpiry'] = pd.to_datetime(eod_df['EodExpiry'], dayfirst=True).dt.date
 delta_df = calc_delta(eod_df)
 logger.info(f"New delta table made with volatility file of {today}")
-# write_notis_postgredb(df=delta_df,table_name=f"NOTIS_DELTA_{today}",truncate_required=True)
-# delta_df.to_excel(os.path.join(table_dir, f'custom_delta_{today}_final.xlsx'), index=False)
+write_notis_postgredb(df=delta_df,table_name=f"NOTIS_DELTA_{today}",truncate_required=True)
+delta_df.to_excel(os.path.join(table_dir, f'custom_delta_{today}_final.xlsx'), index=False)

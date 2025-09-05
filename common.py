@@ -71,9 +71,18 @@ def read_data_db(nnf=False, for_table='ENetMIS', from_time:str='', to_time:str='
         sql_username = "notice_user"
         sql_password = "Notice@2024"
         if not from_time:
-            sql_query = "SELECT * FROM [ENetMIS].[dbo].[NSE_FO_AA100_view]"
+            sql_query = (
+                "SELECT * FROM [ENetMIS].[dbo].[NSE_FO_AA100_view] "
+                "WHERE (Column24 like 'NIFTY%' or Column24 like 'BANKNIFTY%' "
+                "or Column24 like 'FINNIFTY%' or Column24 like 'MIDCPNIFTY%')"
+            )
         else:
-            sql_query = f"SELECT * FROM [ENetMIS].[dbo].[NSE_FO_AA100_view] WHERE CreateDate BETWEEN '{from_time}' AND '{to_time}';"
+            sql_query = (
+                f"SELECT * FROM [ENetMIS].[dbo].[NSE_FO_AA100_view] "
+                f"WHERE CreateDate BETWEEN '{from_time}' AND '{to_time}' "
+                f"AND (Column24 like 'NIFTY%' or Column24 like 'BANKNIFTY%' "
+                f"or Column24 like 'FINNIFTY%' or Column24 like 'MIDCPNIFTY%');"
+            )
         try:
             sql_connection_string = (
                 f"DRIVER={{ODBC Driver 17 for SQL Server}};"

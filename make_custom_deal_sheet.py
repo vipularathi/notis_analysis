@@ -1,10 +1,13 @@
-from common import read_data_db, today, write_notis_postgredb
+import pandas as pd
+import os
+from common import read_data_db, write_notis_postgredb, table_dir
 from nse_utility import NSEUtility
 from bse_utility import BSEUtility
 
+for_dt = pd.to_datetime('04-09-2025', dayfirst=True).date()
 
 def get_nse_data():
-    modified_df = read_data_db(for_table='NOTIS_TRADE_BOOK_2025-08-22')
+    modified_df = read_data_db(for_table=f'NOTIS_TRADE_BOOK_{for_dt}')
     modified_df['trdQtyPrc'] = modified_df['trdQty'] * (modified_df['trdPrc'] / 100)
     pivot_df = modified_df.pivot_table(
         index=['MainGroup', 'SubGroup', 'broker', 'ctclid', 'sym', 'expDt', 'strPrc', 'optType'],
@@ -42,7 +45,7 @@ def get_nse_data():
     pivot_df.volume = pivot_df.buyAvgQty - pivot_df.sellAvgQty
     return pivot_df
 def get_bse_data():
-    modified_bse_df = read_data_db(for_table='BSE_TRADE_DATA_2025-08-22')
+    modified_bse_df = read_data_db(for_table=f'BSE_TRADE_DATA_{for_dt}')
     modified_bse_df['trdQtyPrc'] = modified_bse_df['FillSize'] * (modified_bse_df['AvgPrice'] / 100)
     pivot_df = modified_bse_df.pivot_table(
         index=['Broker', 'Underlying', 'Expiry', 'Strike', 'OptionType', 'TerminalID', 'TraderID'],
@@ -90,4 +93,5 @@ grouped_main_deal_df = final_deal_df.groupby(
      'BuyQty': 'sum', 'SellQty': 'sum',
      'BuyValue':'sum', 'SellValue':'sum'}
 )
-write_notis_postgredb(df=grouped_main_deal_df, table_name='NOTIS_DEAL_SHEET_2025-08-22', truncate_required=True)
+grouped_main_deal_df.to_excel(os.path.join(table_dir,f'NOTIS_DEAL_SHEET_{for_dt}.xlsx'), index=False)
+write_notis_postgredb(df=grouped_main_deal_df, table_name=f'NOTIS_DEAL_SHEET_{for_dt}', truncate_required=True)

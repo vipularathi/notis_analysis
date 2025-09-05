@@ -40,10 +40,10 @@ class NSEUtility:
             'Column31': 'echoback', 'Column32': 'Fill1', 'Column33': 'Fill2',
             'Column34': 'Fill3', 'Column35': 'Fill4', 'Column36': 'Fill5', 'Column37': 'Fill6'
         }, inplace=True)
-        df['ctclid'] = df['ctclid'].astype('float64')
-        df_nnf['NNFID'] = df_nnf['NNFID'].astype('float64')
+        df['ctclid'] = df['ctclid'].astype(np.int64)
+        df_nnf['NNFID'] = df_nnf['NNFID'].astype(np.int64)
         missing_ctclid = set(df['ctclid'].unique()) - set(df_nnf['NNFID'].unique())
-        if missing_ctclid:# logs the missing ctclids
+        if missing_ctclid: # logs the missing ctclids
             logger.info(f"Missing ctclid(s) from NNF file: {missing_ctclid}")
         else:
             logger.info('All ctclid values are present in NNF file.\n')
@@ -165,12 +165,14 @@ class NSEUtility:
 
     @staticmethod
     def calc_deskwise_net_pos(pivot_df):
+        pivot_df = pivot_df.copy()
         pivot_df.rename(columns ={'MainGroup':'mainGroup','SubGroup':'subGroup'}, inplace=True)
         desk_db_df = pivot_df.groupby(by=['mainGroup', 'subGroup', 'symbol', 'expiryDate', 'strikePrice', 'optionType']).agg({'buyAvgQty':'sum','buyAvgPrice':'mean','sellAvgQty':'sum','sellAvgPrice':'mean'}).reset_index()
         return desk_db_df
 
     @staticmethod
     def calc_nnfwise_net_pos(pivot_df):
+        pivot_df = pivot_df.copy()
         nnf_db_df = pivot_df.groupby(by=['ctclid', 'symbol', 'expiryDate', 'strikePrice', 'optionType']).agg({'buyAvgQty':'sum','buyAvgPrice':'mean','sellAvgQty':'sum','sellAvgPrice':'mean'}).reset_index()
         nnf_db_df.rename(columns={'ctclid':'nnfID'}, inplace=True)
         return nnf_db_df
