@@ -22,7 +22,7 @@ test_dir = os.path.join(root_dir,'testing')
 # today = datetime(year=2025, month=3, day=7).date()
 
 # # -------------------------------------------------------------------------------------------------------------
-for_date = datetime(year=2025, month=8, day=8).date()
+for_date = datetime(year=2025, month=9, day=10).date()
 # table_list = ['NOTIS_EOD_NET_POS_CP_NONCP_2025-03-20','NOTIS_TRADE_BOOK_2025-02-28','NOTIS_DESK_WISE_NET_POSITION_2025-02-28', 'NOTIS_NNF_WISE_NET_POSITION_2025-02-28', 'NOTIS_USERID_WISE_NET_POSITION_2025-02-28']
 # table_list = [
 #     f'NOTIS_DESK_WISE_NET_POSITION_{for_date}',f'test_net_pos_desk_{for_date}',

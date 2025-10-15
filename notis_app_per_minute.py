@@ -19,7 +19,7 @@ from db_config import (n_tbl_notis_trade_book, n_tbl_notis_raw_data,
 from common import (get_date_from_non_jiffy,get_date_from_jiffy,
                     read_data_db, read_notis_file, read_file,
                     write_notis_data, write_notis_postgredb,
-                    analyze_expired_instruments, calc_delta,
+                    analyze_expired_instruments_v2, calc_delta_v2,
                     today, yesterday, bhav_dir,
                     logger, volt_dir, zipped_dir)
 
@@ -89,29 +89,24 @@ class ServiceApp:
     def get_data(self, for_date:date=Query(), for_table:str=Query(), page:int=Query(1), page_size:int=Query(1000),db:Session=Depends(get_db)):
         for_dt = pd.to_datetime(for_date).date()
         if for_table == 'modifiedtradebook':
-            tablename = f"NOTIS_TRADE_BOOK_{today}" if for_dt == today else f'NOTIS_TRADE_BOOK_{for_dt}'
+            tablename = f'NOTIS_TRADE_BOOK_{for_dt}'
         elif for_table == 'nnfwise':
-            tablename = f'NOTIS_NNF_WISE_NET_POSITION_{today}' if for_dt == today else f'NOTIS_NNF_WISE_NET_POSITION_{for_dt}'
+            tablename = f'NOTIS_NNF_WISE_NET_POSITION_{for_dt}'
         elif for_table == 'useridwise': #to_remove
-            tablename = f'NOTIS_DESK_WISE_NET_POSITION_{today}' if for_dt == today else f'NOTIS_DESK_WISE_NET_POSITION_{for_dt}'
+            tablename = f'NOTIS_DESK_WISE_NET_POSITION_{for_dt}'
         elif for_table == 'deskwise':
-            tablename = f'NOTIS_DESK_WISE_NET_POSITION_{today}' if for_dt == today else f'NOTIS_DESK_WISE_NET_POSITION_{for_dt}'
+            tablename = f'NOTIS_DESK_WISE_NET_POSITION_{for_dt}'
         elif for_table == 'rawtradebook':
-            tablename = f'notis_raw_data_{today}' if for_dt == today else f'notis_raw_data_{for_dt}'
+            tablename = f'notis_raw_data_{for_dt}'
         elif for_table == 'eodnetposcp':
-            tablename = f'NOTIS_EOD_NET_POS_CP_NONCP_{today}' if for_dt == today else f'NOTIS_EOD_NET_POS_CP_NONCP_{for_dt.strftime("%Y-%m-%d")}'
+            tablename = f'NOTIS_EOD_NET_POS_CP_NONCP_{for_dt.strftime("%Y-%m-%d")}'
         elif for_table == f'bsetradebook':
-            tablename = f'BSE_TRADE_DATA_{today.strftime("%Y-%m-%d")}' if for_dt == today else f'BSE_TRADE_DATA_{for_dt.strftime("%Y-%m-%d")}'
+            tablename = f'BSE_TRADE_DATA_{for_dt.strftime("%Y-%m-%d")}'
         elif for_table == f'delta':
             tablename = f'NOTIS_DELTA_{for_dt.strftime("%Y-%m-%d")}'
         elif for_table == f'deal':
             tablename = f'NOTIS_DEAL_SHEET_{for_dt.strftime("%Y-%m-%d")}'
-        if for_table == 'eodnetposcp':
-            query = text(rf'Select "EodBroker","EodUnderlying","EodExpiry","EodStrike","EodOptionType","EodNetQuantity","buyQty","buyValue","sellQty","sellValue",'
-                         rf'"PreFinalNetQty","ExpiredSpot_close","ExpiredRate","ExpiredAssn_value","ExpiredSellValue","ExpiredBuyValue","ExpiredQty","FinalNetQty" '
-                         rf'from "{tablename}" limit {page_size} offset {(page -1)*page_size}')
-        else:
-            query=text(rf'Select * from "{tablename}" limit {page_size} offset {(page -1)*page_size}')
+        query=text(rf'Select * from "{tablename}" limit {page_size} offset {(page -1)*page_size}')
         result = db.execute(query).fetchall()
         total_rows = db.execute(text(rf'Select count(*) from "{tablename}"')).scalar()
         # total_rows = 18
@@ -243,7 +238,7 @@ class ServiceApp:
                 return FileResponse(zip_path, media_type='application/gzip')
         elif for_table == 'eodnetposcp':
             grouped_desk_db_df = read_data_db(for_table=tablename)
-            grouped_desk_db_df.drop(columns=['buyAvgPrice','sellAvgPrice'], inplace=True)
+            # grouped_desk_db_df.drop(columns=['buyAvgPrice','sellAvgPrice'], inplace=True)
             if grouped_desk_db_df.empty:
                 return JSONResponse(content={"message": "No data available"}, status_code=204)
             buffer = io.BytesIO()
@@ -521,10 +516,11 @@ class ServiceApp:
         if not pivot_df.empty:
             return Response(content=json_data, media_type='application/json')
     
-    def get_oi(self, for_date=Query(), summary:bool=Query()):
+    def get_oi(self, for_date:date=Query(), summary:bool=Query()):
         # for_date = datetime.today().date().strftime('%Y-%m-%d')
         # table_to_read = f'NOTIS_EOD_NET_POS_CP_NONCP_{for_date}'
-        eod_df = read_data_db(for_table=n_tbl_notis_eod_net_pos_cp_noncp)
+        for_dt = pd.to_datetime(for_date).date()
+        eod_df = read_data_db(for_table=f"NOTIS_EOD_NET_POS_CP_NONCP_{for_dt}")
         eod_df.columns = [re.sub(r'Eod|\s', '', each) for each in eod_df.columns]
         if not summary:
             grouped_df = eod_df.groupby(by=['Broker', 'Underlying', 'Expiry'], as_index=False).agg(
@@ -587,12 +583,12 @@ class ServiceApp:
                     grouped_eod_df['ExpiredBuyValue'] = 0.0
                     grouped_eod_df['ExpiredQty'] = 0.0
                     if today in grouped_eod_df.EodExpiry.unique():
-                        grouped_eod_df = analyze_expired_instruments(grouped_final_eod=grouped_eod_df)
+                        grouped_eod_df = analyze_expired_instruments_v2(for_date=today,grouped_final_eod=grouped_eod_df)
                     final_eod_df = pd.concat([orig_eod_df,grouped_eod_df], ignore_index=True)
                     final_eod_df['FinalNetQty'] = final_eod_df['PreFinalNetQty'] + final_eod_df['ExpiredQty']
                     final_eod_df['EodExpiry'] = pd.to_datetime(final_eod_df['EodExpiry'], dayfirst=True).dt.date
                     write_notis_postgredb(df=final_eod_df, table_name=n_tbl_notis_eod_net_pos_cp_noncp, truncate_required=True)
-                    delta_df = calc_delta(final_eod_df)
+                    delta_df = calc_delta_v2(for_date=today,eod_df=final_eod_df)
                     write_notis_postgredb(df=delta_df, table_name=n_tbl_notis_delta_table, truncate_required=True)
             elif for_table == 'nnf' or for_table == 'nnf'.upper():
                 df.columns = df.columns.str.replace(' ', '', regex=True)

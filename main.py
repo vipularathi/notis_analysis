@@ -12,7 +12,7 @@ from db_config import (n_tbl_notis_trade_book, n_tbl_notis_raw_data,
 from common import (read_data_db, write_notis_data, write_notis_postgredb, read_file,
                     today,yesterday, holidays_25,
                     root_dir, bhav_dir, modified_dir, table_dir, bse_dir, volt_dir,
-                    download_bhavcopy, logger, find_spot, analyze_expired_instruments)
+                    download_bhavcopy, logger, find_spot_volt, analyze_expired_instruments)
 from nse_utility import NSEUtility
 from bse_utility import BSEUtility
 
@@ -20,10 +20,7 @@ warnings.filterwarnings('ignore', message="pandas only supports SQLAlchemy conne
 pd.set_option('display.float_format', lambda a:'%.2f' %a)
 actual_date = datetime.now().date()
 
-def calc_dte(row):
-    bdays_left = pd.bdate_range(start=today, end=row['EodExpiry'], freq='C', weekmask='1111100', holidays=holidays_25)
-    actual_bdays_left = len(bdays_left)
-    return actual_bdays_left
+
 def get_delta(row):
     int_rate,annual_div = 5.5,0
     # if row['EodExpiry'] == pd.to_datetime('2025-07-31').date() and row['EodOptionType'] == 'CE':
@@ -40,33 +37,26 @@ def get_delta(row):
     )
     return calc.callDelta if row['EodOptionType'] == 'CE' else calc.putDelta
 
-def calc_delta(eod_df):
+def calc_delta_v2(for_date,eod_df):
+    for_dt = pd.to_datetime(for_date).date()
     delta_df = eod_df.copy()
-    delta_df = delta_df.query("EodExpiry != @today")
-    sym_list = ['NIFTY', 'BANKNIFTY', 'FINNIFTY', 'MIDCPNIFTY', 'SENSEX', 'BANKEX']
+    delta_df = delta_df.query("EodExpiry != @for_dt")
     col_keep = ['EodBroker', 'EodUnderlying', 'EodExpiry', 'EodStrike', 'EodOptionType', 'PreFinalNetQty']
     delta_df.drop(columns=[col for col in delta_df.columns if col not in col_keep], inplace=True)
-    volt_df = read_file(os.path.join(volt_dir, f'FOVOLT_{yesterday.strftime("%d%m%Y")}.csv'))
-    volt_df.columns = [re.sub(r'\s', '', each) for each in volt_df.columns]
-    volt_df.rename(columns={'ApplicableAnnualisedVolatility(N)=Max(ForL)': 'AnnualizedReturn'}, inplace=True)
-    volt_df = volt_df.iloc[:, [1, -1]].query("Symbol in @sym_list")
-    volt_df = volt_df.applymap(lambda x: re.sub(r'\s+', '', x) if isinstance(x, str) else x)
-    volt_df['AnnualizedReturn'] = volt_df['AnnualizedReturn'].astype(np.float64)
-    volt_dict = dict(zip(volt_df['Symbol'], volt_df['AnnualizedReturn']))
-    spot_dict = find_spot()
-    spot_df = pd.DataFrame([spot_dict])
-    write_notis_postgredb(df=spot_df, table_name=n_tbl_spot_data, truncate_required=True)
+    index_list = delta_df.EodUnderlying.unique().tolist()
+    spot_dict, volt_dict = find_spot_volt(for_date=for_dt, index_list=index_list)
     delta_df['spot'] = delta_df['EodUnderlying'].map(spot_dict)
     delta_df['volatility'] = delta_df['EodUnderlying'].map(volt_dict)
     delta_df['volatility'] = delta_df['volatility'].astype(np.float64)
     delta_df['volatility'] = delta_df['volatility'] * 100
-    delta_df['dte'] = delta_df['EodExpiry'].apply(lambda x: (x - today).days + 1)
+    delta_df['dte'] = eod_df['EodExpiry'].apply(lambda x: (x - today).days if x != today else 1)
     mask = delta_df['EodOptionType'] == 'XX'
     delta_df.loc[mask, 'volatility'] = 1
     delta_df['deltaPerUnit'] = delta_df.apply(get_delta, axis=1).astype(np.float64)
     delta_df['deltaQty'] = delta_df['PreFinalNetQty'] * delta_df['deltaPerUnit']
     delta_df['deltaExposure(in Cr)'] = (delta_df['spot'] * delta_df['deltaQty']) / 10_000_000
     delta_df1 = delta_df.copy()
+    delta_df.to_excel(os.path.join(table_dir,f'pre_delta_{for_dt}.xlsx'), index=False)
     final_delta_df = pd.DataFrame()
     mask = delta_df1['EodOptionType'].isin(['CE', 'PE'])
     delta_df1.loc[mask, 'EodOptionType'] = 'CE_PE'
@@ -130,6 +120,7 @@ def calc_delta(eod_df):
         }
         grouped_df = pd.concat([grouped_df, pd.DataFrame([total_dict])], ignore_index=True)
         final_delta_df = pd.concat([final_delta_df, grouped_df], ignore_index=True)
+    final_delta_df.fillna('None', inplace=True)
     return final_delta_df
     
 def calc_rate(row):
@@ -159,21 +150,8 @@ def get_nse_data():
     logger.info(f'Notis trade data fetched, shape={df_db.shape}')
     write_notis_postgredb(df=df_db, table_name=n_tbl_notis_raw_data, raw=True, truncate_required=True)
     modify_filepath = os.path.join(modified_dir, f'NOTIS_TRADE_DATA_{today.strftime("%d%b%Y").upper()}.csv')
-    nnf_file_path = os.path.join(root_dir, "Final_NNF_ID.xlsx")
-    if not os.path.exists(nnf_file_path):
-        raise FileNotFoundError("NNF File not found. Please add the NNF file and try again.")
-    readable_mod_time = datetime.fromtimestamp(os.path.getmtime(nnf_file_path))
-    if readable_mod_time.date() == today: # Check if the NNF file is modified today or not
-        logger.info(f'New NNF Data found, modifying the nnf data in db . . .')
-        df_nnf = pd.read_excel(nnf_file_path, index_col=False)
-        df_nnf = df_nnf.loc[:, ~df_nnf.columns.str.startswith('Un')]
-        df_nnf.columns = df_nnf.columns.str.replace(' ', '', regex=True)
-        df_nnf.dropna(how='all', inplace=True)
-        df_nnf = df_nnf.drop_duplicates()
-        write_notis_postgredb(df=df_nnf, table_name=n_tbl_notis_nnf_data, truncate_required=True)
-    else:
-        df_nnf = read_data_db(nnf=True, for_table = n_tbl_notis_nnf_data)
-        df_nnf = df_nnf.drop_duplicates()
+    df_nnf = read_data_db(nnf=True, for_table=n_tbl_notis_nnf_data)
+    df_nnf = df_nnf.drop_duplicates()
     modified_df = NSEUtility.modify_file(df_db, df_nnf)
     write_notis_postgredb(modified_df, table_name=n_tbl_notis_trade_book, truncate_required=True)
     write_notis_data(modified_df, modify_filepath)
@@ -304,12 +282,10 @@ def find_net_pos(nse_pivot_df, bse_pivot_df):
          'BuyValue':'sum', 'SellValue':'sum'}
     )
     write_notis_postgredb(df=grouped_main_deal_df, table_name=n_tbl_notis_deal_sheet, truncate_required=True)
-    cp_noncp_nse_df = NSEUtility.calc_eod_cp_noncp(nse_pivot_df)
-    cp_noncp_bse_df = BSEUtility.calc_bse_eod_net_pos(bse_pivot_df)
+    cp_noncp_nse_df = NSEUtility.calc_eod_cp_noncp_v2(for_date=today, for_date_yest=yesterday, desk_db_df=nse_pivot_df)
+    cp_noncp_bse_df = BSEUtility.calc_bse_eod_net_pos_v2(for_date=today, for_date_yest=yesterday,desk_bse_df=bse_pivot_df)
     final_cp_noncp_eod_df = pd.concat([cp_noncp_nse_df, cp_noncp_bse_df], ignore_index=True)
-    underlying_list = ['NIFTY', 'BANKNIFTY', 'MIDCPNIFTY', 'FINNIFTY', 'SENSEX', 'BANKEX']
-    final_cp_noncp_eod_df = final_cp_noncp_eod_df.query("EodUnderlying in @underlying_list")
-    final_cp_noncp_eod_df.fillna(0, inplace=True)
+    
     to_int = ['EodStrike','EodNetQuantity', 'buyQty', 'sellQty', 'IntradayVolume', 'FinalNetQty']
     for each in to_int:
         final_cp_noncp_eod_df[each] = final_cp_noncp_eod_df[each].astype(np.int64)
@@ -351,7 +327,7 @@ def find_net_pos(nse_pivot_df, bse_pivot_df):
                                           grouped_final_eod['sellQty'])
     grouped_final_eod['EodExpiry'] = pd.to_datetime(grouped_final_eod['EodExpiry'], dayfirst=True).dt.date
     grouped_final_eod.fillna(0, inplace=True)
-    delta_df = calc_delta(grouped_final_eod)
+    delta_df = calc_delta_v2(for_date=today, eod_df=grouped_final_eod)
     write_notis_postgredb(df=delta_df, table_name=n_tbl_notis_delta_table, truncate_required=True)
     grouped_final_eod['ExpiredSpot_close'] = 0.0
     grouped_final_eod['ExpiredRate'] = 0.0
@@ -359,8 +335,9 @@ def find_net_pos(nse_pivot_df, bse_pivot_df):
     grouped_final_eod['ExpiredSellValue'] = 0.0
     grouped_final_eod['ExpiredBuyValue'] = 0.0
     grouped_final_eod['ExpiredQty'] = 0.0
+    index_list = grouped_final_eod.EodUnderlying.unique().tolist()
     if today in grouped_final_eod.EodExpiry.unique():
-        spot_dict = find_spot()
+        spot_dict, volt_dict = find_spot_volt(for_date=today, index_list=index_list)
         mask = grouped_final_eod['EodExpiry'] == today
         grouped_final_eod.loc[mask, 'ExpiredSpot_close'] = grouped_final_eod['EodUnderlying'].map(spot_dict)
         grouped_final_eod.loc[mask, 'ExpiredRate'] = grouped_final_eod.loc[mask].apply(calc_rate, axis=1)
