@@ -10,7 +10,7 @@ from db_config import (engine_str,
                        n_tbl_notis_delta_table)
 from common import (get_date_from_non_jiffy, get_date_from_jiffy,
                     today, yesterday, holidays_25,
-                    root_dir, volt_dir, logger, find_spot, analyze_expired_instruments,
+                    root_dir, volt_dir, logger, analyze_expired_instruments_v2, calc_delta_v2,
                     read_data_db, read_file, write_notis_postgredb, truncate_tables)
 from nse_utility import NSEUtility
 from bse_utility import BSEUtility
@@ -254,8 +254,10 @@ def find_net_pos(nse_pivot_df, bse_pivot_df):
     if nse_pivot_df.empty and bse_pivot_df.empty:
         return
     else:
-        cp_noncp_nse_df = NSEUtility.calc_eod_cp_noncp(nse_pivot_df)
-        cp_noncp_bse_df = BSEUtility.calc_bse_eod_net_pos(bse_pivot_df)
+        cp_noncp_nse_df = NSEUtility.calc_eod_cp_noncp_v2(for_date=today, for_date_yest=yesterday,
+                                                          desk_db_df=nse_pivot_df)
+        cp_noncp_bse_df = BSEUtility.calc_bse_eod_net_pos_v2(for_date=today, for_date_yest=yesterday,
+                                                             desk_bse_df=bse_pivot_df)
         # srspl_df = final_eod.query("EodBroker == 'SRSPL'")
         final_eod = pd.concat([cp_noncp_nse_df, cp_noncp_bse_df], ignore_index=True)
         # final_eod = pd.concat([pre_final_eod,srspl_df], ignore_index=True)
@@ -286,7 +288,6 @@ def find_net_pos(nse_pivot_df, bse_pivot_df):
         yest_srspl_df.loc[:, ~yest_srspl_df.columns.isin(not_to_zero)] = 0
         yest_srspl_df = yest_srspl_df[today_srspl_df.columns.tolist()]
         final_srspl_df = pd.concat([yest_srspl_df, today_srspl_df], ignore_index=True)
-        # final_srspl_df = today_srspl_df.copy()
         final_srspl_df.fillna(0, inplace=True)
         final_srspl_df['EodExpiry'] = pd.to_datetime(final_srspl_df['EodExpiry'], dayfirst=True).dt.date
         grouped_srspl_df = final_srspl_df.groupby(
@@ -300,7 +301,7 @@ def find_net_pos(nse_pivot_df, bse_pivot_df):
         grouped_final_eod['PreFinalNetQty'] = (grouped_final_eod['EodNetQuantity'] + grouped_final_eod['buyQty'] -
                                               grouped_final_eod['sellQty'])
         grouped_final_eod['EodExpiry'] = pd.to_datetime(grouped_final_eod['EodExpiry'], dayfirst=True).dt.date
-        delta_df = calc_delta(grouped_final_eod)
+        delta_df = calc_delta_v2(for_date=today, eod_df=grouped_final_eod)
         write_notis_postgredb(df=delta_df, table_name=n_tbl_notis_delta_table, truncate_required=True)
         # ===============================================================================================================
         grouped_final_eod['ExpiredSpot_close'] = 0.0
@@ -310,7 +311,7 @@ def find_net_pos(nse_pivot_df, bse_pivot_df):
         grouped_final_eod['ExpiredBuyValue'] = 0.0
         grouped_final_eod['ExpiredQty'] = 0.0
         if today in grouped_final_eod['EodExpiry'].unique():
-            grouped_final_eod = analyze_expired_instruments(grouped_final_eod=grouped_final_eod)
+            grouped_final_eod = analyze_expired_instruments_v2(for_date=today,grouped_final_eod=grouped_final_eod)
         grouped_final_eod['FinalNetQty'] = grouped_final_eod['PreFinalNetQty'] + grouped_final_eod['ExpiredQty']
         # grouped_final_eod.drop(columns=['IntradayVolume'], inplace=True)
         logger.info(f'final_eod after calculation: {grouped_final_eod.shape}')

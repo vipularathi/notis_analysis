@@ -85,20 +85,6 @@ class NSEUtility:
 
     @staticmethod
     def calc_eod_cp_noncp(desk_db_df):
-        # eod_tablename = f'NOTIS_EOD_NET_POS_CP_NONCP_{yesterday.strftime("%Y-%m-%d")}' #NOTIS_EOD_NET_POS_CP_NONCP_2025-03-17
-        # eod_df = read_data_db(for_table=eod_tablename)
-        # eod_df.columns = [re.sub(r'Eod|\s|Expired','',each) for each in eod_df.columns]
-        # eod_df.drop(columns=['NetQuantity','buyQty','buyAvgPrice','buyValue','sellQty','sellAvgPrice','sellValue',
-        #                      'PreFinalNetQty','Spot_close','Rate','Assn_value','SellValue','BuyValue','Qty'],
-        #             inplace=True)
-        # eod_df.rename(columns={'FinalNetQty':'NetQuantity'}, inplace=True)
-        # eod_df = eod_df.add_prefix('Eod')
-        # eod_df['EodExpiry'] = pd.to_datetime(eod_df['EodExpiry'], dayfirst=True, format='mixed').dt.date
-        # nse_underlying_list = ['NIFTY','BANKNIFTY','MIDCPNIFTY','FINNIFTY']
-        # eod_df = eod_df.query("EodUnderlying in @nse_underlying_list and EodExpiry >= @today and EodNetQuantity != 0 "
-        #                       "and EodBroker != 'SRSPL'")
-        #
-        # grouped_eod = eod_df.groupby(by=['EodBroker','EodUnderlying','EodExpiry','EodStrike','EodOptionType'], as_index=False).agg({'EodNetQuantity':'sum'})
         underlying_list = ['NIFTY', 'BANKNIFTY', 'MIDCPNIFTY', 'FINNIFTY']
         yest_eod_df = read_data_db(for_table=f'NOTIS_EOD_NET_POS_CP_NONCP_{yesterday.strftime("%Y-%m-%d")}')
         yest_eod_df.EodExpiry = pd.to_datetime(yest_eod_df.EodExpiry, dayfirst=True, format='mixed').dt.date
@@ -203,3 +189,87 @@ class NSEUtility:
             mask = grouped_df['OptionType'] == 'XX'
             grouped_df.loc[mask,'Strike'] = 0
         return grouped_df
+    
+    @staticmethod
+    def calc_eod_cp_noncp_v2(for_date, for_date_yest, desk_db_df):
+        today = pd.to_datetime(for_date).date()
+        yesterday = pd.to_datetime(for_date_yest).date()
+        # today_underlying = desk_db_df.symbol.unique().tolist()
+        yest_eod_df = read_data_db(for_table=f'NOTIS_EOD_NET_POS_CP_NONCP_{yesterday.strftime("%Y-%m-%d")}')
+        # yest_underlying = yest_eod_df.EodUnderlying.unique().tolist()
+        # total_underlying = list(set(today_underlying + yest_underlying))
+        # nse_underlying = [x for x in total_underlying if x not in bse_list]
+        yest_eod_df.EodExpiry = pd.to_datetime(yest_eod_df.EodExpiry, dayfirst=True, format='mixed').dt.date
+        yest_eod_df = yest_eod_df.query(
+            "EodUnderlying not in ['SENSEX','BANKEX'] and EodExpiry >= @today and FinalNetQty != 0 "
+            "and EodBroker in ['CP','non CP']"
+        )
+        # yest_eod_df = yest_eod_df.query("EodUnderlying not in ['SENSEX','BANKEX']")
+        yest_eod_df['EodNetQuantity'] = yest_eod_df['FinalNetQty']
+        yest_eod_df['PreFinalNetQty'] = yest_eod_df['FinalNetQty']
+        exclude_columns = ['EodBroker', 'EodUnderlying', 'EodExpiry', 'EodStrike', 'EodOptionType',
+                           'EodNetQuantity', 'PreFinalNetQty', 'FinalNetQty']
+        yest_eod_df.loc[:, ~yest_eod_df.columns.isin(exclude_columns)] = 0
+        yest_eod_df = yest_eod_df.query('FinalNetQty != 0')
+        
+        today_eod_df = read_data_db(for_table=f'NOTIS_EOD_NET_POS_CP_NONCP_{today.strftime("%Y-%m-%d")}')
+        today_eod_df.EodExpiry = pd.to_datetime(today_eod_df.EodExpiry, dayfirst=True, format='mixed').dt.date
+        today_eod_df = today_eod_df.query(
+            "EodUnderlying not in ['SENSEX','BANKEX'] and EodExpiry >= @today and EodBroker in ['CP','non CP']"
+        )
+        # today_eod_df = today_eod_df.query("EodUnderlying not in ['SENSEX','BANKEX']")
+        if len(desk_db_df) == 0 or desk_db_df.empty:
+            if today_eod_df.empty or len(today_eod_df) == 0:
+                return yest_eod_df
+            return today_eod_df
+        yest_eod_df.columns = [re.sub(rf'Eod|\s|Expired', '', each) for each in yest_eod_df.columns]
+        yest_eod_df.Expiry = pd.to_datetime(yest_eod_df.Expiry, dayfirst=True, format='mixed').dt.date
+        yest_eod_df.drop(
+            columns=['NetQuantity', 'buyQty', 'buyAvgPrice', 'buyValue', 'sellQty', 'sellAvgPrice', 'sellValue',
+                     'PreFinalNetQty', 'Spot_close', 'Rate', 'Assn_value', 'SellValue', 'BuyValue', 'Qty'],
+            inplace=True
+        )
+        yest_eod_df.rename(columns={'FinalNetQty': 'NetQuantity'}, inplace=True)
+        yest_eod_df = yest_eod_df.add_prefix('Eod')
+        yest_eod_df = yest_eod_df.query(
+            "EodUnderlying not in ['SENSEX','BANKEX'] and EodExpiry >= @today and EodNetQuantity != 0 "
+            "and EodBroker in ['CP','non CP']"
+        )
+        grouped_eod = yest_eod_df.groupby(
+            by=['EodBroker', 'EodUnderlying', 'EodExpiry', 'EodStrike', 'EodOptionType'],
+            as_index=False).agg({'EodNetQuantity': 'sum'})
+        grouped_eod = grouped_eod.query("EodNetQuantity != 0")
+        grouped_eod = grouped_eod.drop_duplicates()
+        
+        desk_db_df.loc[desk_db_df['optionType'] == 'XX', 'strikePrice'] = 0
+        desk_db_df.strikePrice = desk_db_df.strikePrice.apply(lambda x: x / 100 if x > 0 else x)
+        desk_db_df.strikePrice = desk_db_df.strikePrice.astype('int64')
+        desk_db_df['expiryDate'] = pd.to_datetime(desk_db_df['expiryDate'], dayfirst=True, format='mixed').dt.date
+        
+        grouped_desk_db_df = desk_db_df.groupby(
+            by=['broker', 'symbol', 'expiryDate', 'strikePrice', 'optionType']).agg({
+            'buyAvgQty': 'sum', 'buyAvgPrice': 'mean', 'buyValue': 'sum', 'sellAvgQty': 'sum',
+            'sellAvgPrice': 'mean', 'sellValue': 'sum'
+        }).reset_index()
+        grouped_desk_db_df['IntradayVolume'] = grouped_desk_db_df['buyAvgQty'] - grouped_desk_db_df['sellAvgQty']
+        grouped_desk_db_df.rename(columns={'buyAvgQty': 'buyQty', 'sellAvgQty': 'sellQty'}, inplace=True)
+        # ================================================================
+        merged_df = grouped_eod.merge(
+            grouped_desk_db_df,
+            left_on=['EodBroker', 'EodUnderlying', 'EodExpiry', 'EodStrike', 'EodOptionType'],
+            right_on=["broker", "symbol", "expiryDate", "strikePrice", "optionType"],
+            how='outer'
+        )
+        merged_df.fillna(0, inplace=True)
+        merged_df = merged_df.drop_duplicates()
+        
+        coltd1 = ['EodBroker', 'EodUnderlying', 'EodExpiry', 'EodStrike', 'EodOptionType']
+        coltd2 = ["broker", "symbol", "expiryDate", "strikePrice", "optionType"]
+        for i in range(len(coltd1)):
+            merged_df.loc[merged_df[coltd1[i]] == 0, coltd1[i]] = merged_df[coltd2[i]]
+            merged_df.loc[merged_df[coltd2[i]] == 0, coltd2[i]] = merged_df[coltd1[i]]
+        merged_df['FinalNetQty'] = merged_df['EodNetQuantity'] + merged_df['IntradayVolume']
+        merged_df.drop(columns=['broker', 'symbol', 'expiryDate', 'strikePrice', 'optionType'], inplace=True)
+        merged_df.fillna(0, inplace=True)
+        logger.info(f'cp noncp length at {datetime.now()} is {merged_df.shape}')
+        return merged_df
