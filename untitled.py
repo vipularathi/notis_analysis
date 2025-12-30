@@ -2792,8 +2792,11 @@ p=0
 # write_notis_postgredb(df=spot_df,table_name=n_tbl_spot_data,truncate_required=True)
 i=0
 from common import write_notis_postgredb
-mod_eod_df = pd.read_excel(rf"D:\notis_analysis\table_data\NOTIS_EOD_NET_POS_CP_NONCP_2025-10-06_mod.xlsx",
+mod_eod_df = pd.read_excel(rf"D:\notis_analysis\table_data\NOTIS_EOD_NET_POS_CP_NONCP_2025-12-26_modified.xlsx",
                            index_col=False)
 # mod_eod_df.EodExpiry = pd.to_datetime(mod_eod_df)
-write_notis_postgredb(df=mod_eod_df,table_name='NOTIS_EOD_NET_POS_CP_NONCP_2025-10-06',truncate_required=True)
+write_notis_postgredb(df=mod_eod_df,table_name='NOTIS_EOD_NET_POS_CP_NONCP_2025-12-26',truncate_required=True)
 i=0
+# from bse_utility import convert_expiry
+# df = pd.DataFrame(data=['SENSEX25OCT84300PE','SENSEX25N0685000CE'], columns=['scid'])
+p=0

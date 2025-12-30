@@ -9,7 +9,7 @@ from db_config import (engine_str,
                        n_tbl_notis_nnf_data, n_tbl_notis_nnf_wise_net_position, n_tbl_srspl_trade_data,
                        n_tbl_notis_delta_table)
 from common import (get_date_from_non_jiffy, get_date_from_jiffy,
-                    today, yesterday, holidays_25,
+                    today, yesterday, final_holidays,
                     root_dir, volt_dir, logger, analyze_expired_instruments_v2, calc_delta_v2,
                     read_data_db, read_file, write_notis_postgredb, truncate_tables)
 from nse_utility import NSEUtility
@@ -28,7 +28,7 @@ main_mod_df = pd.DataFrame()
 main_mod_bse_df = pd.DataFrame()
 
 def calc_dte(row):
-    bdays_left = pd.bdate_range(start=today, end=row['EodExpiry'], freq='C', weekmask='1111100', holidays=holidays_25)
+    bdays_left = pd.bdate_range(start=today, end=row['EodExpiry'], freq='C', weekmask='1111100', holidays=final_holidays)
     actual_bdays_left = len(bdays_left)
     return actual_bdays_left
 def get_delta(row):
