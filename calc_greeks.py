@@ -3,14 +3,14 @@ import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta, timezone
 from py_vollib.black_scholes.greeks.analytical import delta
-from common import read_file, volt_dir, find_spot, holidays_25, holidays_26, read_data_db, yesterday, test_dir
+from common import read_file, volt_dir, find_spot, final_holidays, holidays_26, read_data_db, yesterday, test_dir
 
 today = pd.to_datetime('2025-07-30', dayfirst=True).date()
 # yesterday = today - timedelta(days=1)
 # a=find_spot()
 # i=0
 def calc_bus_dte(row):
-    total_holidays = holidays_25 + holidays_26
+    total_holidays = final_holidays
     bdays_left = pd.bdate_range(start=today, end=row['EodExpiry'], freq='C', weekmask='1111100', holidays=total_holidays)
     actual_bdays_left = len(bdays_left)
     return actual_bdays_left

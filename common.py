@@ -12,13 +12,37 @@ from db_config import (engine_str,
                        n_tbl_notis_nnf_data, s_tbl_notis_nnf_data,
                        n_tbl_spot_data)
 
-holidays_25 = ['2025-02-26', '2025-03-14', '2025-03-31', '2025-04-10', '2025-04-14', '2025-04-18', '2025-05-01', '2025-08-15', '2025-08-27', '2025-10-02', '2025-10-21', '2025-10-22', '2025-11-05', '2025-12-25']
-holidays_26 = ['2026-01-26', '2026-03-06', '2026-03-20', '2026-04-03', '2026-04-10', '2026-04-14', '2026-05-01', '2026-07-17', '2026-08-15', '2026-08-28', '2026-10-02', '2026-10-19', '2026-11-09', '2026-12-25']
+holidays_25 = ['2025-02-26', '2025-03-14', '2025-03-31', '2025-04-10', '2025-04-14', '2025-04-18', '2025-05-01', '2025-08-15', '2025-08-27', '2025-10-02', '2025-10-22', '2025-11-05', '2025-12-25']
+# holidays_26 = ['2026-01-15', '2026-01-26', '2026-03-03', '2026-03-20', '2026-04-03', '2026-04-10', '2026-04-14', '2026-05-01',
+#                '2026-07-17', '2026-08-15', '2026-08-28', '2026-10-02', '2026-10-19', '2026-11-09', '2026-12-25']
+holidays_26 = [
+    "2026-01-15",  
+    "2026-01-26",  # Republic Day
+    "2026-03-03",  # Holi
+    "2026-03-26",  # Shri Ram Navami
+    "2026-03-31",  # Shri Mahavir Jayanti
+    "2026-04-03",  # Good Friday
+    "2026-04-14",  # Dr. Baba Saheb Ambedkar Jayanti
+    "2026-05-01",  # Maharashtra Day
+    "2026-05-28",  # Bakri Id
+    "2026-06-26",  # Muharram
+    "2026-09-14",  # Ganesh Chaturthi
+    "2026-10-02",  # Mahatma Gandhi Jayanti
+    "2026-10-20",  # Dussehra
+    "2026-11-10",  # Diwali – Balipratipada
+    "2026-11-24",  # Prakash Gurpurb Sri Guru Nanak Dev
+    "2026-12-25",  # Christmas
+]
 # holidays_25.append('2024-03-20') #add unusual holidays
+
+final_holidays = holidays_25 + holidays_26
 today = datetime.now().date()
 
-b_days = pd.bdate_range(start=today-timedelta(days=7), end=today, freq='C', weekmask='1111100', holidays=holidays_25).date.tolist()
-# b_days = b_days.append(pd.DatetimeIndex([pd.Timestamp(year=2024, month=1, day=20)])) #add unusual trading days
+b_days = pd.bdate_range(start=today-timedelta(days=7), end=today, freq='C', weekmask='1111100',
+                        holidays=final_holidays).date.tolist()
+b_days.append(datetime(year=2026, month=2, day=1).date()) #add unusual trading days
+# b_days = b_days[b_days <= pd.Timestamp(today)]
+b_days = [each for each in b_days if each <= today]
 today, yesterday = sorted(b_days)[-1], sorted(b_days)[-2]
 
 root_dir = os.path.dirname(os.path.abspath(__file__))
@@ -225,6 +249,63 @@ def read_data_db(nnf=False, for_table='ENetMIS', from_time:str='', to_time:str='
                 f"SELECT * FROM [ENetMIS].[dbo].[BSE_FO_AA100_view] "
                 f"where (scid like 'SENSEX%' or scid like 'BANKEX%') "
                 f"and CAST([time] as TIME) > '{stored_from_time}' "
+                f"and CAST([time] as TIME) <= '{to_time}'"
+            )
+        try:
+            sql_connection_string = (
+                f"DRIVER={{ODBC Driver 17 for SQL Server}};"
+                f"SERVER={sql_server};"
+                f"DATABASE={sql_database};"
+                f"UID={sql_username};"
+                f"PWD={sql_password}"
+            )
+            with pyodbc.connect(sql_connection_string) as sql_conn:
+                if from_time:
+                    time_df = pd.read_sql_query(sql_time_query, sql_conn)
+                    if time_df is not None and not time_df.empty:
+                        if pd.to_datetime(stored_from_time, dayfirst=True).time() != pd.to_datetime(
+                          time_df['hh_mm'].iloc[0]).time():
+                            print(f'Stored time before= {stored_from_time}, time_df={time_df["hh_mm"].iloc[0]},'
+                                  f'to_time={to_time}')
+                            df = pd.read_sql_query(sql_query, sql_conn)
+                            stored_from_time = time_df['hh_mm'].iloc[0]
+                            print(f'Stored time after= {stored_from_time}, time_df={time_df["hh_mm"].iloc[0]}, '
+                                  f'to_time={to_time}')
+                            logger.info(f"Data fetched from BSE SQL Server. Shape:{df.shape}")
+                            return df
+                else:
+                    df = pd.read_sql_query(sql_query, sql_conn)
+                    logger.info(f"Data fetched from BSE SQL Server. Shape:{df.shape}")
+                    return df
+            return pd.DataFrame()
+        except (pyodbc.Error, psycopg2.Error) as e:
+            logger.info("Error occurred:", e)
+    elif not nnf and for_table == 'ALL_DATA_BSE_ENetMIS':
+        sql_server = "rms.ar.db"
+        sql_database = "ENetMIS"
+        sql_username = "notice_user"
+        sql_password = "Notice@2024"
+        if not from_time:
+            sql_query = (
+                f"SELECT * FROM [ENetMIS].[dbo].[BSE_FO_AA100_view] "
+            )
+        else:
+            logger.info(f'Fetching BSE trade data from {from_time} to {to_time}')
+            if stored_from_time is not None:
+                stored_from_time = pd.to_datetime(stored_from_time, dayfirst=True).strftime('%H:%M:%S')
+            else:
+                stored_from_time = pd.to_datetime(from_time, dayfirst=True).strftime('%H:%M:%S')
+            # from_time = pd.to_datetime(from_time, dayfirst=True).strftime('%H:%M:%S')
+            to_time = pd.to_datetime(to_time, dayfirst=True).strftime('%H:%M:%S')
+            sql_time_query = (
+                f"SELECT DISTINCT [time] as hh_mm "
+                f"from [ENETMIS].[dbo].[BSE_FO_AA100_view] "
+                f"order by hh_mm "
+                f"desc"
+            )
+            sql_query = (
+                f"SELECT * FROM [ENetMIS].[dbo].[BSE_FO_AA100_view] "
+                f"where CAST([time] as TIME) > '{stored_from_time}' "
                 f"and CAST([time] as TIME) <= '{to_time}'"
             )
         try:
@@ -489,7 +570,8 @@ def truncate_tables(tablename):
         
 def find_spot():
     spot_dict = {}
-    index_list = ["NIFTY", "BANKNIFTY", "FINNIFTY", "MIDCPNIFTY", "SENSEX"]
+    # index_list = ["NIFTY", "BANKNIFTY", "FINNIFTY", "MIDCPNIFTY", "SENSEX"]
+    index_list = ['TMPV']
     url = 'http://192.168.112.219:8080/livedataname'
     headers = {
         'esegment': '["1"]',
@@ -580,7 +662,8 @@ def analyze_expired_instruments_v2(for_date, grouped_final_eod):
     grouped_final_eod.loc[mask, 'ExpiredAssn_value'] = (grouped_final_eod.loc[mask, 'PreFinalNetQty'] * grouped_final_eod.loc[mask, 'ExpiredRate'])
     grouped_final_eod.loc[mask, 'ExpiredSellValue'] = np.where(grouped_final_eod.loc[mask, 'PreFinalNetQty'] > 0,
                                                                abs(grouped_final_eod.loc[mask, 'ExpiredAssn_value']), 0)
-    grouped_final_eod.loc[mask, 'ExpiredBuyValue'] = np.where(grouped_final_eod.loc[mask, 'PreFinalNetQty'] < 0,abs(grouped_final_eod.loc[mask, 'ExpiredAssn_value']), 0)
+    grouped_final_eod.loc[mask, 'ExpiredBuyValue'] = np.where(grouped_final_eod.loc[mask, 'PreFinalNetQty'] < 0,
+                                                              abs(grouped_final_eod.loc[mask, 'ExpiredAssn_value']), 0)
     grouped_final_eod.loc[mask, 'ExpiredQty'] = -1 * grouped_final_eod.loc[mask, 'PreFinalNetQty']
     return grouped_final_eod
 

@@ -10,7 +10,7 @@ from db_config import (n_tbl_notis_trade_book, n_tbl_notis_raw_data,
                        n_tbl_srspl_trade_data, n_tbl_notis_deal_sheet,
                        n_tbl_spot_data)
 from common import (read_data_db, write_notis_data, write_notis_postgredb, read_file,
-                    today,yesterday, holidays_25,
+                    today,yesterday, final_holidays,
                     root_dir, bhav_dir, modified_dir, table_dir, bse_dir, volt_dir,
                     download_bhavcopy, logger, find_spot_volt, analyze_expired_instruments)
 from nse_utility import NSEUtility
@@ -155,7 +155,7 @@ def get_nse_data():
     modified_df = NSEUtility.modify_file(df_db, df_nnf)
     write_notis_postgredb(modified_df, table_name=n_tbl_notis_trade_book, truncate_required=True)
     write_notis_data(modified_df, modify_filepath)
-    write_notis_data(modified_df, rf'C:\Users\vipulanand\Documents\Anand Rathi Financial Services Ltd (Synced)\OneDrive - Anand Rathi Financial Services Ltd\notis_files\NOTIS_TRADE_DATA_{today.strftime("%d%b%Y").upper()}.csv')
+    # write_notis_data(modified_df, rf'C:\Users\vipulanand\Documents\Anand Rathi Financial Services Ltd (Synced)\OneDrive - Anand Rathi Financial Services Ltd\notis_files\NOTIS_TRADE_DATA_{today.strftime("%d%b%Y").upper()}.csv')
     logger.info('file saved in modified_data folder')
     modified_df['trdQtyPrc'] = modified_df['trdQty'] * (modified_df['trdPrc']/100)
     pivot_df = modified_df.pivot_table(
@@ -226,7 +226,7 @@ def get_bse_data():
     modified_bse_df.fillna(0, inplace=True)
     write_notis_postgredb(df=modified_bse_df,table_name=n_tbl_bse_trade_data,truncate_required=True)
     write_notis_data(modified_bse_df, os.path.join(bse_dir, f'BSE_TRADE_DATA_{today.strftime("%d%b%Y").upper()}.xlsx'))
-    write_notis_data(modified_bse_df, rf'C:\Users\vipulanand\Documents\Anand Rathi Financial Services Ltd (Synced)\OneDrive - Anand Rathi Financial Services Ltd\notis_files\BSE_TRADE_DATA_{today.strftime("%d%b%Y").upper()}.xlsx')
+    # write_notis_data(modified_bse_df, rf'C:\Users\vipulanand\Documents\Anand Rathi Financial Services Ltd (Synced)\OneDrive - Anand Rathi Financial Services Ltd\notis_files\BSE_TRADE_DATA_{today.strftime("%d%b%Y").upper()}.xlsx')
     modified_bse_df['trdQtyPrc'] = modified_bse_df['FillSize'] * (modified_bse_df['AvgPrice'] / 100)
     pivot_df = modified_bse_df.pivot_table(
         index=['Broker', 'Underlying', 'Expiry', 'Strike', 'OptionType', 'TerminalID', 'TraderID'],

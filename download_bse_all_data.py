@@ -1,6 +1,5 @@
 import re, os, progressbar, pyodbc, warnings, psycopg2, time, warnings
 import pandas as pd
-#
 warnings.filterwarnings('ignore')
 # from common import (read_data_db, read_file, write_notis_data, write_notis_postgredb, download_bhavcopy,
 #                     root_dir, bhav_dir, modified_dir, table_dir, bse_dir)
@@ -188,93 +187,25 @@ warnings.filterwarnings('ignore')
 #     #     pbar.update(i + 1)
 #     # pbar.finish()
 #     # download_tables()
-o=0
-from common import logger, bse_dir, write_notis_data, today
-def read_data_db_1(nnf=False, for_table='ENetMIS', from_time:str='', to_time:str='', from_source=False):
-    if not nnf and for_table == 'BSE_ENetMIS':
-        # Sql connection parameters
-        sql_server = "rms.ar.db"
-        sql_database = "ENetMIS"
-        sql_username = "notice_user"
-        sql_password = "Notice@2024"
-        if not from_time:
-            sql_query = f"SELECT * FROM [ENetMIS].[dbo].[BSE_FO_AA100_view] where scid like 'SENSEX%' or scid like 'BANKEX%'"
-        else:
-            sql_query = f"SELECT * FROM [ENetMIS].[dbo].[BSE_FO_AA100_view] WHERE CreateDate BETWEEN '{from_time}' AND '{to_time}';"
-        try:
-            sql_connection_string = (
-                f"DRIVER={{ODBC Driver 17 for SQL Server}};"
-                f"SERVER={sql_server};"
-                f"DATABASE={sql_database};"
-                f"UID={sql_username};"
-                f"PWD={sql_password}"
-            )
-            with pyodbc.connect(sql_connection_string) as sql_conn:
-                df = pd.read_sql_query(sql_query, sql_conn)
-            logger.info(f"Data fetched from SQL Server. Shape:{df.shape}")
-            return df
+from common import logger, bse_dir, write_notis_data, today, read_data_db
+from bse_utility import BSEUtility
 
-        except (pyodbc.Error, psycopg2.Error) as e:
-            logger.info("Error occurred:", e)
-    elif nnf and for_table != 'ENetMIS':
-        # engine = create_engine(engine_str)
-        with engine.begin() as conn:
-            df = pd.read_sql_table(n_tbl_notis_nnf_data, con=conn)
-        logger.info(f"Data fetched from {for_table} table. Shape:{df.shape}")
-        return df
-    elif not nnf and for_table == 'TradeHist':
-        sql_server = '172.30.100.41'
-        sql_port = '1450'
-        sql_db = 'OMNE_ARD_PRD'
-        sql_userid = 'Pos_User'
-        sql_paswd = 'Pass@Word'
-        if not from_time:
-            logger.info(f'Fetching today\'s BSE trade data till now.')
-            # sql_query = (
-            #     f"select mnmFillPrice,mnmSegment, mnmTradingSymbol,mnmTransactionType,mnmAccountId,mnmUser , mnmFillSize, mnmSymbolName, mnmExpiryDate, mnmOptionType, mnmStrikePrice, mnmAvgPrice, mnmExecutingBroker from [OMNE_ARD_PRD].[dbo].[TradeHist] where mnmExchSeg = 'bse_fo' and mnmAccountId = 'AA100'")
-            # sql_query2 = (
-            #     f"select mnmFillPrice,mnmSegment, mnmTradingSymbol,mnmTransactionType,mnmAccountId,mnmUser , mnmFillSize, mnmSymbolName, mnmExpiryDate, mnmOptionType, mnmStrikePrice, mnmAvgPrice, mnmExecutingBroker from [OMNE_ARD_PRD_HNI].[dbo].[TradeHist] where mnmExchSeg = 'bse_fo' and mnmAccountId = 'AA100'")
-            sql_query = (
-                f"select * from [OMNE_ARD_PRD].[dbo].[TradeHist] where mnmExchSeg = 'bse_fo' and (mnmAccountId = 'AA100' or mnmAccountId = 'CPAA100')"
-                f"union all "
-                f"select * from [OMNE_ARD_PRD_HNI].[dbo].[TradeHist] where mnmExchSeg = 'bse_fo' and (mnmAccountId = 'AA100' or mnmAccountId = 'CPAA100')"
-            )
-        else:
-            logger.info(f'Fetching BSE trade data from {from_time} to {to_time}')
-            sql_query = (
-                f"select * from [OMNE_ARD_PRD].[dbo].[TradeHist] where mnmExchSeg = 'bse_fo' and (mnmAccountId = 'AA100' or mnmAccountId = 'CPAA100')"
-                f"union all"
-                f"select * from [OMNE_ARD_PRD_HNI].[dbo].[TradeHist] where mnmExchSeg = 'bse_fo' and (mnmAccountId = 'AA100' or mnmAccountId = 'CPAA100')"
-            )
-        try:
-            sql_engine_str = (
-                f"DRIVER={{ODBC Driver 17 for SQL Server}};"
-                f"SERVER={sql_server},{sql_port};"
-                f"DATABASE={sql_db};"
-                f"UID={sql_userid};"
-                f"PWD={sql_paswd};"
-            )
-            with pyodbc.connect(sql_engine_str) as sql_conn:
-                df_bse = pd.read_sql_query(sql_query, sql_conn)
-                # df_bse_hni = pd.read_sql_query(sql_query2,sql_conn)
-            logger.info(f'data fetched for bse: {df_bse.shape}')
-            # final_bse_df = pd.concat([df_bse,df_bse_hni], ignore_index=True)
-            return df_bse
-        except (pyodbc.Error, psycopg2.Error) as e:
-            logger.info(f'Error in fetching data: {e}')
-    elif not nnf and for_table!='ENetMIS':
-        # engine = create_engine(engine_str)
-        with engine.begin() as conn:
-            df = pd.read_sql_table(for_table, con=conn)
-        logger.info(f"Data fetched from {for_table} table. Shape:{df.shape}")
-        return df
-
-df_bse = read_data_db_1(for_table='BSE_ENetMIS')
+df_bse = read_data_db(for_table='ALL_DATA_BSE_ENetMIS')
+logger.info(f'ALL DATA BSE trade data fetched, shape={df_bse.shape}')
+# df_bse1 = read_data_db(for_table='BSE_ENetMIS')
+# logger.info(f'BSE trade data fetched, shape={df_bse1.shape}')
+# df_bse_filtered = df_bse[(~df_bse['scid'].str.startswith('SENSEX')) & (~df_bse['scid'].str.startswith('BANKEX'))]
+df_non_ssx = df_bse.query("~scid.str.startswith('SENSEX') and ~scid.str.startswith('BANKEX')")
+df_ssx = df_bse.merge(df_non_ssx, how='outer', indicator=True)
+df_ssx = df_ssx.query("_merge == 'left_only'").drop(columns=['_merge'])
+modified_bse_df = BSEUtility.bse_modify_file_v2(df_ssx)
+modified_bse_df_non_ssx = BSEUtility.bse_modify_file_v3(df_non_ssx)
 # df_bse = df_bse.query("mnmTransactionType != 'L'")
 # df_bse.replace('',0, inplace=True)
 # df_bse.columns = [re.sub(r'mnm|\s','',each) for each in df_bse.columns]
 # df_bse.ExpiryDate = df_bse.ExpiryDate.apply(lambda x:pd.to_datetime(x, unit='s').date().strftime('%d/%m/%Y'))
 # df_bse.ExpiryDate = df_bse.ExpiryDate.apply(lambda x: x if x.endswith('2025') else '')
-write_notis_data(df=df_bse,filepath=os.path.join(bse_dir,f'BSE_TRADE_DATA_ALL_{today.strftime("%d%b%Y").upper()}.xlsx'))
-write_notis_data(df=df_bse,filepath=os.path.join(rf"C:\Users\vipulanand\Documents\Anand Rathi Financial Services Ltd (Synced)\OneDrive - Anand Rathi Financial Services Ltd\notis_files\BSE",f'BSE_TRADE_DATA_ALL_{today.strftime("%d%b%Y").upper()}.xlsx'))
-p=0
+df = pd.concat([modified_bse_df, modified_bse_df_non_ssx], ignore_index=True)
+write_notis_data(df=df,filepath=os.path.join(bse_dir,f'NEW_BSE_TRADE_DATA_ALL'
+                                                                  f'_{today.strftime("%d%b%Y").upper()}.xlsx'))
+# write_notis_data(df=df_bse,filepath=os.path.join(rf"C:\Users\vipulanand\Documents\Anand Rathi Financial Services Ltd (Synced)\OneDrive - Anand Rathi Financial Services Ltd\notis_files\BSE",f'BSE_TRADE_DATA_ALL_{today.strftime("%d%b%Y").upper()}.xlsx'))

@@ -3,7 +3,7 @@ import pandas as pd
 import numpy as np
 from datetime import datetime
 
-from common import (today, yesterday, holidays_25,
+from common import (today, yesterday, final_holidays,
                     read_file, read_data_db)
 
 warnings.filterwarnings('ignore')
@@ -11,22 +11,19 @@ warnings.filterwarnings('ignore')
 
 def convert_expiry(val):
     # print(val)
-    
     if re.fullmatch(r'\d{5}', val):
         val = val[:2] + '0' + val[2:]
         return datetime.strptime(val, '%y%m%d').date()
     elif re.fullmatch(r'\d{6}', val):
         return datetime.strptime(val, '%y%m%d').date()
     elif re.fullmatch(r'\d{2}[A-Z]{3}', val):
-        # Find last tuesday(SENSEX) weekday=1
+        # Find last thursday(SENSEX)
         year = 2000 + int(val[:2])
         month = datetime.strptime(val[2:], '%b').month
         start_date = datetime.today().replace(day=1).date()
         end_date = datetime(year=year, month=month, day=calendar.monthrange(year=year, month=month)[1]).date()
-        
         b_days = pd.bdate_range(start=start_date, end=end_date, freq='C', weekmask='1111100',
-                                holidays=holidays_25).date.tolist()
-        # last_tuesday = find_tuesday(year=year, month=month)
+                                holidays=final_holidays).date.tolist()
         offset = (end_date.weekday() - 3) % 7
         last_thu = end_date.replace(day=end_date.day - offset)
         if last_thu in b_days:
@@ -39,8 +36,39 @@ def convert_expiry(val):
         month = None
         if val[2:3] == 'O':
             month = datetime.strptime('Oct','%b').month
+        elif val[2:3] == 'N':
+            month = datetime.strptime('Nov', '%b').month
+        elif val[2:3] == 'D':
+            month = datetime.strptime('Dec', '%b').month
         final = year + str(month) + val[3:]
         return datetime.strptime(final, '%Y%m%d').date()
+    else:
+        year = datetime.today().year
+        month = datetime.today().month
+        # Stock FUT BSE = last TUESDAY of the month
+        start_date = datetime.today().replace(day=1).date()
+        end_date = None
+        def find_last_tuesday(month):
+            end_date = datetime(year=year, month=month, day=calendar.monthrange(year=year, month=month)[1]).date()
+            b_days = pd.bdate_range(
+                start=start_date,
+                end=end_date,
+                freq='C',
+                weekmask='1111100',
+                holidays=final_holidays
+            ).date.tolist()
+            offset = (end_date.weekday() - 1) % 7
+            last_tue = end_date.replace(day=end_date.day - offset)
+            if last_tue in b_days:
+                return last_tue
+            else:
+                b_days = [each for each in b_days if each < last_tue]
+                return b_days[-1]
+        last_tue = find_last_tuesday(month)
+        if last_tue < datetime.today().date():
+            new_month = (month % 12) +1
+            last_tue = find_last_tuesday(new_month)
+        return last_tue
 
 class BSEUtility:
     @staticmethod
@@ -69,7 +97,7 @@ class BSEUtility:
         mask = bse_raw_df['OptionType'] == 'FUT'
         bse_raw_df.loc[mask,'Strike'] = 0
         bse_raw_df.loc[mask,'OptionType'] = 'XX'
-        bse_raw_df['Expiry'] = bse_raw_df['temp_expiry'].apply(convert_expiry)
+        bse_raw_df['Expiry'] = bse_raw_df['temp_expiry'].apply(convert_expiry) #SENSEX25D1885800CE
         bse_raw_df['Segment'] = 'FO'
         bse_raw_df['SymbolName'] = 'BSXOPT'
         bse_raw_df['AvgPrice'] = bse_raw_df['rt']
@@ -321,3 +349,40 @@ class BSEUtility:
         merged_df.rename(columns={'BuyQty': 'buyQty', 'SellQty': 'sellQty'}, inplace=True)
         print(f'length of cp noncp for {today} is {merged_df.shape}')
         return merged_df
+    
+    @staticmethod
+    def bse_modify_file_v3(bse_raw_df):
+        pattern = r'^([A-Za-z]+)$'
+        bse_raw_df[['Underlying']] = bse_raw_df['scid'].str.extract(pattern)
+        bse_raw_df[['OptionType','Strike','temp_expiry']] = 'XX',0,'random_str'
+        # mask = bse_raw_df['OptionType'] == 'FUT'
+        # bse_raw_df.loc[mask, 'Strike'] = 0
+        # bse_raw_df.loc[mask, 'OptionType'] = 'XX'
+        bse_raw_df['Expiry'] = bse_raw_df['temp_expiry'].apply(convert_expiry)  # MEP
+        bse_raw_df['Segment'] = 'FO'
+        bse_raw_df['SymbolName'] = 'BSXFUT'
+        bse_raw_df['AvgPrice'] = bse_raw_df['rt']
+        # bse_raw_df['ExecutingBroker'] = 0
+        # bse_raw_df['Broker'] = 'non CP'
+        bse_raw_df['Broker'] = np.where(bse_raw_df['CpCode'], 'CP', 'non CP')
+        
+        bse_raw_df.rename(
+            columns={'rt': 'FillPrice', 'buy/sell': 'TransactionType', 'clid': 'AccountId', 'tdrid': 'TraderID',
+                     'qty': 'FillSize', 'scid': 'TradingSymbol'},
+            inplace=True
+        )
+        bse_raw_df['ExchangeTime'] = bse_raw_df['date'] + ' ' + bse_raw_df['time']
+        col_keep = ['FillPrice', 'Segment', 'TradingSymbol', 'TransactionType', 'AccountId', 'TerminalID', 'FillSize',
+                    'SymbolName', 'Expiry', 'OptionType', 'Strike', 'AvgPrice', 'ExecutingBroker', 'ExchangeTime',
+                    'Underlying', 'Broker', 'TraderID']
+        bse_raw_df.drop(
+            columns=[col for col in bse_raw_df.columns.tolist() if col not in col_keep],
+            inplace=True
+        )
+        col_to_int = ['Strike', 'FillSize']
+        col_to_float = ['FillPrice', 'AvgPrice']
+        for col in col_to_int:
+            bse_raw_df[col] = bse_raw_df[col].astype(np.int64)
+        for col in col_to_float:
+            bse_raw_df[col] = bse_raw_df[col].astype(float)
+        return bse_raw_df

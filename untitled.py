@@ -2790,10 +2790,49 @@ p=0
 # spot_dict = find_spot()
 # cspot_df = pd.DataFrame([spot_dict])
 # write_notis_postgredb(df=spot_df,table_name=n_tbl_spot_data,truncate_required=True)
+update_db=0
+# from common import write_notis_postgredb
+# mod_eod_df = pd.read_excel(rf"D:\notis_analysis\table_data\NOTIS_EOD_NET_POS_CP_NONCP_2026-01-19_modified.xlsx",
+#                            index_col=False)
+# # mod_eod_df.EodExpiry = pd.to_datetime(mod_eod_df)
+# write_notis_postgredb(df=mod_eod_df,table_name='NOTIS_EOD_NET_POS_CP_NONCP_2026-01-19',truncate_required=True)
 i=0
-from common import write_notis_postgredb
-mod_eod_df = pd.read_excel(rf"D:\notis_analysis\table_data\NOTIS_EOD_NET_POS_CP_NONCP_2025-10-06_mod.xlsx",
-                           index_col=False)
-# mod_eod_df.EodExpiry = pd.to_datetime(mod_eod_df)
-write_notis_postgredb(df=mod_eod_df,table_name='NOTIS_EOD_NET_POS_CP_NONCP_2025-10-06',truncate_required=True)
-i=0
+# from bse_utility import convert_expiry
+# df = pd.DataFrame(data=['SENSEX25OCT84300PE','SENSEX25N0685000CE'], columns=['scid'])
+update_db1=0
+from common import read_data_db, analyze_expired_instruments_v2
+for_date_str = '06-03-2026'
+rename_dict = {
+    'Party Code':'EodBroker',
+    'Symbol':'EodUnderlying',
+    'Expiry Date':'EodExpiry',
+    'Strike Price':'EodStrike',
+    'Option Type':'EodOptionType',
+    'Opn Qty':'EodNetQuantity',
+    'OpnBuyTradgQty':'buyQty',
+    'OpnBuyTradgVal':'buyValue',
+    'OpnSellTradgQty':'sellQty',
+    'OpnSellTradgVal':'sellValue',
+    'Net qty':'PreFinalNetQty'
+}
+for_date = pd.to_datetime(for_date_str, dayfirst=True).date()
+orig_eod_df = pd.read_excel(rf"D:\notis_analysis\input_data\Notis vs Exchange 06-03-2026.xlsx", index_col=False)
+db_df = read_data_db(for_table='NOTIS_EOD_NET_POS_CP_NONCP_2026-03-06')
+orig_eod_df.rename(columns=rename_dict,inplace=True)
+orig_eod_df['buyAvgPrice'] = np.where(orig_eod_df['buyQty'] > 0, orig_eod_df['buyValue'] / orig_eod_df['buyQty'], 0)
+orig_eod_df['sellAvgPrice'] = np.where(orig_eod_df['sellQty'] > 0, orig_eod_df['sellValue'] / orig_eod_df['sellQty'], 0)
+orig_eod_df['ExpiredSpot_close'] = 0.0
+orig_eod_df['ExpiredRate'] = 0.0
+orig_eod_df['ExpiredAssn_value'] = 0.0
+orig_eod_df['ExpiredSellValue'] = 0.0
+orig_eod_df['ExpiredBuyValue'] = 0.0
+orig_eod_df['ExpiredQty'] = 0.0
+orig_eod_df = analyze_expired_instruments_v2(for_date=for_date, grouped_final_eod=orig_eod_df)
+orig_eod_df['FinalNetQty'] = orig_eod_df['PreFinalNetQty'] + orig_eod_df['ExpiredQty']
+orig_eod_df['EodBroker'] = np.where(orig_eod_df['EodBroker'] == 'AA100', 'non CP', 'CP')
+for col in orig_eod_df.columns:
+    if type(orig_eod_df[col][0]) == type(pd.to_datetime('2025-04-04').date()) or type(orig_eod_df[col][0]) == type(
+      pd.to_datetime('2025-09-09 00:00:00')):
+        print(f'common changing col- {col}')
+        orig_eod_df[col] = pd.to_datetime(orig_eod_df[col], dayfirst=True, format='mixed').dt.strftime('%d/%m/%Y')
+p=0
