@@ -13,9 +13,10 @@ from db_config import (engine_str,
                        n_tbl_spot_data)
 
 holidays_25 = ['2025-02-26', '2025-03-14', '2025-03-31', '2025-04-10', '2025-04-14', '2025-04-18', '2025-05-01', '2025-08-15', '2025-08-27', '2025-10-02', '2025-10-22', '2025-11-05', '2025-12-25']
-# holidays_26 = ['2026-01-26', '2026-03-03', '2026-03-20', '2026-04-03', '2026-04-10', '2026-04-14', '2026-05-01',
+# holidays_26 = ['2026-01-15', '2026-01-26', '2026-03-03', '2026-03-20', '2026-04-03', '2026-04-10', '2026-04-14', '2026-05-01',
 #                '2026-07-17', '2026-08-15', '2026-08-28', '2026-10-02', '2026-10-19', '2026-11-09', '2026-12-25']
 holidays_26 = [
+    "2026-01-15",  
     "2026-01-26",  # Republic Day
     "2026-03-03",  # Holi
     "2026-03-26",  # Shri Ram Navami
@@ -39,7 +40,9 @@ today = datetime.now().date()
 
 b_days = pd.bdate_range(start=today-timedelta(days=7), end=today, freq='C', weekmask='1111100',
                         holidays=final_holidays).date.tolist()
-# b_days = b_days.append(pd.DatetimeIndex([pd.Timestamp(year=2024, month=1, day=20)])) #add unusual trading days
+b_days.append(datetime(year=2026, month=2, day=1).date()) #add unusual trading days
+# b_days = b_days[b_days <= pd.Timestamp(today)]
+b_days = [each for each in b_days if each <= today]
 today, yesterday = sorted(b_days)[-1], sorted(b_days)[-2]
 
 root_dir = os.path.dirname(os.path.abspath(__file__))
