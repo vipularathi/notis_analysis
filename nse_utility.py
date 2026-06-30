@@ -40,6 +40,7 @@ class NSEUtility:
             'Column31': 'echoback', 'Column32': 'Fill1', 'Column33': 'Fill2',
             'Column34': 'Fill3', 'Column35': 'Fill4', 'Column36': 'Fill5', 'Column37': 'Fill6'
         }, inplace=True)
+        # df['ctclid'] = df['ctclid'] // 1000
         df['ctclid'] = df['ctclid'].astype('float64')
         df_nnf['NNFID'] = df_nnf['NNFID'].astype('float64')
         missing_ctclid = set(df['ctclid'].unique()) - set(df_nnf['NNFID'].unique())

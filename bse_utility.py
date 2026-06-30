@@ -112,7 +112,8 @@ class BSEUtility:
         )
         bse_raw_df['ExchangeTime'] = bse_raw_df['date'] + ' ' + bse_raw_df['time']
         col_keep = ['FillPrice','Segment','TradingSymbol','TransactionType','AccountId','TerminalID','FillSize',
-                    'SymbolName','Expiry','OptionType','Strike','AvgPrice','ExecutingBroker','ExchangeTime','Underlying','Broker','TraderID']
+                    'SymbolName','Expiry','OptionType','Strike','AvgPrice','ExecutingBroker','ExchangeTime',
+                    'Underlying','Broker','TraderID','trnid','locationid','tradeid']
         bse_raw_df.drop(
             columns=[col for col in bse_raw_df.columns.tolist() if col not in col_keep],
             inplace=True
@@ -374,7 +375,7 @@ class BSEUtility:
         bse_raw_df['ExchangeTime'] = bse_raw_df['date'] + ' ' + bse_raw_df['time']
         col_keep = ['FillPrice', 'Segment', 'TradingSymbol', 'TransactionType', 'AccountId', 'TerminalID', 'FillSize',
                     'SymbolName', 'Expiry', 'OptionType', 'Strike', 'AvgPrice', 'ExecutingBroker', 'ExchangeTime',
-                    'Underlying', 'Broker', 'TraderID']
+                    'Underlying', 'Broker', 'TraderID','trnid','locationid','tradeid']
         bse_raw_df.drop(
             columns=[col for col in bse_raw_df.columns.tolist() if col not in col_keep],
             inplace=True

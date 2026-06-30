@@ -2,6 +2,7 @@ import re, requests, os, pyodbc, psycopg2, time, csv, paramiko, logging, sys, pr
 import pandas as pd
 from datetime import datetime, timedelta, timezone
 import numpy as np
+import win32com.client as win32
 from openpyxl import load_workbook, Workbook
 from openpyxl.utils.dataframe import dataframe_to_rows
 from sqlalchemy import create_engine, text, insert
@@ -13,8 +14,7 @@ from db_config import (engine_str,
                        n_tbl_spot_data)
 
 holidays_25 = ['2025-02-26', '2025-03-14', '2025-03-31', '2025-04-10', '2025-04-14', '2025-04-18', '2025-05-01', '2025-08-15', '2025-08-27', '2025-10-02', '2025-10-22', '2025-11-05', '2025-12-25']
-# holidays_26 = ['2026-01-15', '2026-01-26', '2026-03-03', '2026-03-20', '2026-04-03', '2026-04-10', '2026-04-14', '2026-05-01',
-#                '2026-07-17', '2026-08-15', '2026-08-28', '2026-10-02', '2026-10-19', '2026-11-09', '2026-12-25']
+
 holidays_26 = [
     "2026-01-15",  
     "2026-01-26",  # Republic Day
@@ -554,6 +554,7 @@ def download_bhavcopy():
         sftp.get(remote_path, local_path)
         sftp.close()
         transport.close()
+        logger.info(f'Today\'s bhavcopy downloaded and stored at {bhav_dir}')
     except Exception as e:
         logger.info(f'Error: {e}')
 
@@ -571,21 +572,31 @@ def truncate_tables(tablename):
 def find_spot():
     spot_dict = {}
     # index_list = ["NIFTY", "BANKNIFTY", "FINNIFTY", "MIDCPNIFTY", "SENSEX"]
-    index_list = ['TMPV']
-    url = 'http://192.168.112.219:8080/livedataname'
+    # index_list = ['TMPV', "NIFTY", "SENSEX"]
+    # url = 'http://192.168.112.219:8080/livedataname'
+    url = 'http://172.16.47.54:8006/livedataname'
+    # headers = {
+    #     'esegment': '["1"]',
+    #     'oi': '["1"]'
+    # }
     headers = {
-        'esegment': '["1"]',
-        'oi': '["1"]'
+        'oi': '1',
+        'esegment':'1'
     }
     proxies = {"http": None, "https": None}
     for each in index_list:
-        headers[f"inst_name"] = f'["{each}"]'
+        headers[f"inst_name"] = f"{each}"
+        # if each.lower() not in ['sensex','bankex']:
+        #     headers['esegment'] = '1'
+        # else:
+        #     headers['esegment'] = '11'
         try:
             response = requests.get(url=url, headers=headers, proxies=proxies)
             if response.status_code == 200:
-                for index, index_value in response.json().items():
-                    # spot_list.append({index:f'{index_value[2]}'})
-                    spot_dict[index] = index_value[2]
+                # for index, index_value in response.json().items():
+                #     # spot_list.append({index:f'{index_value[2]}'})
+                #     spot_dict[index] = index_value[2]
+                spot_dict[each] = response.json()[2]
         except Exception as e:
             print(f"Error in fetching spot data = {e}")
     return spot_dict
@@ -601,19 +612,22 @@ def find_spot_volt(for_date, index_list=[]):
         volt_df['AnnualizedReturn'] = volt_df['AnnualizedReturn'].astype(np.float64)
         volt_dict = dict(zip(volt_df['Symbol'], volt_df['AnnualizedReturn']))
         spot_dict = {}
-        url = 'http://192.168.112.219:8080/livedataname'
+        url = 'http://192.168.112.178:8080/livedataname'
         headers = {
-            'esegment': '["1"]',
-            'oi': '["1"]'
+            'oi': '1',
+            'esegment': '1'
         }
         proxies = {"http": None, "https": None}
         for each in index_list:
-            headers[f"inst_name"] = f'["{each}"]'
+            headers[f"inst_name"] = f"{each}"
+            # if each.lower() not in ['sensex', 'bankex']:
+            #     headers['esegment'] = '1'
+            # else:
+            #     headers['esegment'] = '11'
             try:
                 response = requests.get(url=url, headers=headers, proxies=proxies)
                 if response.status_code == 200:
-                    for index, index_value in response.json().items():
-                        spot_dict[index] = index_value[2]
+                    spot_dict[each] = response.json()[2]
             except Exception as e:
                 print(f"Error in fetching spot data = {e}")
     else:
@@ -703,6 +717,7 @@ def revise_eod_net_pos(for_dt:str = '', modify_sensex:bool=False):# modify_sense
         p=0
 
 def get_delta(row):
+    # print(f'calculating delta for row - {row}')
     int_rate,annual_div = 5.5,0
     spot = row['spot']
     strike = row['EodStrike']
@@ -906,3 +921,23 @@ def calc_delta_v2(for_date,eod_df):
 
 logger = define_logger()
 volt_df1 = read_file(os.path.join(volt_dir, f'FOVOLT_{yesterday.strftime("%d%m%Y")}.csv'))
+
+
+def send_outlook_mail(subject, body, to_emails, cc_emails=None):
+    try:
+        outlook = win32.Dispatch('outlook.application')
+        mail = outlook.CreateItem(0)
+        
+        mail.To = ";".join(to_emails)
+        
+        if cc_emails:
+            mail.CC = ";".join(cc_emails)
+        
+        mail.Subject = subject
+        mail.Body = body
+        
+        mail.Send()
+        logger.info("Email notification sent successfully.")
+    
+    except Exception as e:
+        logger.error(f"Failed to send email notification: {str(e)}")

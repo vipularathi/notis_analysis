@@ -1,19 +1,52 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 import sqlalchemy as sql
 from sqlalchemy import MetaData, Table, Column, Integer, DateTime, DECIMAL, VARCHAR, TEXT, Index, UniqueConstraint, \
     func, BOOLEAN, create_engine, Date, ForeignKey, Enum, Time, Float, text, String, BigInteger, Boolean
 from sqlalchemy.dialects.postgresql import JSONB, TIMESTAMP
 from urllib.parse import quote
+import pandas as pd
 
+holidays_26 = [
+    "2026-01-15",
+    "2026-01-26",  # Republic Day
+    "2026-03-03",  # Holi
+    "2026-03-26",  # Shri Ram Navami
+    "2026-03-31",  # Shri Mahavir Jayanti
+    "2026-04-03",  # Good Friday
+    "2026-04-14",  # Dr. Baba Saheb Ambedkar Jayanti
+    "2026-05-01",  # Maharashtra Day
+    "2026-05-28",  # Bakri Id
+    "2026-06-26",  # Muharram
+    "2026-09-14",  # Ganesh Chaturthi
+    "2026-10-02",  # Mahatma Gandhi Jayanti
+    "2026-10-20",  # Dussehra
+    "2026-11-10",  # Diwali – Balipratipada
+    "2026-11-24",  # Prakash Gurpurb Sri Guru Nanak Dev
+    "2026-12-25",  # Christmas
+]
+final_holidays = holidays_26
 today = datetime.now().date()
+b_days = pd.bdate_range(start=today-timedelta(days=7), end=today, freq='C', weekmask='1111100',
+                        holidays=final_holidays).date.tolist()
+b_days.append(datetime(year=2026, month=2, day=1).date()) #add unusual trading days
+# b_days = b_days[b_days <= pd.Timestamp(today)]
+b_days = [each for each in b_days if each <= today]
+today, yesterday = sorted(b_days)[-1], sorted(b_days)[-2]
+
 use_sqlite = False
 rdbms_type = "postgres"
 
-db_name = f"NOTIS_API"
+db_name = f"notis_db"
 pg_user = "postgres"
 pg_pass = "postgres"
-pg_host = "192.168.112.219"
-pg_port = "5432"
+pg_host = "172.16.47.54"
+pg_port = "5433"
+
+# db_name = f"NOTIS_API"
+# pg_user = "postgres"
+# pg_pass = "postgres"
+# pg_host = "192.168.112.219"
+# pg_port = "5432"
 
 notis_sql_server = "rms.ar.db"
 notis_sql_database = "ENetMIS"
@@ -236,7 +269,10 @@ s_tbl_add = Table(
     Column("TradingSymbol", String(50)),
     Column("SymbolName", String(50)),
     Column("CpCode", String(50)),
-    Column("ExchangeTime", String(50))
+    Column("ExchangeTime", String(50)),
+    Column("trnid", String(50)),
+    Column("locationid", String(50)),
+    Column("tradeid", String(50))
 )
 
 n_tbl_notis_desk_wise_net_position = f"NOTIS_DESK_WISE_NET_POSITION_{today}"
@@ -287,6 +323,7 @@ n_tbl_notis_nnf_wise_net_position = f"NOTIS_NNF_WISE_NET_POSITION_{today}"
 s_tbl_add_notis_nnf_wise_net_position = Table(
     n_tbl_notis_nnf_wise_net_position, metadata,
     Column("nnfID", BigInteger),
+    Column("TerminalID", String(50), nullable=True),
     Column("buyAvgPrice", Float, nullable=True),
     Column("buyAvgQty", BigInteger, nullable=True),
     Column("sellAvgPrice", Float, nullable=True),

@@ -27,7 +27,7 @@ import sys
 import re
 import pyodbc
 import psycopg2
-from common import test_dir
+
 # today = datetime(year=2025, month=1, day=24).date()
 # yesterday = datetime(year=2025, month=1, day=23).date()
 pd.set_option('display.max_columns', None)
@@ -2792,47 +2792,195 @@ p=0
 # write_notis_postgredb(df=spot_df,table_name=n_tbl_spot_data,truncate_required=True)
 update_db=0
 # from common import write_notis_postgredb
-# mod_eod_df = pd.read_excel(rf"D:\notis_analysis\table_data\NOTIS_EOD_NET_POS_CP_NONCP_2026-01-19_modified.xlsx",
+# mod_eod_df = pd.read_excel(rf"C:\Users\vipulanand\Downloads\eodnetposcp_2026-05-26.xlsx",
 #                            index_col=False)
 # # mod_eod_df.EodExpiry = pd.to_datetime(mod_eod_df)
-# write_notis_postgredb(df=mod_eod_df,table_name='NOTIS_EOD_NET_POS_CP_NONCP_2026-01-19',truncate_required=True)
+# write_notis_postgredb(df=mod_eod_df,table_name='NOTIS_EOD_NET_POS_CP_NONCP_2026-05-26',truncate_required=True)
 i=0
-# from bse_utility import convert_expiry
-# df = pd.DataFrame(data=['SENSEX25OCT84300PE','SENSEX25N0685000CE'], columns=['scid'])
-update_db1=0
-from common import read_data_db, analyze_expired_instruments_v2
-for_date_str = '06-03-2026'
-rename_dict = {
-    'Party Code':'EodBroker',
-    'Symbol':'EodUnderlying',
-    'Expiry Date':'EodExpiry',
-    'Strike Price':'EodStrike',
-    'Option Type':'EodOptionType',
-    'Opn Qty':'EodNetQuantity',
-    'OpnBuyTradgQty':'buyQty',
-    'OpnBuyTradgVal':'buyValue',
-    'OpnSellTradgQty':'sellQty',
-    'OpnSellTradgVal':'sellValue',
-    'Net qty':'PreFinalNetQty'
-}
-for_date = pd.to_datetime(for_date_str, dayfirst=True).date()
-orig_eod_df = pd.read_excel(rf"D:\notis_analysis\input_data\Notis vs Exchange 06-03-2026.xlsx", index_col=False)
-db_df = read_data_db(for_table='NOTIS_EOD_NET_POS_CP_NONCP_2026-03-06')
-orig_eod_df.rename(columns=rename_dict,inplace=True)
-orig_eod_df['buyAvgPrice'] = np.where(orig_eod_df['buyQty'] > 0, orig_eod_df['buyValue'] / orig_eod_df['buyQty'], 0)
-orig_eod_df['sellAvgPrice'] = np.where(orig_eod_df['sellQty'] > 0, orig_eod_df['sellValue'] / orig_eod_df['sellQty'], 0)
-orig_eod_df['ExpiredSpot_close'] = 0.0
-orig_eod_df['ExpiredRate'] = 0.0
-orig_eod_df['ExpiredAssn_value'] = 0.0
-orig_eod_df['ExpiredSellValue'] = 0.0
-orig_eod_df['ExpiredBuyValue'] = 0.0
-orig_eod_df['ExpiredQty'] = 0.0
-orig_eod_df = analyze_expired_instruments_v2(for_date=for_date, grouped_final_eod=orig_eod_df)
-orig_eod_df['FinalNetQty'] = orig_eod_df['PreFinalNetQty'] + orig_eod_df['ExpiredQty']
-orig_eod_df['EodBroker'] = np.where(orig_eod_df['EodBroker'] == 'AA100', 'non CP', 'CP')
-for col in orig_eod_df.columns:
-    if type(orig_eod_df[col][0]) == type(pd.to_datetime('2025-04-04').date()) or type(orig_eod_df[col][0]) == type(
-      pd.to_datetime('2025-09-09 00:00:00')):
-        print(f'common changing col- {col}')
-        orig_eod_df[col] = pd.to_datetime(orig_eod_df[col], dayfirst=True, format='mixed').dt.strftime('%d/%m/%Y')
+# # from bse_utility import convert_expiry
+# # df = pd.DataFrame(data=['SENSEX25OCT84300PE','SENSEX25N0685000CE'], columns=['scid'])
+# update_db1=0
+# from common import read_data_db, analyze_expired_instruments_v2
+# for_date_str = '06-03-2026'
+# rename_dict = {
+#     'Party Code':'EodBroker',
+#     'Symbol':'EodUnderlying',
+#     'Expiry Date':'EodExpiry',
+#     'Strike Price':'EodStrike',
+#     'Option Type':'EodOptionType',
+#     'Opn Qty':'EodNetQuantity',
+#     'OpnBuyTradgQty':'buyQty',
+#     'OpnBuyTradgVal':'buyValue',
+#     'OpnSellTradgQty':'sellQty',
+#     'OpnSellTradgVal':'sellValue',
+#     'Net qty':'PreFinalNetQty'
+# }
+# for_date = pd.to_datetime(for_date_str, dayfirst=True).date()
+# orig_eod_df = pd.read_excel(rf"D:\notis_analysis\input_data\Notis vs Exchange 06-03-2026.xlsx", index_col=False)
+# db_df = read_data_db(for_table='NOTIS_EOD_NET_POS_CP_NONCP_2026-03-06')
+# orig_eod_df.rename(columns=rename_dict,inplace=True)
+# orig_eod_df['buyAvgPrice'] = np.where(orig_eod_df['buyQty'] > 0, orig_eod_df['buyValue'] / orig_eod_df['buyQty'], 0)
+# orig_eod_df['sellAvgPrice'] = np.where(orig_eod_df['sellQty'] > 0, orig_eod_df['sellValue'] / orig_eod_df['sellQty'], 0)
+# orig_eod_df['ExpiredSpot_close'] = 0.0
+# orig_eod_df['ExpiredRate'] = 0.0
+# orig_eod_df['ExpiredAssn_value'] = 0.0
+# orig_eod_df['ExpiredSellValue'] = 0.0
+# orig_eod_df['ExpiredBuyValue'] = 0.0
+# orig_eod_df['ExpiredQty'] = 0.0
+# orig_eod_df = analyze_expired_instruments_v2(for_date=for_date, grouped_final_eod=orig_eod_df)
+# orig_eod_df['FinalNetQty'] = orig_eod_df['PreFinalNetQty'] + orig_eod_df['ExpiredQty']
+# orig_eod_df['EodBroker'] = np.where(orig_eod_df['EodBroker'] == 'AA100', 'non CP', 'CP')
+# for col in orig_eod_df.columns:
+#     if type(orig_eod_df[col][0]) == type(pd.to_datetime('2025-04-04').date()) or type(orig_eod_df[col][0]) == type(
+#       pd.to_datetime('2025-09-09 00:00:00')):
+#         print(f'common changing col- {col}')
+#         orig_eod_df[col] = pd.to_datetime(orig_eod_df[col], dayfirst=True, format='mixed').dt.strftime('%d/%m/%Y')
 p=0
+# download_store_exchange_bhavcopy=0
+# import os, requests, io, base64, warnings
+# from datetime import datetime,date,time,timedelta
+# import pandas as pd
+# from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+# from cryptography.hazmat.primitives import padding
+# from cryptography.hazmat.backends import default_backend
+# from django.utils.encoding import force_bytes, force_str
+# from common import volt_dir,table_dir,today, logger, read_data_db, calc_delta_v2, write_notis_postgredb, yesterday
+# import zipfile
+#
+# warnings.filterwarnings('ignore')
+#
+# # today=datetime.today().date().replace(day=2)
+# SECRET_KEY = "yi91poFLFMiXnkB12j/KY0RjG1fwTO7MwQWXjszcPGE="
+# value = force_bytes("ARathi@123456")
+# member_code = '06769'
+# login_id = '06769APIIT19'
+# backend = default_backend()
+# key = force_bytes(base64.urlsafe_b64decode(SECRET_KEY))
+# session_token = ''
+# # today = datetime.now().date()
+# yesterday = today - timedelta(days=1)
+# base_url = 'https://www.connect2nse.com/extranet-api'
+#
+# class Crypto:
+#     def __init__(self):
+#         self.encryptor = Cipher(algorithms.AES(key), modes.ECB(), backend).encryptor()
+#         self.decryptor = Cipher(algorithms.AES(key), modes.ECB(), backend).decryptor()
+#
+#     def encrypt(self):
+#         padder = padding.PKCS7(algorithms.AES(key).block_size).padder()
+#         padded_data = padder.update(value) + padder.finalize()
+#         encrypted_text = self.encryptor.update(padded_data) + self.encryptor.finalize()
+#         return encrypted_text
+#
+#     def decrypt(self, value):
+#         padder = padding.PKCS7(algorithms.AES(key).block_size).unpadder()
+#         decrypted_data = self.decryptor.update(value)
+#         unpadded = padder.update(decrypted_data) + padder.finalize()
+#         return unpadded
+#
+# def login():
+#     global session_token
+#     url = f'{base_url}/login/2.0'
+#
+#     crypto = Crypto()
+#     encrypted_password = force_str(base64.urlsafe_b64encode(crypto.encrypt()))
+#     logger.info(f'Encrypted Password::>>{encrypted_password}')
+#
+#     payload = {
+#         "memberCode": member_code,
+#         "loginId": login_id,
+#         "password": encrypted_password
+#     }
+#
+#     headers = {
+#         'Content-Type': 'application/json'
+#     }
+#
+#     response = requests.post(url, json=payload, headers=headers)
+#
+#     if response.status_code == 200:
+#         response_data = response.json()
+#         session_token = response_data.get('token')
+#         # logger.info("Login successful:", response_data)
+#         logger.info(f"Login successful.\nSession token: {session_token}")
+#         return True
+#     else:
+#         logger.info(f"Login failed. Status code: {response.status_code}, Message: {response.text}")
+#
+# def download_volatility_file():
+#     download_url = f'{base_url}/common/file/download/2.0?'
+#     segment = 'FO'
+#     folder_path = '/Bhavcopy'
+#     file_name = f'BhavCopy_NSE_FO_0_0_0_{today.strftime("%Y%m%d")}_F_0000.csv.zip'
+#     #BhavCopy_NSE_FO_0_0_0_yyyymmdd_F_0000.csv.zip
+#     params = {
+#         "segment" : segment,
+#         "folderPath" : folder_path,
+#         "filename" : file_name
+#     }
+#     # final_url = f"{download_url}segment={segment}&folderPath={folder_path}&filename={file_name}"
+#     file_path = os.path.join(volt_dir, f'{file_name}')
+#     headers = {'Authorization':f'Bearer {session_token}'}
+#
+#     # logger.info(f"Downloading from URL: {final_url}")
+#     logger.info(f"Saving to: {file_path}")
+#
+#     response = requests.get(download_url, headers=headers, params=params)
+#     logger.info(f'Response status::>>{response}')
+#     if response.status_code == 200:
+#         # volt_df = pd.read_csv(io.BytesIO(response.content))
+#         with open(file_path, 'wb') as file:
+#             file.write(response.content)
+#         logger.info(f"File downloaded successfully at {file_path}")
+#         with zipfile.ZipFile(file_path, 'r') as zip_ref:
+#             zip_ref.extractall(volt_dir)
+#         print(f"ZIP file extracted successfully to: {volt_dir}")
+#         logger.info(f"ZIP file extracted successfully to: {volt_dir}")
+#
+#         with zipfile.ZipFile(io.BytesIO(response.content), 'r') as zip_ref:
+#             csv_filename = zip_ref.namelist()[0]  # gets the CSV filename inside the ZIP
+#             with zip_ref.open(csv_filename) as csv_file:
+#                 volt_df = pd.read_csv(csv_file)
+#         logger.info(f"Data loaded into DataFrame, shape: {volt_df.shape}")
+#
+#         return
+#     else:
+#         logger.info(f"Could not download the file.\nStatus code: {response.status_code}, Message: {response.text}")
+#
+#
+#
+#
+# if login():
+#     download_volatility_file()
+Replace_yesterday_eod_file=0
+# from common import write_notis_postgredb
+# from db_config import n_tbl_notis_nnf_data
+# nnf_df = pd.read_excel(rf"D:\notis_analysis\table_data\NOTIS_EOD_NET_POS_CP_NONCP_2026-06-04.xlsx", index_col=False)
+# write_notis_postgredb(df=nnf_df, table_name='NOTIS_EOD_NET_POS_CP_NONCP_2026-06-04',truncate_required=True)
+find_spot_new_source=0
+import requests
+def find_spot():
+    spot_dict = {}
+    # index_list = ["NIFTY", "BANKNIFTY", "FINNIFTY", "MIDCPNIFTY", "SENSEX"]
+    index_list = ['ADANIENT', 'ADANIPORTS', 'APOLLOHOSP', 'ASIANPAINT', 'AXISBANK', 'BAJAJ-AUTO', 'BAJAJFINSV', 'BAJFINANCE', 'BEL', 'BHARTIARTL', 'CIPLA', 'COALINDIA', 'DRREDDY', 'EICHERMOT', 'ETERNAL', 'GRASIM', 'HCLTECH', 'HDFCBANK', 'HDFCLIFE', 'HINDALCO', 'HINDUNILVR', 'ICICIBANK', 'INDIGO', 'INFY', 'ITC', 'JIOFIN', 'JSWSTEEL', 'KOTAKBANK', 'LT', 'M&M', 'MARUTI', 'MAXHEALTH', 'NESTLEIND', 'NIFTY', 'NTPC', 'ONGC', 'POWERGRID', 'RELIANCE', 'SBILIFE', 'SBIN', 'SENSEX', 'SHRIRAMFIN', 'SUNPHARMA', 'TATACONSUM', 'TATASTEEL', 'TCS', 'TECHM', 'TITAN', 'TMPV', 'TRENT', 'ULTRACEMCO', 'WIPRO']
+    url = 'http://192.168.112.178:8080/livedataname'
+    headers = {
+        'oi': '1',
+        'esegment': '1'
+    }
+    proxies = {"http": None, "https": None}
+    for each in index_list:
+        headers[f"inst_name"] = f'{each}'
+        # if each.lower() not in ['sensex','bankex']:
+        #     headers['esegment'] = '1'
+        # else:
+        #     headers['esegment'] = '11'
+        try:
+            response = requests.get(url=url, headers=headers, proxies=proxies)
+            if response.status_code == 200:
+                spot_dict[each] = response.json()[2]
+        except Exception as e:
+            print(f"Error in fetching spot data = {e}")
+    return spot_dict
+
+sp=find_spot()

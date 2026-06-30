@@ -448,7 +448,7 @@ class ServiceApp:
                     WITH CTE AS (
                         SELECT *,
                                ROW_NUMBER() OVER (ORDER BY (SELECT NULL)) AS RowNum
-                        FROM [ENetMIS].[dbo].[BSE_FO_AA100_view]
+                        FROM [ENetMIS].[dbo].[BSE_FO_AA100_view] where scid like 'SENSEX%' or scid like 'BANKEX%'
                     )
                     SELECT * FROM CTE
                     WHERE RowNum > {page * page_size} AND RowNum <= {(page + 1) * page_size}

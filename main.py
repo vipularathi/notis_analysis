@@ -1,4 +1,4 @@
-import re, os, progressbar, pyodbc, warnings, psycopg2, time, mibian, scipy
+import re, os, progressbar, pyodbc, warnings, psycopg2, time, mibian, scipy, traceback
 import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta, timezone
@@ -12,14 +12,16 @@ from db_config import (n_tbl_notis_trade_book, n_tbl_notis_raw_data,
 from common import (read_data_db, write_notis_data, write_notis_postgredb, read_file,
                     today,yesterday, final_holidays,
                     root_dir, bhav_dir, modified_dir, table_dir, bse_dir, volt_dir,
-                    download_bhavcopy, logger, find_spot_volt, analyze_expired_instruments)
+                    download_bhavcopy, logger, find_spot_volt, analyze_expired_instruments,
+                    send_outlook_mail)
 from nse_utility import NSEUtility
 from bse_utility import BSEUtility
 
 warnings.filterwarnings('ignore', message="pandas only supports SQLAlchemy connectable.*")
 pd.set_option('display.float_format', lambda a:'%.2f' %a)
 actual_date = datetime.now().date()
-
+to_email = ['vipulanand@rathi.com']
+cc_email = ['ronakmoondra1@rathi.com', 'anirudhadurgule@rathi.com']
 
 def get_delta(row):
     int_rate,annual_div = 5.5,0
@@ -44,7 +46,9 @@ def calc_delta_v2(for_date,eod_df):
     col_keep = ['EodBroker', 'EodUnderlying', 'EodExpiry', 'EodStrike', 'EodOptionType', 'PreFinalNetQty']
     delta_df.drop(columns=[col for col in delta_df.columns if col not in col_keep], inplace=True)
     index_list = delta_df.EodUnderlying.unique().tolist()
+    # print(f'index_list is {index_list}')
     spot_dict, volt_dict = find_spot_volt(for_date=for_dt, index_list=index_list)
+    # print(f'spot_dict is {spot_dict}\n volt_dict is {volt_dict}')
     delta_df['spot'] = delta_df['EodUnderlying'].map(spot_dict)
     delta_df['volatility'] = delta_df['EodUnderlying'].map(volt_dict)
     delta_df['volatility'] = delta_df['volatility'].astype(np.float64)
@@ -56,7 +60,7 @@ def calc_delta_v2(for_date,eod_df):
     delta_df['deltaQty'] = delta_df['PreFinalNetQty'] * delta_df['deltaPerUnit']
     delta_df['deltaExposure(in Cr)'] = (delta_df['spot'] * delta_df['deltaQty']) / 10_000_000
     delta_df1 = delta_df.copy()
-    delta_df.to_excel(os.path.join(table_dir,f'pre_delta_{for_dt}.xlsx'), index=False)
+    # delta_df.to_excel(os.path.join(table_dir,f'pre_delta_{for_dt}.xlsx'), index=False)
     final_delta_df = pd.DataFrame()
     mask = delta_df1['EodOptionType'].isin(['CE', 'PE'])
     delta_df1.loc[mask, 'EodOptionType'] = 'CE_PE'
@@ -287,6 +291,7 @@ def find_net_pos(nse_pivot_df, bse_pivot_df):
     final_cp_noncp_eod_df = pd.concat([cp_noncp_nse_df, cp_noncp_bse_df], ignore_index=True)
     
     to_int = ['EodStrike','EodNetQuantity', 'buyQty', 'sellQty', 'IntradayVolume', 'FinalNetQty']
+    # final_cp_noncp_eod_df.to_excel(f'test_eod.xlsx', index=False)
     for each in to_int:
         final_cp_noncp_eod_df[each] = final_cp_noncp_eod_df[each].astype(np.int64)
     grouped_final_eod = final_cp_noncp_eod_df.groupby(
@@ -327,6 +332,7 @@ def find_net_pos(nse_pivot_df, bse_pivot_df):
                                           grouped_final_eod['sellQty'])
     grouped_final_eod['EodExpiry'] = pd.to_datetime(grouped_final_eod['EodExpiry'], dayfirst=True).dt.date
     grouped_final_eod.fillna(0, inplace=True)
+    # grouped_final_eod.to_excel(f'test_grouped.xlsx', index=False)
     delta_df = calc_delta_v2(for_date=today, eod_df=grouped_final_eod)
     write_notis_postgredb(df=delta_df, table_name=n_tbl_notis_delta_table, truncate_required=True)
     grouped_final_eod['ExpiredSpot_close'] = 0.0
@@ -355,23 +361,97 @@ def find_net_pos(nse_pivot_df, bse_pivot_df):
     write_notis_postgredb(grouped_final_eod, table_name=n_tbl_notis_eod_net_pos_cp_noncp, truncate_required=True)
 
 if __name__ == '__main__':
-    if actual_date == today:
-        logger.info(f'Starting final main.')
-        download_bhavcopy()
-        logger.info(f'Today\'s bhavcopy downloaded and stored at {bhav_dir}')
-        stt = time.time()
-        nse_pivot_df = get_nse_data()
-        bse_pivot_df = get_bse_data()
-        find_net_pos(nse_pivot_df=nse_pivot_df, bse_pivot_df=bse_pivot_df)
-        ett = time.time()
-        logger.info(f'total time taken for modifying, adding data in db and writing in local directory - {ett - stt} seconds')
-        pbar = progressbar.ProgressBar(max_value=100, widgets=[progressbar.Percentage(), ' ', progressbar.Bar(marker='=', left='[', right=']'), progressbar.ETA()])
-        pbar.update(1)
-        for i in range(100):
-            time.sleep(1)
-            pbar.update(i + 1)
-        pbar.finish()
-        download_tables()
-    else:
-        logger.info(f'Today is not a business date hence exiting.')
-        exit()
+    stt = datetime.now()
+    try:
+        if actual_date == today:
+            logger.info(f'Starting final main.')
+            download_bhavcopy()
+            
+            nse_pivot_df = get_nse_data()
+            bse_pivot_df = get_bse_data()
+            find_net_pos(nse_pivot_df=nse_pivot_df, bse_pivot_df=bse_pivot_df)
+            ett = datetime.now()
+            logger.info(f'total time taken for modifying, adding data in db and writing in local directory - {ett - stt} seconds')
+            pbar = progressbar.ProgressBar(max_value=100, widgets=[progressbar.Percentage(), ' ', progressbar.Bar(marker='=', left='[', right=']'), progressbar.ETA()])
+            pbar.update(1)
+            for i in range(100):
+                time.sleep(1)
+                pbar.update(i + 1)
+            pbar.finish()
+            download_tables()
+            
+            heartbeat_file = os.path.join(root_dir,'heartbeat.txt')
+            with open(heartbeat_file, 'w') as f:
+                f.write(datetime.now().strftime('%Y-%m-%d %H:%M'))
+            
+            # SUCCESS EMAIL
+            success_subject = f"NOTIS Analysis SUCCESS - {today}"
+            success_body = f"""
+                NOTIS Analysis process completed successfully.
+    
+                Run Date      : {today}
+                Start Time    : {stt}
+                End Time      : {ett}
+                Status        : SUCCESS
+                Machine       : {os.environ.get('COMPUTERNAME')}
+    
+                Regards,
+                NOTIS Automation
+            """
+            
+            send_outlook_mail(
+                subject=success_subject,
+                body=success_body,
+                to_emails=to_email,
+                cc_emails=cc_email
+            )
+        else:
+            logger.info(f'Today is not a business date hence exiting.')
+            info_subject = f"NOTIS Analysis SKIPPED - {today}"
+            info_body = f"""
+                NOTIS Analysis process SKIPPED.
+
+                Reason  : Non-business day
+                Date    : {today}
+                Status  : SKIPPED
+                Machine : {os.environ.get('COMPUTERNAME')}
+
+                Regards,
+                NOTIS Automation
+            """
+            
+            send_outlook_mail(
+                subject=info_subject,
+                body=info_body,
+                to_emails=to_email,
+                cc_emails=cc_email
+            )
+            exit()
+    except Exception as e:
+        error_trace = traceback.format_exc()
+        logger.error(error_trace)
+        error_subject = f"NOTIS Analysis FAILED - {today}"
+        error_body = f"""
+          NOTIS Analysis process FAILED.
+
+          Run Date      : {today}
+          Start Time    : {stt}
+          Error Time    : {datetime.now()}
+
+          Error         :{str(e)}
+
+          Full Traceback:{error_trace}
+          Status        : FAILED
+          Machine       :{os.environ.get('COMPUTERNAME')}
+
+          Regards,
+          NOTIS Automation
+        """
+        
+        send_outlook_mail(
+            subject=error_subject,
+            body=error_body,
+            to_emails=to_email,
+            cc_emails=cc_email
+        )
+        raise

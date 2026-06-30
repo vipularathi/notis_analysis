@@ -1,4 +1,4 @@
-import os, warnings, time, requests, mibian, re, scipy
+import os, warnings, time, requests, mibian, re, scipy, traceback
 import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta, timezone
@@ -11,7 +11,7 @@ from db_config import (engine_str,
 from common import (get_date_from_non_jiffy, get_date_from_jiffy,
                     today, yesterday, final_holidays,
                     root_dir, volt_dir, logger, analyze_expired_instruments_v2, calc_delta_v2,
-                    read_data_db, read_file, write_notis_postgredb, truncate_tables)
+                    read_data_db, read_file, write_notis_postgredb, truncate_tables, send_outlook_mail)
 from nse_utility import NSEUtility
 from bse_utility import BSEUtility
 
@@ -26,6 +26,9 @@ n_tbl_test_net_pos_nnf = n_tbl_notis_nnf_wise_net_position
 n_tbl_test_bse = n_tbl_bse_trade_data
 main_mod_df = pd.DataFrame()
 main_mod_bse_df = pd.DataFrame()
+already_alerted = False
+to_email = ['vipulanand@rathi.com']
+cc_email = ['ronakmoondra1@rathi.com', 'anirudhadurgule@rathi.com']
 
 def calc_dte(row):
     bdays_left = pd.bdate_range(start=today, end=row['EodExpiry'], freq='C', weekmask='1111100', holidays=final_holidays)
@@ -319,42 +322,114 @@ def find_net_pos(nse_pivot_df, bse_pivot_df):
 
 
 if __name__ == '__main__':
-    if today_date == today:
-        recover = False
-        stt = datetime.now().replace(hour=9, minute=15)
-        ett = datetime.now().replace(hour=15, minute=35)
-        actual_start_time = datetime.now()
-        logger.info(f'Notis Backend started at {datetime.now()}')
-        if actual_start_time > stt and actual_start_time < ett:
-            recover = True
-        while datetime.now() < stt:
-            time.sleep(1)
-        while datetime.now() < ett:
-            now = datetime.now()
-            if now.second == 1:
-                print('\nin if')
-                if recover:
-                    logger.info('in recover')
-                    table_list = [n_tbl_test_mod, n_tbl_test_raw, n_tbl_test_cp_noncp, n_tbl_test_net_pos_desk,
-                                  n_tbl_test_net_pos_nnf, n_tbl_test_bse]
-                    for each in table_list:
-                        truncate_tables(each)
-                    nse_from_time = stt.replace(second=0).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
-                    nse_to_time = now.replace(second=0).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
-                    bse_from_time = stt.replace(second=0).strftime('%d-%b-%Y %H:%M:%S')
-                    bse_to_time = now.replace(second=0).strftime('%d-%b-%Y %H:%M:%S')
-                    recover = False
-                else:
-                    nse_from_time = (now - timedelta(minutes=1)).replace(second=0).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
-                    nse_to_time = now.replace(second=0).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
-                    bse_from_time = (now - timedelta(minutes=1)).replace(second=0).strftime('%d-%b-%Y %H:%M:%S')
-                    bse_to_time = now.replace(second=0).strftime('%d-%b-%Y %H:%M:%S')
-                logger.info(f"\nnow time => {now.strftime('%Y-%m-%d %H:%M:%S')}")
-                nse_pivot_df = get_nse_trade(nse_from_time,nse_to_time)
-                bse_pivot_df = get_bse_trade_data(bse_from_time,bse_to_time)
-                find_net_pos(nse_pivot_df=nse_pivot_df,bse_pivot_df=bse_pivot_df)
-                # get_bse_trade_data(bse_from_time, bse_to_time)
+    actual_start_time = datetime.now()
+    try:
+        if today_date == today:
+            recover = False
+            stt = datetime.now().replace(hour=9, minute=15)
+            ett = datetime.now().replace(hour=15, minute=33)
+            logger.info(f'Notis Backend started at {datetime.now()}')
+            if actual_start_time > stt and actual_start_time < ett:
+                recover = True
+            if not already_alerted:
+                heartbeat_file = os.path.join(root_dir, 'heartbeat.txt')
+                with open(heartbeat_file, 'w') as f:
+                    f.write(datetime.now().strftime('%Y-%m-%d %H:%M'))
+                # SUCCESS EMAIL
+                success_subject = f"NOTIS Analysis Per Minute SUCCESS - {today}"
+                success_body = f"""
+                                NOTIS Analysis Per Minute process started successfully.
+
+                                Run Date      : {today}
+                                Start Time    : {actual_start_time}
+                                Status        : SUCCESS
+                                Machine       : {os.environ.get('COMPUTERNAME')}
+
+                                Regards,
+                                NOTIS Automation
+                            """
+                
+                send_outlook_mail(
+                    subject=success_subject,
+                    body=success_body,
+                    to_emails=to_email,
+                    cc_emails=cc_email
+                )
+                already_alerted = True
+            while datetime.now() < stt:
                 time.sleep(1)
-    else:
-        logger.info(f'Today is not a business day hence exiting.')
-        exit()
+            while datetime.now() < ett:
+                now = datetime.now()
+                if now.second == 1:
+                    print('\nin if')
+                    if recover:
+                        logger.info('in recover')
+                        table_list = [n_tbl_test_mod, n_tbl_test_raw, n_tbl_test_cp_noncp, n_tbl_test_net_pos_desk,
+                                      n_tbl_test_net_pos_nnf, n_tbl_test_bse]
+                        for each in table_list:
+                            truncate_tables(each)
+                        nse_from_time = stt.replace(second=0).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
+                        nse_to_time = now.replace(second=0).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
+                        bse_from_time = stt.replace(second=0).strftime('%d-%b-%Y %H:%M:%S')
+                        bse_to_time = now.replace(second=0).strftime('%d-%b-%Y %H:%M:%S')
+                        recover = False
+                    else:
+                        nse_from_time = (now - timedelta(minutes=1)).replace(second=0).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
+                        nse_to_time = now.replace(second=0).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
+                        bse_from_time = (now - timedelta(minutes=1)).replace(second=0).strftime('%d-%b-%Y %H:%M:%S')
+                        bse_to_time = now.replace(second=0).strftime('%d-%b-%Y %H:%M:%S')
+                    logger.info(f"\nnow time => {now.strftime('%Y-%m-%d %H:%M:%S')}")
+                    nse_pivot_df = get_nse_trade(nse_from_time,nse_to_time)
+                    bse_pivot_df = get_bse_trade_data(bse_from_time,bse_to_time)
+                    find_net_pos(nse_pivot_df=nse_pivot_df,bse_pivot_df=bse_pivot_df)
+                    time.sleep(1)
+        else:
+            logger.info(f'Today is not a business day hence exiting.')
+            info_subject = f"NOTIS Analysis Per Minute SKIPPED - {today}"
+            info_body = f"""
+                            NOTIS Analysis Per Minute process SKIPPED.
+    
+                            Reason  : Non-business day
+                            Date    : {today}
+                            Status  : SKIPPED
+                            Machine : {os.environ.get('COMPUTERNAME')}
+    
+                            Regards,
+                            NOTIS Automation
+                        """
+            
+            send_outlook_mail(
+                subject=info_subject,
+                body=info_body,
+                to_emails=to_email,
+                cc_emails=cc_email
+            )
+            exit()
+    except Exception as e:
+        error_trace = traceback.format_exc()
+        logger.error(error_trace)
+        error_subject = f"NOTIS Analysis Per Minute FAILED - {today}"
+        error_body = f"""
+          NOTIS Analysis Per Minute process FAILED.
+
+          Run Date      : {today}
+          Start Time    : {actual_start_time}
+          Error Time    : {datetime.now()}
+
+          Error         : {str(e)}
+
+          Full Traceback: {error_trace}
+          Status        : FAILED
+          Machine       : {os.environ.get('COMPUTERNAME')}
+
+          Regards,
+          NOTIS Automation
+        """
+        
+        send_outlook_mail(
+            subject=error_subject,
+            body=error_body,
+            to_emails=to_email,
+            cc_emails=cc_email
+        )
+        raise
