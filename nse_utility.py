@@ -68,7 +68,12 @@ class NSEUtility:
         df['bsFlg'] = np.where(df['bsFlg'] == 1, 'B', 'S')
         pbar.update(90)
 
-        df['remarks'] = df['cpCD'].apply(lambda x: 'CP' if x.startswith('Y') else 'non CP')
+        # df['remarks'] = df['cpCD'].apply(lambda x: 'CP' if x.startswith('Y') else 'non CP')
+        mask = (
+          (df['cpCD'].str.startswith('Y', na=False) & (df['cliActNo'] == 'AA100'))
+          | (df['cpCD'].str.startswith('O', na=False) & (df['cliActNo'] == 'ARF100'))
+        )
+        df['remarks'] = np.where(mask, 'CP', 'non CP')
         df.rename(columns={'remarks': 'broker'}, inplace=True)
         pbar.update(95)
 
@@ -208,7 +213,7 @@ class NSEUtility:
         # yest_eod_df = yest_eod_df.query("EodUnderlying not in ['SENSEX','BANKEX']")
         yest_eod_df['EodNetQuantity'] = yest_eod_df['FinalNetQty']
         yest_eod_df['PreFinalNetQty'] = yest_eod_df['FinalNetQty']
-        exclude_columns = ['EodBroker', 'EodUnderlying', 'EodExpiry', 'EodStrike', 'EodOptionType',
+        exclude_columns = ['EodCliAccID','EodBroker', 'EodUnderlying', 'EodExpiry', 'EodStrike', 'EodOptionType',
                            'EodNetQuantity', 'PreFinalNetQty', 'FinalNetQty']
         yest_eod_df.loc[:, ~yest_eod_df.columns.isin(exclude_columns)] = 0
         yest_eod_df = yest_eod_df.query('FinalNetQty != 0')
@@ -237,7 +242,7 @@ class NSEUtility:
             "and EodBroker in ['CP','non CP']"
         )
         grouped_eod = yest_eod_df.groupby(
-            by=['EodBroker', 'EodUnderlying', 'EodExpiry', 'EodStrike', 'EodOptionType'],
+            by=['EodCliAccID','EodBroker', 'EodUnderlying', 'EodExpiry', 'EodStrike', 'EodOptionType'],
             as_index=False).agg({'EodNetQuantity': 'sum'})
         grouped_eod = grouped_eod.query("EodNetQuantity != 0")
         grouped_eod = grouped_eod.drop_duplicates()
@@ -248,7 +253,7 @@ class NSEUtility:
         desk_db_df['expiryDate'] = pd.to_datetime(desk_db_df['expiryDate'], dayfirst=True, format='mixed').dt.date
         
         grouped_desk_db_df = desk_db_df.groupby(
-            by=['broker', 'symbol', 'expiryDate', 'strikePrice', 'optionType']).agg({
+            by=['CliAccID','broker', 'symbol', 'expiryDate', 'strikePrice', 'optionType']).agg({
             'buyAvgQty': 'sum', 'buyAvgPrice': 'mean', 'buyValue': 'sum', 'sellAvgQty': 'sum',
             'sellAvgPrice': 'mean', 'sellValue': 'sum'
         }).reset_index()
@@ -257,20 +262,20 @@ class NSEUtility:
         # ================================================================
         merged_df = grouped_eod.merge(
             grouped_desk_db_df,
-            left_on=['EodBroker', 'EodUnderlying', 'EodExpiry', 'EodStrike', 'EodOptionType'],
-            right_on=["broker", "symbol", "expiryDate", "strikePrice", "optionType"],
+            left_on=['EodCliAccID','EodBroker', 'EodUnderlying', 'EodExpiry', 'EodStrike', 'EodOptionType'],
+            right_on=['CliAccID',"broker", "symbol", "expiryDate", "strikePrice", "optionType"],
             how='outer'
         )
         merged_df.fillna(0, inplace=True)
         merged_df = merged_df.drop_duplicates()
         
-        coltd1 = ['EodBroker', 'EodUnderlying', 'EodExpiry', 'EodStrike', 'EodOptionType']
-        coltd2 = ["broker", "symbol", "expiryDate", "strikePrice", "optionType"]
+        coltd1 = ['EodCliAccID','EodBroker', 'EodUnderlying', 'EodExpiry', 'EodStrike', 'EodOptionType']
+        coltd2 = ['CliAccID',"broker", "symbol", "expiryDate", "strikePrice", "optionType"]
         for i in range(len(coltd1)):
             merged_df.loc[merged_df[coltd1[i]] == 0, coltd1[i]] = merged_df[coltd2[i]]
             merged_df.loc[merged_df[coltd2[i]] == 0, coltd2[i]] = merged_df[coltd1[i]]
         merged_df['FinalNetQty'] = merged_df['EodNetQuantity'] + merged_df['IntradayVolume']
-        merged_df.drop(columns=['broker', 'symbol', 'expiryDate', 'strikePrice', 'optionType'], inplace=True)
+        merged_df.drop(columns=['CliAccID','broker', 'symbol', 'expiryDate', 'strikePrice', 'optionType'], inplace=True)
         merged_df.fillna(0, inplace=True)
         logger.info(f'cp noncp length at {datetime.now()} is {merged_df.shape}')
         return merged_df

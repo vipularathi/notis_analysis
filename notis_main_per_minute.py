@@ -7,11 +7,12 @@ from db_config import (engine_str,
                        n_tbl_notis_trade_book,n_tbl_notis_raw_data,n_tbl_bse_trade_data,
                        n_tbl_notis_eod_net_pos_cp_noncp,n_tbl_notis_desk_wise_net_position,
                        n_tbl_notis_nnf_data, n_tbl_notis_nnf_wise_net_position, n_tbl_srspl_trade_data,
-                       n_tbl_notis_delta_table)
+                       n_tbl_notis_delta_table, n_tbl_aa100_trade_data, n_tbl_arf100_trade_data)
 from common import (get_date_from_non_jiffy, get_date_from_jiffy,
                     today, yesterday, final_holidays,
                     root_dir, volt_dir, logger, analyze_expired_instruments_v2, calc_delta_v2,
-                    read_data_db, read_file, write_notis_postgredb, truncate_tables, send_outlook_mail)
+                    read_data_db, read_file, write_notis_postgredb, truncate_tables, send_outlook_mail,
+                    common_col_aa100_arf100)
 from nse_utility import NSEUtility
 from bse_utility import BSEUtility
 
@@ -28,7 +29,7 @@ main_mod_df = pd.DataFrame()
 main_mod_bse_df = pd.DataFrame()
 already_alerted = False
 to_email = ['vipulanand@rathi.com']
-cc_email = ['ronakmoondra1@rathi.com', 'anirudhadurgule@rathi.com']
+cc_email = ['anirudhadurgule@rathi.com', 'maheshsarda@rathi.com']
 
 def calc_dte(row):
     bdays_left = pd.bdate_range(start=today, end=row['EodExpiry'], freq='C', weekmask='1111100', holidays=final_holidays)
@@ -155,13 +156,24 @@ def get_bse_trade_data(from_time, to_time):
     modified_bse_df.drop(columns=['ExchUser'], axis=1, inplace=True)
     modified_bse_df.fillna(0, inplace=True)
     write_notis_postgredb(df=modified_bse_df,table_name=n_tbl_bse_trade_data)
+    # # ===========================================================
+    # temp_df = modified_bse_df.copy()
+    # temp_df.rename(columns=common_col_aa100_arf100, inplace=True)
+    # temp_df = temp_df[(list(common_col_aa100_arf100.values()))]
+    # logger.info(f'Separating AA100 and ARF100 trades. . . ')
+    # df_aa100 = temp_df.query("cliActNo == 'AA100'").reset_index(drop=True)
+    # write_notis_postgredb(df_aa100, table_name=n_tbl_aa100_trade_data)
+    # df_arf100 = temp_df.query("cliActNo == 'ARF100'").reset_index(drop=True)
+    # write_notis_postgredb(df_arf100, table_name=n_tbl_arf100_trade_data)
+    # logger.info(f'AA100 & ARF100 trades extracted and written in db')
+    # # ===========================================================
     logger.info(f'length of main_mod_bse_df before concat is {main_mod_bse_df.shape}')
     main_mod_bse_df = pd.concat([main_mod_bse_df,modified_bse_df],ignore_index=True)
     # main_mod_bse_df = modified_bse_df.copy()
     logger.info(f'length of main_mod_bse_df after concat is {main_mod_bse_df.shape}')
     main_mod_bse_df['trdQtyPrc'] = main_mod_bse_df['FillSize']*(main_mod_bse_df['FillPrice']/100)
     pivot_df = main_mod_bse_df.pivot_table(
-        index=['Broker', 'Underlying', 'Expiry', 'Strike', 'OptionType', 'TerminalID','TraderID'],
+        index=['AccountId', 'Broker', 'Underlying', 'Expiry', 'Strike', 'OptionType', 'TerminalID','TraderID'],
         columns=['TransactionType'],
         values=['FillSize', 'trdQtyPrc'],
         aggfunc={'FillSize': 'sum', 'trdQtyPrc': 'sum'},
@@ -188,7 +200,7 @@ def get_bse_trade_data(from_time, to_time):
     pivot_df['sellAvgPrice'] = pivot_df.apply(
         lambda row: row['SellTrdQtyPrc'] / row['SellQty'] if row['SellQty'] > 0 else 0.0, axis=1)
     # pivot_df.drop(columns=['BuyTrdQtyPrc', 'SellTrdQtyPrc'], inplace=True)
-    pivot_df.rename(columns={'BuyTrdQtyPrc':'buyValue','SellTrdQtyPrc':'sellValue'}, inplace=True)
+    pivot_df.rename(columns={'BuyTrdQtyPrc':'buyValue','SellTrdQtyPrc':'sellValue', 'AccountId':'CliAccID'}, inplace=True)
     # pivot_df['IntradayVolume'] = pivot_df.BuyQty - pivot_df.SellQty
     # pivot_df = pivot_df.round(2)
     return pivot_df
@@ -208,12 +220,22 @@ def get_nse_trade(from_time, to_time):
     df_nnf = df_nnf.drop_duplicates()
     modified_df = NSEUtility.modify_file(df_db, df_nnf)
     write_notis_postgredb(modified_df, table_name=n_tbl_test_mod)
+    # # ===========================================================
+    # temp_df = modified_df.copy()
+    # temp_df = temp_df[(list(common_col_aa100_arf100.values()))]
+    # logger.info(f'Separating AA100 and ARF100 trades. . . ')
+    # df_aa100 = temp_df.query("cliActNo == 'AA100'").reset_index(drop=True)
+    # write_notis_postgredb(df_aa100, table_name=n_tbl_aa100_trade_data)
+    # df_arf100 = temp_df.query("cliActNo == 'ARF100'").reset_index(drop=True)
+    # write_notis_postgredb(df_arf100, table_name=n_tbl_arf100_trade_data)
+    # logger.info(f'AA100 & ARF100 trades extracted and written in db')
+    # # ===========================================================
     logger.info(f'length of main_mod-df before concat is {len(main_mod_df)}')
     main_mod_df = pd.concat([main_mod_df, modified_df], ignore_index=True)
     logger.info(f'length of main_mod-df after concat is {len(main_mod_df)}')
     main_mod_df['trdQtyPrc'] = main_mod_df['trdQty'] * (main_mod_df['trdPrc']/100)
     pivot_df = main_mod_df.pivot_table(
-        index=['MainGroup', 'SubGroup', 'broker', 'ctclid', 'sym', 'expDt', 'strPrc', 'optType'],
+        index=['MainGroup', 'SubGroup', 'cliActNo', 'broker', 'ctclid', 'sym', 'expDt', 'strPrc', 'optType'],
         columns=['bsFlg'],
         values=['trdQty', 'trdQtyPrc'],
         aggfunc={'trdQty': 'sum', 'trdQtyPrc': 'sum'},
@@ -221,12 +243,10 @@ def get_nse_trade(from_time, to_time):
     )
     if len(main_mod_df.bsFlg.unique()) == 1:
         if main_mod_df.bsFlg.unique().tolist()[0] == 'B':
-            pivot_df['SellTrdQtyPrc'] = 0;
-            pivot_df['SellQty'] = 0
+            pivot_df['SellTrdQtyPrc'], pivot_df['SellQty'] = 0, 0
             pivot_df.columns = ['BuyQty', 'BuyTrdQtyPrc', 'SellQty', 'SellTrdQtyPrc']
         elif main_mod_df.bsFlg.unique().tolist()[0] == 'S':
-            pivot_df['BuyTrdQtyPrc'] = 0;
-            pivot_df['BuyQty'] = 0
+            pivot_df['BuyTrdQtyPrc'], pivot_df['BuyQty'] = 0, 0
             pivot_df.columns = ['SellQty', 'SellTrdQtyPrc', 'BuyQty', 'BuyTrdQtyPrc']
     elif len(main_mod_df) == 0 or len(pivot_df) == 0:
         pivot_df.columns = ['_'.join(col).strip() for col in pivot_df.columns.values]
@@ -240,7 +260,7 @@ def get_nse_trade(from_time, to_time):
 
     pivot_df.rename(columns={'MainGroup': 'mainGroup', 'SubGroup': 'subGroup', 'sym': 'symbol', 'expDt': 'expiryDate',
                              'strPrc': 'strikePrice', 'optType': 'optionType', 'BuyQty': 'buyAvgQty', 'BuyAvgPrc': 'buyAvgPrice','BuyTrdQtyPrc':'buyValue',
-                             'SellQty': 'sellAvgQty', 'SellAvgPrc': 'sellAvgPrice', 'SellTrdQtyPrc':'sellValue'},
+                             'SellQty': 'sellAvgQty', 'SellAvgPrc': 'sellAvgPrice', 'SellTrdQtyPrc':'sellValue', 'cliActNo':'CliAccID'},
                     inplace=True)
     pivot_df.volume = pivot_df.buyAvgQty - pivot_df.sellAvgQty
     return pivot_df
@@ -268,7 +288,7 @@ def find_net_pos(nse_pivot_df, bse_pivot_df):
         final_eod.fillna(0, inplace=True)
         for each in to_int:
             final_eod[each] = final_eod[each].astype(np.int64)
-        grouped_final_eod = final_eod.groupby(by=['EodBroker', 'EodUnderlying', 'EodExpiry', 'EodStrike', 'EodOptionType'],
+        grouped_final_eod = final_eod.groupby(by=['EodCliAccID','EodBroker', 'EodUnderlying', 'EodExpiry', 'EodStrike', 'EodOptionType'],
                                               as_index=False).agg({
             'EodNetQuantity': 'sum', 'buyQty': 'sum', 'buyAvgPrice': 'mean', 'buyValue': 'sum',
             'sellQty': 'sum', 'sellAvgPrice': 'mean', 'sellValue': 'sum', 'FinalNetQty': 'sum'
@@ -327,7 +347,7 @@ if __name__ == '__main__':
         if today_date == today:
             recover = False
             stt = datetime.now().replace(hour=9, minute=15)
-            ett = datetime.now().replace(hour=15, minute=33)
+            ett = datetime.now().replace(hour=15, minute=45)
             logger.info(f'Notis Backend started at {datetime.now()}')
             if actual_start_time > stt and actual_start_time < ett:
                 recover = True

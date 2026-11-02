@@ -212,6 +212,7 @@ n_tbl_notis_eod_net_pos_cp_noncp = f"NOTIS_EOD_NET_POS_CP_NONCP_{today}"
 # n_tbl_notis_eod_net_pos_cp_noncp = f"NOTIS_EOD_NET_POS_CP_NONCP_{datetime(year=2025,month=3,day=13).date().strftime('%Y-%m-%d')}"
 s_tbl_notis_eod_net_pos_cp_noncp = Table(
     n_tbl_notis_eod_net_pos_cp_noncp, metadata,
+    Column("EodCliAccID", String(50)),
     Column("EodBroker", String(50)),
     Column("EodUnderlying", String(50)),
     Column("EodExpiry", String(50)),
@@ -237,6 +238,7 @@ s_tbl_notis_eod_net_pos_cp_noncp = Table(
 n_tbl_srspl_trade_data = f"SRSPL_TRADE_DATA_{today}"
 s_tbl_srspl_trade = Table(
     n_tbl_srspl_trade_data, metadata,
+    Column("EodCliAccID", String(50)),
     Column("EodBroker", String(50)),
     Column("EodUnderlying", String(50)),
     Column("EodStrike", BigInteger),
@@ -332,6 +334,34 @@ s_tbl_add_notis_nnf_wise_net_position = Table(
     Column("expiryDate", String(50)),
     Column("strikePrice", BigInteger),
     Column("optionType", String(50))
+)
+
+n_tbl_aa100_trade_data = f"NOTIS_AA100_TRADES_{today}"
+s_tbl_aa100_trade_data = Table(
+    n_tbl_aa100_trade_data, metadata,
+    Column("cliActNo", String(50)),
+    Column("trdPrc", Float, nullable=True),
+    Column("trdQty", BigInteger, nullable=True),
+    Column("bsFlg", String(10)),
+    Column("sym", String(100)),
+    Column("strPrc", Float),
+    Column("optType", String(20)),
+    Column("expDt", String(50)),
+    Column("TrdDtTm", String(50))
+)
+
+n_tbl_arf100_trade_data = f"NOTIS_ARF100_TRADES_{today}"
+s_tbl_arf100_trade_data = Table(
+    n_tbl_arf100_trade_data, metadata,
+    Column("cliActNo", String(50)),
+    Column("trdPrc", Float, nullable=True),
+    Column("trdQty", BigInteger, nullable=True),
+    Column("bsFlg", String(10)),
+    Column("sym", String(100)),
+    Column("strPrc", Float),
+    Column("optType", String(20)),
+    Column("expDt", String(50)),
+    Column("TrdDtTm", String(50))
 )
 
 # Last and after all table declarations

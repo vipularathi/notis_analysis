@@ -86,10 +86,15 @@ class ServiceApp:
         self.app.add_api_route('/nifty/future/oi', methods=['GET'], endpoint=self.calc_nifty_future_oi)
         self.app.add_api_route('/data/nnfTable', methods=['GET'], endpoint=self.get_nnf_table)
         
-    def get_data(self, for_date:date=Query(), for_table:str=Query(), page:int=Query(1), page_size:int=Query(1000),db:Session=Depends(get_db)):
+    def get_data(self, for_date: date = Query(), for_table: str = Query(), page: int = Query(1),
+                 page_size: int = Query(1000), db: Session = Depends(get_db), client_id: str = Query('Both')):
+        
         for_dt = pd.to_datetime(for_date).date()
+        client_id = client_id.upper()
+        cli_dbcol_name="None"
         if for_table == 'modifiedtradebook':
             tablename = f'NOTIS_TRADE_BOOK_{for_dt}'
+            cli_dbcol_name = "cliActNo"
         elif for_table == 'nnfwise':
             tablename = f'NOTIS_NNF_WISE_NET_POSITION_{for_dt}'
         elif for_table == 'useridwise': #to_remove
@@ -98,16 +103,31 @@ class ServiceApp:
             tablename = f'NOTIS_DESK_WISE_NET_POSITION_{for_dt}'
         elif for_table == 'rawtradebook':
             tablename = f'notis_raw_data_{for_dt}'
+            cli_dbcol_name = "Column13"
         elif for_table == 'eodnetposcp':
             tablename = f'NOTIS_EOD_NET_POS_CP_NONCP_{for_dt.strftime("%Y-%m-%d")}'
+            cli_dbcol_name = "EodCliAccID"
         elif for_table == f'bsetradebook':
             tablename = f'BSE_TRADE_DATA_{for_dt.strftime("%Y-%m-%d")}'
+            cli_dbcol_name = "AccountId"
         elif for_table == f'delta':
             tablename = f'NOTIS_DELTA_{for_dt.strftime("%Y-%m-%d")}'
         elif for_table == f'deal':
             tablename = f'NOTIS_DEAL_SHEET_{for_dt.strftime("%Y-%m-%d")}'
-        query=text(rf'Select * from "{tablename}" limit {page_size} offset {(page -1)*page_size}')
-        result = db.execute(query).fetchall()
+            
+        offset = (page - 1) * page_size
+        # mod="cliActNo",raw="Column13",bse="AccountId",eod="EodCliAccID"
+        query_params = {f"client_id":client_id, "page_size":page_size, "page":page, "offset":offset}
+        query = text(rf'Select * from "{tablename}" limit :page_size offset :offset')
+        if for_table in ('modifiedtradebook','rawtradebook','eodnetposcp','bsetradebook') and client_id != 'BOTH':
+            query = text(
+                rf'Select * from "{tablename}" '
+                rf'where "{cli_dbcol_name}" = :client_id '
+                rf'limit :page_size '
+                rf'offset :offset'
+            )
+            
+        result = db.execute(query, query_params).fetchall()
         total_rows = db.execute(text(rf'Select count(*) from "{tablename}"')).scalar()
         # total_rows = 18
         json_data = {
@@ -124,10 +144,13 @@ class ServiceApp:
             logger.info(f'\ntotal_rows={json_data["total_rows"]}\tpage={json_data["page"]}\tpage_size={json_data["page_size"]}\n')
             return Response(content=compressed_data, media_type='application/gzip')
 
-    def download_data(self,for_date:date=Query(),for_table:str=Query(), db:Session=Depends(get_db)):
+    def download_data(self, for_date: date = Query(), for_table: str = Query(), db: Session = Depends(get_db), client_id: str = Query('Both')):
         for_dt = pd.to_datetime(for_date).date()
+        client_id = client_id.upper()
+        
         if for_table == 'modifiedtradebook':
             tablename = f'NOTIS_TRADE_BOOK_{today}' if for_dt == today else f'NOTIS_TRADE_BOOK_{for_dt}'
+            cli_dbcol_name = "cliActNo"
         elif for_table == 'nnfwise':
             tablename = f'NOTIS_NNF_WISE_NET_POSITION_{today}' if for_dt == today else f'NOTIS_NNF_WISE_NET_POSITION_{for_dt}'
         elif for_table == 'useridwise':
@@ -136,6 +159,7 @@ class ServiceApp:
             tablename = f'NOTIS_DESK_WISE_NET_POSITION_{today}' if for_dt == today else f'NOTIS_DESK_WISE_NET_POSITION_{for_dt}'
         elif for_table == 'rawtradebook':
             tablename = f'notis_raw_data_{today}' if for_dt == today else f'notis_raw_data_{for_dt}'
+            cli_dbcol_name = "Column13"
         # netPosition eodNetPosition rawtradebooknetposi
         elif for_table == 'modifiedtradebooknetposi':
             tablename = f'NOTIS_DESK_WISE_NET_POSITION_{today}' if for_dt == today else f'NOTIS_DESK_WISE_NET_POSITION_{for_dt}'
@@ -145,8 +169,10 @@ class ServiceApp:
             tablename = f'notis_raw_data_{today}' if for_dt == today else f'notis_raw_data_{for_dt}'
         elif for_table == f'eodnetposcp':
             tablename = f'NOTIS_EOD_NET_POS_CP_NONCP_{today}' if for_dt == today else f'NOTIS_EOD_NET_POS_CP_NONCP_{for_dt.strftime("%Y-%m-%d")}'
+            cli_dbcol_name = "EodCliAccID"
         elif for_table == f'bsetradebook':
             tablename = f'BSE_TRADE_DATA_{today.strftime("%Y-%m-%d")}' if for_dt == today else f'BSE_TRADE_DATA_{for_dt.strftime("%Y-%m-%d")}'
+            cli_dbcol_name = "AccountId"
         elif for_table == f'delta':
             tablename = f'NOTIS_DELTA_{for_dt.strftime("%Y-%m-%d")}'
         elif for_table == f'deal':
@@ -239,6 +265,8 @@ class ServiceApp:
         elif for_table == 'eodnetposcp':
             grouped_desk_db_df = read_data_db(for_table=tablename)
             # grouped_desk_db_df.drop(columns=['buyAvgPrice','sellAvgPrice'], inplace=True)
+            if client_id != 'BOTH':
+                grouped_desk_db_df = grouped_desk_db_df.query(f"EodCliAccID == '{client_id}'")
             if grouped_desk_db_df.empty:
                 return JSONResponse(content={"message": "No data available"}, status_code=204)
             buffer = io.BytesIO()
@@ -250,14 +278,32 @@ class ServiceApp:
             return FileResponse(zip_path, media_type='application/gzip')
         else:
             stt = datetime.now()
+            tables_using_client = ['modifiedtradebook', 'rawtradebook', 'eodnetposcp', 'bsetradebook']
             total_rows = db.execute(text(rf'select count(*) from "{tablename}"')).scalar()
+            if for_table in tables_using_client and client_id!='BOTH':
+                total_rows = db.execute(
+                    text(
+                        rf'select count(*) from "{tablename}" '
+                        rf'where "{cli_dbcol_name}" = :client_id'
+                    ),{"client_id":client_id}
+                ).scalar()
+                
             page_size = 5_00_000
             num_pages = total_rows // page_size + (1 if (total_rows % page_size) else 0)
             logger.info(f'Total rows in DB: {total_rows}, Splitting into {num_pages} sheets')
             buffer = io.BytesIO()
             wb = xlsxwriter.Workbook(buffer, {'in_memory': True})
             for page in range(num_pages):
-                query = f'select * from "{tablename}" limit {page_size} offset {(page) * page_size}'
+                query = text(f'select * from "{tablename}" limit :page_size offset :offset')
+                if for_table in tables_using_client and client_id != 'BOTH':
+                    query = text(
+                        rf'select * from "{tablename}" '
+                        rf'where "{cli_dbcol_name}" = :client_id '
+                        'limit :page_size '
+                        'offset :offset'
+                    )
+                offset = page * page_size
+                query_params = {f"client_id":client_id, "page_size":page_size, "offset":offset}
                 logger.info(query)
                 pbar = progressbar.ProgressBar(
                     max_value=total_rows + 1,
@@ -267,7 +313,7 @@ class ServiceApp:
                         progressbar.ETA()
                     ]
                 )
-                result = db.execute(text(query))
+                result = db.execute(query, query_params)
                 ws = wb.add_worksheet(f'Sheet{page + 1}')
                 for col, header in enumerate(result.keys()):
                     ws.write(0, col, header)

@@ -67,6 +67,19 @@ status = [os.makedirs(_dir, exist_ok=True) for _dir in dir_list if not os.path.e
 engine = create_engine(engine_str, pool_size = 20, max_overflow = 10, pool_pre_ping=True, pool_recycle=900)
 stored_from_time = None
 sql_time_query = None
+
+common_col_aa100_arf100 = {
+    'AccountId':'cliActNo',
+    'FillPrice':'trdPrc',
+    'FillSize':'trdQty',
+    'TransactionType':'bsFlg',
+    'Underlying':'sym',
+    'Strike':'strPrc',
+    'OptionType':'optType',
+    'Expiry':'expDt',
+    'ExchangeTime':'TrdDtTm'
+}
+
 def define_logger():
     # Logging Definitions
     log_lvl = logging.DEBUG
@@ -405,6 +418,9 @@ def write_notis_postgredb(df, table_name, raw=False, truncate_required=False):
     start_time = time.time()
     if truncate_required:
         truncate_tables(table_name)
+    if df is None or df.empty:
+        logger.info(f"No rows to write for {table_name}, skipping insert.")
+        return
     logger.info(f'Writing {"Raw" if raw else "Modified"} data to database...')
     total_rows = len(df)
     if not raw:
@@ -541,7 +557,7 @@ def get_date_from_non_jiffy_new(dt_val):
     return formatted_date
 
 def download_bhavcopy():
-    host = '192.168.112.219'
+    host = '192.168.112.178'
     username = 'oaauser'
     password = 'Rathi@123'
     filename = f"regularNSEBhavcopy_{today.strftime('%d%m%Y')}.csv"  # sample=regularBhavcopy_13022025
@@ -764,7 +780,7 @@ def calc_delta(eod_df):
     delta_df['deltaPerUnit'] = delta_df.apply(get_delta, axis=1).astype(np.float64)
     delta_df['deltaQty'] = (delta_df['PreFinalNetQty'] * delta_df['deltaPerUnit'])
     delta_df['deltaExposure(in Cr)'] = (delta_df['spot'] * delta_df['deltaQty']) / 10_000_000
-    delta_df.to_excel(os.path.join(table_dir,f'pre_delta_{today}.xlsx'), index=False)
+    # delta_df.to_excel(os.path.join(table_dir,f'pre_delta_{today}.xlsx'), index=False)
     delta_df1 = delta_df.copy()
     final_delta_df = pd.DataFrame()
     mask = delta_df1['EodOptionType'].isin(['CE', 'PE'])
@@ -852,7 +868,7 @@ def calc_delta_v2(for_date,eod_df):
     delta_df['deltaQty'] = delta_df['PreFinalNetQty'] * delta_df['deltaPerUnit']
     delta_df['deltaExposure(in Cr)'] = (delta_df['spot'] * delta_df['deltaQty']) / 10_000_000
     delta_df1 = delta_df.copy()
-    delta_df.to_excel(os.path.join(test_dir,f'pre_delta_{for_dt}.xlsx'), index=False)
+    # delta_df.to_excel(os.path.join(test_dir,f'pre_delta_{for_dt}.xlsx'), index=False)
     final_delta_df = pd.DataFrame()
     mask = delta_df1['EodOptionType'].isin(['CE', 'PE'])
     delta_df1.loc[mask, 'EodOptionType'] = 'CE_PE'
@@ -922,7 +938,8 @@ def calc_delta_v2(for_date,eod_df):
 logger = define_logger()
 volt_df1 = read_file(os.path.join(volt_dir, f'FOVOLT_{yesterday.strftime("%d%m%Y")}.csv'))
 
-
+# to_email = ['vipulanand@rathi.com']
+# cc_email = ['ronakmoondra1@rathi.com', 'anirudhadurgule@rathi.com','maheshsarda@rathi.com']
 def send_outlook_mail(subject, body, to_emails, cc_emails=None):
     try:
         outlook = win32.Dispatch('outlook.application')

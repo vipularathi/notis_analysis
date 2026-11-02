@@ -103,8 +103,12 @@ class BSEUtility:
         bse_raw_df['AvgPrice'] = bse_raw_df['rt']
         # bse_raw_df['ExecutingBroker'] = 0
         # bse_raw_df['Broker'] = 'non CP'
-        bse_raw_df['Broker'] = np.where(bse_raw_df['CpCode'], 'CP', 'non CP')
-        
+        # bse_raw_df['Broker'] = np.where(bse_raw_df['CpCode'], 'CP', 'non CP')
+        mask = (
+            (bse_raw_df['clid'] == 'AA100') & (bse_raw_df['CpCode'].str.startswith('Y', na=False))
+            | (bse_raw_df['clid'] == 'ARF100') & (bse_raw_df['CpCode'].str.startswith('O', na=False))
+        )
+        bse_raw_df['Broker'] = np.where(mask, 'CP', 'non CP')
         bse_raw_df.rename(
             columns={'rt':'FillPrice','buy/sell':'TransactionType','clid':'AccountId','tdrid':'TraderID',
                      'qty':'FillSize','scid':'TradingSymbol'},
@@ -277,7 +281,7 @@ class BSEUtility:
         # yest_eod_df = yest_eod_df.query("EodUnderlying not in ['NIFTY','BANKNIFTY','FINNIFTY','MIDCPNIFTY']")
         yest_eod_df['EodNetQuantity'] = yest_eod_df['FinalNetQty']
         yest_eod_df['PreFinalNetQty'] = yest_eod_df['FinalNetQty']
-        exclude_columns = ['EodBroker', 'EodUnderlying', 'EodExpiry', 'EodStrike', 'EodOptionType',
+        exclude_columns = ['EodCliAccID','EodBroker', 'EodUnderlying', 'EodExpiry', 'EodStrike', 'EodOptionType',
                            'EodNetQuantity', 'PreFinalNetQty', 'FinalNetQty']
         yest_eod_df.loc[:, ~yest_eod_df.columns.isin(exclude_columns)] = 0
         yest_eod_df = yest_eod_df.query('FinalNetQty != 0')
@@ -306,14 +310,14 @@ class BSEUtility:
             "and EodBroker in ['CP','non CP']"
         )
         grouped_eod_df = yest_eod_df.groupby(
-            by=['EodBroker', 'EodUnderlying', 'EodExpiry', 'EodStrike', 'EodOptionType'],
+            by=['EodCliAccID','EodBroker', 'EodUnderlying', 'EodExpiry', 'EodStrike', 'EodOptionType'],
             as_index=False).agg({'EodNetQuantity': 'sum'})
         grouped_eod_df = grouped_eod_df.query("EodNetQuantity != 0")
         grouped_eod_df = grouped_eod_df.drop_duplicates()
         # ============================================================================================
         desk_bse_df.Expiry = pd.to_datetime(desk_bse_df.Expiry, dayfirst=True, format='mixed').dt.date
         grouped_desk_df = desk_bse_df.groupby(
-            by=['Broker', 'Underlying', 'Expiry', 'Strike', 'OptionType'],
+            by=['CliAccID','Broker', 'Underlying', 'Expiry', 'Strike', 'OptionType'],
             as_index=False).agg({
             'BuyQty': 'sum', 'SellQty': 'sum', 'buyAvgPrice': 'mean', 'sellAvgPrice': 'mean',
             'buyValue': 'sum', 'sellValue': 'sum'
@@ -322,27 +326,27 @@ class BSEUtility:
         if len(grouped_eod_df) > len(grouped_desk_df):
             merged_df = grouped_eod_df.merge(
                 grouped_desk_df,
-                left_on=['EodBroker', 'EodUnderlying', 'EodExpiry', 'EodStrike', 'EodOptionType'],
-                right_on=['Broker', 'Underlying', 'Expiry', 'Strike', 'OptionType'],
+                left_on=['EodCliAccID','EodBroker', 'EodUnderlying', 'EodExpiry', 'EodStrike', 'EodOptionType'],
+                right_on=['CliAccID','Broker', 'Underlying', 'Expiry', 'Strike', 'OptionType'],
                 how='outer'
             )
         else:
             merged_df = grouped_desk_df.merge(
                 grouped_eod_df,
-                right_on=['EodBroker', 'EodUnderlying', 'EodExpiry', 'EodStrike', 'EodOptionType'],
-                left_on=['Broker', 'Underlying', 'Expiry', 'Strike', 'OptionType'],
+                right_on=['EodCliAccID','EodBroker', 'EodUnderlying', 'EodExpiry', 'EodStrike', 'EodOptionType'],
+                left_on=['CliAccID','Broker', 'Underlying', 'Expiry', 'Strike', 'OptionType'],
                 how='outer'
             )
         merged_df.fillna(0, inplace=True)
         merged_df.drop_duplicates(inplace=True)
         # ============================================================================================
-        coltd1 = ['EodBroker', 'EodUnderlying', 'EodExpiry', 'EodStrike', 'EodOptionType']
-        coltd2 = ['Broker', 'Underlying', 'Expiry', 'Strike', 'OptionType']
+        coltd1 = ['EodCliAccID','EodBroker', 'EodUnderlying', 'EodExpiry', 'EodStrike', 'EodOptionType']
+        coltd2 = ['CliAccID','Broker', 'Underlying', 'Expiry', 'Strike', 'OptionType']
         for i in range(len(coltd1)):
             merged_df.loc[merged_df[coltd1[i]] == 0, coltd1[i]] = merged_df[coltd2[i]]
             merged_df.loc[merged_df[coltd2[i]] == 0, coltd2[i]] = merged_df[coltd1[i]]
         merged_df['FinalNetQty'] = merged_df['EodNetQuantity'] + merged_df['IntradayVolume']
-        merged_df.drop(columns=['Broker', 'Underlying', 'Expiry', 'Strike', 'OptionType'], inplace=True)
+        merged_df.drop(columns=['CliAccID','Broker', 'Underlying', 'Expiry', 'Strike', 'OptionType'], inplace=True)
         # ============================================================================================
         col_to_int = ['BuyQty', 'SellQty']
         for col in col_to_int:
@@ -365,7 +369,12 @@ class BSEUtility:
         bse_raw_df['AvgPrice'] = bse_raw_df['rt']
         # bse_raw_df['ExecutingBroker'] = 0
         # bse_raw_df['Broker'] = 'non CP'
-        bse_raw_df['Broker'] = np.where(bse_raw_df['CpCode'], 'CP', 'non CP')
+        # bse_raw_df['Broker'] = np.where(bse_raw_df['CpCode'], 'CP', 'non CP')
+        mask = (
+          (bse_raw_df['clid'] == 'AA100') & (bse_raw_df['CpCode'].str.startswith('Y', na=False))
+          | (bse_raw_df['clid'] == 'ARF100') & (bse_raw_df['CpCode'].str.startswith('O', na=False))
+        )
+        bse_raw_df['Broker'] = np.where(mask, 'CP', 'non CP')
         
         bse_raw_df.rename(
             columns={'rt': 'FillPrice', 'buy/sell': 'TransactionType', 'clid': 'AccountId', 'tdrid': 'TraderID',

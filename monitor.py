@@ -3,10 +3,10 @@ from datetime import datetime, timedelta
 from common import send_outlook_mail, root_dir, today
 
 heartbeat_file = os.path.join(root_dir,'heartbeat.txt')
-expected_runtimes = ['08:35','15:34','16:35','20:38']
+expected_runtimes = ['08:35','16:00','16:35','20:38']
 to_email = ['vipulanand@rathi.com']
-cc_email = ['ronakmoondra1@rathi.com', 'anirudhadurgule@rathi.com']
-grace_minutes = 2
+cc_email = ['anirudhadurgule@rathi.com','maheshsarda@rathi.com']
+grace_minutes = 10
 alert_file = os.path.join(root_dir,'alert_sent.txt')
 
 current_dtt = datetime.now()

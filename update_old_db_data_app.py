@@ -58,4 +58,4 @@ async def uplaod_file(date_str : str = Form(...), file : UploadFile = File(...))
         return {'success':False}
     
 if __name__ == '__main__':
-    uvicorn.run(app, host='127.0.0.1', port=8700)
+    uvicorn.run(app, host='127.0.0.1', port=8787)

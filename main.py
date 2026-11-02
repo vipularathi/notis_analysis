@@ -8,12 +8,12 @@ from db_config import (n_tbl_notis_trade_book, n_tbl_notis_raw_data,
                        n_tbl_notis_nnf_wise_net_position, n_tbl_notis_delta_table,
                        n_tbl_notis_eod_net_pos_cp_noncp, n_tbl_bse_trade_data,
                        n_tbl_srspl_trade_data, n_tbl_notis_deal_sheet,
-                       n_tbl_spot_data)
+                       n_tbl_spot_data, n_tbl_aa100_trade_data, n_tbl_arf100_trade_data)
 from common import (read_data_db, write_notis_data, write_notis_postgredb, read_file,
                     today,yesterday, final_holidays,
                     root_dir, bhav_dir, modified_dir, table_dir, bse_dir, volt_dir,
                     download_bhavcopy, logger, find_spot_volt, analyze_expired_instruments,
-                    send_outlook_mail)
+                    send_outlook_mail, common_col_aa100_arf100)
 from nse_utility import NSEUtility
 from bse_utility import BSEUtility
 
@@ -21,7 +21,7 @@ warnings.filterwarnings('ignore', message="pandas only supports SQLAlchemy conne
 pd.set_option('display.float_format', lambda a:'%.2f' %a)
 actual_date = datetime.now().date()
 to_email = ['vipulanand@rathi.com']
-cc_email = ['ronakmoondra1@rathi.com', 'anirudhadurgule@rathi.com']
+cc_email = ['anirudhadurgule@rathi.com','maheshsarda@rathi.com']
 
 def get_delta(row):
     int_rate,annual_div = 5.5,0
@@ -159,11 +159,20 @@ def get_nse_data():
     modified_df = NSEUtility.modify_file(df_db, df_nnf)
     write_notis_postgredb(modified_df, table_name=n_tbl_notis_trade_book, truncate_required=True)
     write_notis_data(modified_df, modify_filepath)
-    # write_notis_data(modified_df, rf'C:\Users\vipulanand\Documents\Anand Rathi Financial Services Ltd (Synced)\OneDrive - Anand Rathi Financial Services Ltd\notis_files\NOTIS_TRADE_DATA_{today.strftime("%d%b%Y").upper()}.csv')
+    # ===========================================================
+    temp_df = modified_df.copy()
+    temp_df = temp_df[(list(common_col_aa100_arf100.values()))]
+    logger.info(f'Separating NSE AA100 and ARF100 trades. . . ')
+    df_aa100 = temp_df.query("cliActNo == 'AA100'").reset_index(drop=True)
+    write_notis_postgredb(df_aa100, table_name=n_tbl_aa100_trade_data, truncate_required=True)
+    df_arf100 = temp_df.query("cliActNo == 'ARF100'").reset_index(drop=True)
+    write_notis_postgredb(df_arf100, table_name=n_tbl_arf100_trade_data, truncate_required=True)
+    logger.info(f'NSE AA100 & ARF100 trades extracted and written in db')
+    # ===========================================================
     logger.info('file saved in modified_data folder')
     modified_df['trdQtyPrc'] = modified_df['trdQty'] * (modified_df['trdPrc']/100)
     pivot_df = modified_df.pivot_table(
-        index=['MainGroup', 'SubGroup', 'broker', 'ctclid', 'sym', 'expDt', 'strPrc', 'optType'],
+        index=['MainGroup', 'SubGroup', 'cliActNo', 'broker', 'ctclid', 'sym', 'expDt', 'strPrc', 'optType'],
         columns=['bsFlg'],
         values=['trdQty', 'trdQtyPrc', 'trdPrc'],
         aggfunc={'trdQty': 'sum', 'trdQtyPrc': 'sum', 'trdPrc':['min','max']},
@@ -191,7 +200,7 @@ def get_nse_data():
     # pivot_df.drop(columns=['BuyTrdQtyPrc', 'SellTrdQtyPrc'], inplace=True)
     pivot_df.rename(columns={'MainGroup': 'mainGroup', 'SubGroup': 'subGroup', 'sym': 'symbol', 'expDt': 'expiryDate',
                              'strPrc': 'strikePrice', 'optType': 'optionType', 'BuyAvgPrc': 'buyAvgPrice','BuyTrdQtyPrc':'buyValue',
-                             'SellAvgPrc': 'sellAvgPrice', 'BuyQty': 'buyAvgQty', 'SellQty': 'sellAvgQty','SellTrdQtyPrc':'sellValue'},
+                             'SellAvgPrc': 'sellAvgPrice', 'BuyQty': 'buyAvgQty', 'SellQty': 'sellAvgQty','SellTrdQtyPrc':'sellValue', 'cliActNo':'CliAccID'},
                     inplace=True)
     pivot_df.volume = pivot_df.buyAvgQty - pivot_df.sellAvgQty
     return pivot_df
@@ -230,10 +239,20 @@ def get_bse_data():
     modified_bse_df.fillna(0, inplace=True)
     write_notis_postgredb(df=modified_bse_df,table_name=n_tbl_bse_trade_data,truncate_required=True)
     write_notis_data(modified_bse_df, os.path.join(bse_dir, f'BSE_TRADE_DATA_{today.strftime("%d%b%Y").upper()}.xlsx'))
-    # write_notis_data(modified_bse_df, rf'C:\Users\vipulanand\Documents\Anand Rathi Financial Services Ltd (Synced)\OneDrive - Anand Rathi Financial Services Ltd\notis_files\BSE_TRADE_DATA_{today.strftime("%d%b%Y").upper()}.xlsx')
+    # ===========================================================
+    temp_df = modified_bse_df.copy()
+    temp_df.rename(columns=common_col_aa100_arf100, inplace=True)
+    temp_df = temp_df[(list(common_col_aa100_arf100.values()))]
+    logger.info(f'Separating BSE AA100 and ARF100 trades. . . ')
+    df_aa100 = temp_df.query("cliActNo == 'AA100'").reset_index(drop=True)
+    write_notis_postgredb(df_aa100, table_name=n_tbl_aa100_trade_data)
+    df_arf100 = temp_df.query("cliActNo == 'ARF100'").reset_index(drop=True)
+    write_notis_postgredb(df_arf100, table_name=n_tbl_arf100_trade_data)
+    logger.info(f'BSE AA100 & ARF100 trades extracted and written in db')
+    # ===========================================================
     modified_bse_df['trdQtyPrc'] = modified_bse_df['FillSize'] * (modified_bse_df['AvgPrice'] / 100)
     pivot_df = modified_bse_df.pivot_table(
-        index=['Broker', 'Underlying', 'Expiry', 'Strike', 'OptionType', 'TerminalID', 'TraderID'],
+        index=['AccountId', 'Broker', 'Underlying', 'Expiry', 'Strike', 'OptionType', 'TerminalID', 'TraderID'],
         columns=['TransactionType'],
         values=['FillSize', 'trdQtyPrc', 'AvgPrice'],
         aggfunc={'FillSize': 'sum', 'trdQtyPrc': 'sum', 'AvgPrice':['min','max']},
@@ -259,7 +278,7 @@ def get_bse_data():
         lambda row: row['SellTrdQtyPrc'] / row['SellQty'] if row['SellQty'] > 0 else 0, axis=1)
     # pivot_df.drop(columns=['BuyTrdQtyPrc', 'SellTrdQtyPrc'], inplace=True)
     pivot_df['IntradayVolume'] = pivot_df['BuyQty'] - pivot_df['SellQty']
-    pivot_df.rename(columns={'BuyTrdQtyPrc': 'buyValue', 'SellTrdQtyPrc': 'sellValue'}, inplace=True)
+    pivot_df.rename(columns={'BuyTrdQtyPrc': 'buyValue', 'SellTrdQtyPrc': 'sellValue', 'AccountId':'CliAccID'}, inplace=True)
     # pivot_df = pivot_df.round(2)
     ett = datetime.now()
     logger.info(f'BSE trade fetched. Total time taken: {(ett - stt).seconds} seconds')
@@ -291,11 +310,11 @@ def find_net_pos(nse_pivot_df, bse_pivot_df):
     final_cp_noncp_eod_df = pd.concat([cp_noncp_nse_df, cp_noncp_bse_df], ignore_index=True)
     
     to_int = ['EodStrike','EodNetQuantity', 'buyQty', 'sellQty', 'IntradayVolume', 'FinalNetQty']
-    # final_cp_noncp_eod_df.to_excel(f'test_eod.xlsx', index=False)
+    # final_cp_noncp_eod_df.to_excel(f'test_eod_{today}.xlsx', index=False)
     for each in to_int:
         final_cp_noncp_eod_df[each] = final_cp_noncp_eod_df[each].astype(np.int64)
     grouped_final_eod = final_cp_noncp_eod_df.groupby(
-        by=['EodBroker', 'EodUnderlying', 'EodExpiry', 'EodStrike', 'EodOptionType'],
+        by=['EodCliAccID','EodBroker', 'EodUnderlying', 'EodExpiry', 'EodStrike', 'EodOptionType'],
         as_index=False).agg(
         {'EodNetQuantity': 'sum', 'buyQty': 'sum', 'buyAvgPrice': 'mean','buyValue':'sum',
         'sellQty': 'sum','sellAvgPrice': 'mean','sellValue':'sum'}

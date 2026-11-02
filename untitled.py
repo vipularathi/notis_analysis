@@ -2953,34 +2953,35 @@ p=0
 # if login():
 #     download_volatility_file()
 Replace_yesterday_eod_file=0
-# from common import write_notis_postgredb
-# from db_config import n_tbl_notis_nnf_data
-# nnf_df = pd.read_excel(rf"D:\notis_analysis\table_data\NOTIS_EOD_NET_POS_CP_NONCP_2026-06-04.xlsx", index_col=False)
-# write_notis_postgredb(df=nnf_df, table_name='NOTIS_EOD_NET_POS_CP_NONCP_2026-06-04',truncate_required=True)
+from common import write_notis_postgredb
+from db_config import n_tbl_notis_nnf_data
+nnf_df = pd.read_excel(rf"D:\notis_analysis\input_data\eodnetposcp_2026-10-29_mod.xlsx", index_col=False)
+nnf_df['EodExpiry'] = pd.to_datetime(nnf_df['EodExpiry'], format='mixed').dt.strftime('%d/%m/%Y')
+write_notis_postgredb(df=nnf_df, table_name='NOTIS_EOD_NET_POS_CP_NONCP_2026-10-29',truncate_required=True)
 find_spot_new_source=0
 import requests
-def find_spot():
-    spot_dict = {}
-    # index_list = ["NIFTY", "BANKNIFTY", "FINNIFTY", "MIDCPNIFTY", "SENSEX"]
-    index_list = ['ADANIENT', 'ADANIPORTS', 'APOLLOHOSP', 'ASIANPAINT', 'AXISBANK', 'BAJAJ-AUTO', 'BAJAJFINSV', 'BAJFINANCE', 'BEL', 'BHARTIARTL', 'CIPLA', 'COALINDIA', 'DRREDDY', 'EICHERMOT', 'ETERNAL', 'GRASIM', 'HCLTECH', 'HDFCBANK', 'HDFCLIFE', 'HINDALCO', 'HINDUNILVR', 'ICICIBANK', 'INDIGO', 'INFY', 'ITC', 'JIOFIN', 'JSWSTEEL', 'KOTAKBANK', 'LT', 'M&M', 'MARUTI', 'MAXHEALTH', 'NESTLEIND', 'NIFTY', 'NTPC', 'ONGC', 'POWERGRID', 'RELIANCE', 'SBILIFE', 'SBIN', 'SENSEX', 'SHRIRAMFIN', 'SUNPHARMA', 'TATACONSUM', 'TATASTEEL', 'TCS', 'TECHM', 'TITAN', 'TMPV', 'TRENT', 'ULTRACEMCO', 'WIPRO']
-    url = 'http://192.168.112.178:8080/livedataname'
-    headers = {
-        'oi': '1',
-        'esegment': '1'
-    }
-    proxies = {"http": None, "https": None}
-    for each in index_list:
-        headers[f"inst_name"] = f'{each}'
-        # if each.lower() not in ['sensex','bankex']:
-        #     headers['esegment'] = '1'
-        # else:
-        #     headers['esegment'] = '11'
-        try:
-            response = requests.get(url=url, headers=headers, proxies=proxies)
-            if response.status_code == 200:
-                spot_dict[each] = response.json()[2]
-        except Exception as e:
-            print(f"Error in fetching spot data = {e}")
-    return spot_dict
-
-sp=find_spot()
+# def find_spot():
+#     spot_dict = {}
+#     # index_list = ["NIFTY", "BANKNIFTY", "FINNIFTY", "MIDCPNIFTY", "SENSEX"]
+#     index_list = ['ADANIENT', 'ADANIPORTS', 'APOLLOHOSP', 'ASIANPAINT', 'AXISBANK', 'BAJAJ-AUTO', 'BAJAJFINSV', 'BAJFINANCE', 'BEL', 'BHARTIARTL', 'CIPLA', 'COALINDIA', 'DRREDDY', 'EICHERMOT', 'ETERNAL', 'GRASIM', 'HCLTECH', 'HDFCBANK', 'HDFCLIFE', 'HINDALCO', 'HINDUNILVR', 'ICICIBANK', 'INDIGO', 'INFY', 'ITC', 'JIOFIN', 'JSWSTEEL', 'KOTAKBANK', 'LT', 'M&M', 'MARUTI', 'MAXHEALTH', 'NESTLEIND', 'NIFTY', 'NTPC', 'ONGC', 'POWERGRID', 'RELIANCE', 'SBILIFE', 'SBIN', 'SENSEX', 'SHRIRAMFIN', 'SUNPHARMA', 'TATACONSUM', 'TATASTEEL', 'TCS', 'TECHM', 'TITAN', 'TMPV', 'TRENT', 'ULTRACEMCO', 'WIPRO']
+#     url = 'http://192.168.112.178:8080/livedataname'
+#     headers = {
+#         'oi': '1',
+#         'esegment': '1'
+#     }
+#     proxies = {"http": None, "https": None}
+#     for each in index_list:
+#         headers[f"inst_name"] = f'{each}'
+#         # if each.lower() not in ['sensex','bankex']:
+#         #     headers['esegment'] = '1'
+#         # else:
+#         #     headers['esegment'] = '11'
+#         try:
+#             response = requests.get(url=url, headers=headers, proxies=proxies)
+#             if response.status_code == 200:
+#                 spot_dict[each] = response.json()[2]
+#         except Exception as e:
+#             print(f"Error in fetching spot data = {e}")
+#     return spot_dict
+#
+# sp=find_spot()

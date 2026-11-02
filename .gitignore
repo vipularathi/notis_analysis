@@ -161,7 +161,6 @@ cython_debug/
 #  option (not recommended) you can uncomment the following to ignore the entire idea folder.
 #.idea/
 
-*/
 *.csv
 *.xlsx
 *.pdf
@@ -169,3 +168,7 @@ cython_debug/
 jiffy_time_conversion.py
 untitled*
 Untitled*
+
+# Ignore all folders and subfolders
+*/
+/*/
